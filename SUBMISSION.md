@@ -413,8 +413,10 @@ history, smaller prompts and fewer validate/repair retries for Nano.
 
 ### Hosting the web build (human step)
 
-`npm run export:web` writes a fully static site to `dist/` — no server, no keys, no cloud
-required for the offline path. Any static host works (Firebase Hosting, GitHub Pages, Netlify).
-We did not deploy it: deploying needs an account we don't own, so it is left as a one-command
-step for whoever submits. The exported build defaults to on-device/offline operation, which is
-exactly what a judge needs to test it.
+`npm run export:web` writes a fully static site to `dist/` — plain files, no server needed. Any
+static host works (Firebase Hosting, GitHub Pages, Netlify).
+
+We did not deploy it: deploying needs an account we don't own, so it is left as a one-command step
+for whoever submits. **Set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` before exporting** —
+the config is baked in at build time, and that setting makes the hosted build run entirely
+on-device with no Firebase project required, which is the easiest thing for a judge to test.
