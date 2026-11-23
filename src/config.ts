@@ -22,3 +22,10 @@ export const onDeviceOnly = process.env.EXPO_PUBLIC_ON_DEVICE_ONLY === 'true';
 
 /** Cloud model used when Firebase AI Logic runs in the cloud. */
 export const cloudModel = process.env.EXPO_PUBLIC_CLOUD_MODEL ?? 'gemini-3.8-flash';
+
+/**
+ * Which on-device model to request on Android. The hackathon targets **Gemini Nano 4**, which
+ * Firebase AI Logic publishes as the PREVIEW model options (`nano-v4-full` / `nano-v4-fast`).
+ * Set to `stable` to force the older default Nano instead.
+ */
+export const deviceModel = (process.env.EXPO_PUBLIC_DEVICE_MODEL ?? 'nano4') as 'nano4' | 'nano4_fast' | 'stable';

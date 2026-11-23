@@ -21,6 +21,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'von mini' }} />
         <Stack.Screen name="app/[id]" options={{ title: '' }} />
+        <Stack.Screen name="settings" options={{ title: 'AI settings', presentation: 'modal' }} />
       </Stack>
     </AIProvider>
   );

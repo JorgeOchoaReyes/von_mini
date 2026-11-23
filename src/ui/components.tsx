@@ -1,4 +1,5 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ComponentProps, ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -13,12 +14,39 @@ import {
 } from 'react-native';
 
 import type { DeviceStatus, InferenceSource } from '../ai/types';
+import type { ProgressStep } from '../ai/hybrid';
+import { haptics } from './haptics';
+import { FadeUp, Pulse, Shimmer, TypingDots } from './motion';
 import { radius, space, type, useTheme, type Theme } from './theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
 export function Icon({ name, size = 18, color }: { name: IconName; size?: number; color: string }) {
   return <Ionicons name={name} size={size} color={color} />;
+}
+
+/** A surface painted with the theme's two-stop gradient. */
+export function Gradient({
+  theme,
+  children,
+  style,
+  direction = 'diagonal',
+}: {
+  theme: Theme;
+  children?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  direction?: 'diagonal' | 'down';
+}) {
+  return (
+    <LinearGradient
+      colors={theme.gradient}
+      start={direction === 'down' ? { x: 0.5, y: 0 } : { x: 0, y: 0 }}
+      end={direction === 'down' ? { x: 0.5, y: 1 } : { x: 1, y: 1 }}
+      style={style}
+    >
+      {children}
+    </LinearGradient>
+  );
 }
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -48,27 +76,42 @@ export function Button({
   const fg =
     variant === 'primary' ? theme.onAccent : variant === 'danger' ? theme.danger : variant === 'secondary' ? theme.text : theme.accent;
   const bg = variant === 'primary' ? theme.accent : variant === 'secondary' ? theme.surfaceAlt : 'transparent';
+  const inner = loading ? (
+    <ActivityIndicator color={fg} />
+  ) : (
+    <>
+      {icon && <Icon name={icon} size={size === 'sm' ? 16 : 18} color={fg} />}
+      <Text style={[size === 'sm' ? type.label : styles.buttonText, { color: fg }]}>{label}</Text>
+    </>
+  );
+  const press = () => {
+    haptics.light();
+    onPress();
+  };
+  const body =
+    variant === 'primary' ? (
+      <Gradient theme={theme} style={[styles.button, size === 'sm' && styles.buttonSm, style]}>
+        {inner}
+      </Gradient>
+    ) : null;
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: !!off, busy: !!loading }}
-      onPress={onPress}
+      onPress={press}
       disabled={off}
       style={({ pressed }) => [
-        styles.button,
-        size === 'sm' && styles.buttonSm,
-        { backgroundColor: bg, opacity: off ? 0.45 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-        style,
+        body ? { opacity: off ? 0.45 : pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] } : null,
+        !body && [
+          styles.button,
+          size === 'sm' && styles.buttonSm,
+          { backgroundColor: bg, opacity: off ? 0.45 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
+          style,
+        ],
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={fg} />
-      ) : (
-        <>
-          {icon && <Icon name={icon} size={size === 'sm' ? 16 : 18} color={fg} />}
-          <Text style={[size === 'sm' ? type.label : styles.buttonText, { color: fg }]}>{label}</Text>
-        </>
-      )}
+      {body ?? inner}
     </Pressable>
   );
 }
@@ -94,7 +137,10 @@ export function IconButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       disabled={disabled}
       hitSlop={6}
       style={({ pressed }) => [
@@ -112,11 +158,13 @@ export function Card({
   theme,
   style,
   tinted,
+  flat,
 }: {
   children: ReactNode;
   theme: Theme;
   style?: StyleProp<ViewStyle>;
   tinted?: boolean;
+  flat?: boolean;
 }) {
   return (
     <View
@@ -124,7 +172,8 @@ export function Card({
         styles.card,
         tinted
           ? { backgroundColor: theme.accentSoft, borderColor: 'transparent' }
-          : { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow },
+          : { backgroundColor: theme.surface, borderColor: theme.border },
+        !flat && !tinted && { boxShadow: theme.shadow },
         style,
       ]}
     >
@@ -139,24 +188,31 @@ export function Chip({
   theme,
   selected,
   icon,
+  disabled,
 }: {
   label: string;
   onPress(): void;
   theme: Theme;
   selected?: boolean;
   icon?: IconName;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected: !!selected }}
-      onPress={onPress}
+      accessibilityState={{ selected: !!selected, disabled: !!disabled }}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.chip,
         {
           backgroundColor: selected ? theme.accent : theme.surface,
           borderColor: selected ? theme.accent : theme.border,
-          opacity: pressed ? 0.8 : 1,
+          opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
         },
       ]}
     >
@@ -186,8 +242,11 @@ export function Segmented<T extends string>({
             key={o.value}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            onPress={() => onChange(o.value)}
-            style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadow }]}
+            onPress={() => {
+              if (!on) haptics.tap();
+              onChange(o.value);
+            }}
+            style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
           >
             {o.icon && <Icon name={o.icon} size={16} color={on ? theme.accent : theme.muted} />}
             <Text style={[type.label, { color: on ? theme.text : theme.muted }]}>{o.label}</Text>
@@ -206,7 +265,7 @@ export function SourceBadge({ source }: { source: InferenceSource | 'starter' })
     source === 'on_device'
       ? { icon: 'phone-portrait-outline' as const, label: 'On-device', color: theme.success }
       : source === 'in_cloud'
-        ? { icon: 'cloud-outline' as const, label: 'Cloud', color: '#1F6FEB' }
+        ? { icon: 'cloud-outline' as const, label: 'Cloud', color: ACCENT_CLOUD }
         : { icon: 'cube-outline' as const, label: 'Built-in', color: theme.muted };
   return (
     <View style={[styles.badge, { borderColor: theme.border, backgroundColor: theme.surface }]}>
@@ -216,12 +275,73 @@ export function SourceBadge({ source }: { source: InferenceSource | 'starter' })
   );
 }
 
+const ACCENT_CLOUD = '#1F6FEB';
+
+/**
+ * One compact line telling the user where their AI runs: on-device, cloud, or locked private.
+ * This is the single most important piece of product state in a hybrid app, so it is always
+ * visible on the home screen rather than buried in a settings screen.
+ */
+export function ModePill({
+  status,
+  online,
+  privateMode,
+  locked,
+  onPress,
+}: {
+  status: DeviceStatus;
+  online: boolean;
+  privateMode: boolean;
+  locked: boolean;
+  onPress(): void;
+}) {
+  const theme = useTheme();
+  const ready = status === 'available';
+  const meta = locked
+    ? { icon: 'lock-closed' as const, label: 'Private', color: theme.success }
+    : privateMode
+      ? { icon: 'lock-closed' as const, label: 'Private mode', color: theme.success }
+      : ready
+        ? { icon: 'phone-portrait' as const, label: 'On-device', color: theme.success }
+        : online
+          ? { icon: 'cloud' as const, label: 'Cloud', color: ACCENT_CLOUD }
+          : { icon: 'cloud-offline' as const, label: 'Offline', color: theme.warning };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Inference: ${meta.label}. Tap for details.`}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.pill,
+        { backgroundColor: theme.surface, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },
+      ]}
+    >
+      <View style={[styles.pillDot, { backgroundColor: meta.color }]} />
+      <Text style={[type.caption, { color: theme.text, fontWeight: '600' }]}>{meta.label}</Text>
+      <Icon name={meta.icon} size={13} color={theme.muted} />
+    </Pressable>
+  );
+}
+
 const STATUS: Record<DeviceStatus, { title: string; body: string; icon: IconName; tone: 'ok' | 'warn' | 'off' }> = {
   available: { title: 'Gemini Nano is ready', body: 'AI runs privately on this device.', icon: 'sparkles', tone: 'ok' },
-  downloadable: { title: 'Get on-device AI', body: 'Download Gemini Nano once to use AI offline.', icon: 'download-outline', tone: 'warn' },
+  downloadable: {
+    title: 'Get on-device AI',
+    body: 'Download Gemini Nano once to use AI offline.',
+    icon: 'download-outline',
+    tone: 'warn',
+  },
   downloading: { title: 'Downloading Gemini Nano…', body: 'You can keep using the app.', icon: 'cloud-download-outline', tone: 'warn' },
   unavailable: { title: 'On-device AI unavailable', body: 'This device can’t run Gemini Nano.', icon: 'alert-circle-outline', tone: 'off' },
-  unsupported: { title: 'No on-device AI here', body: 'Use desktop Chrome or a supported Android phone.', icon: 'alert-circle-outline', tone: 'off' },
+  unsupported: {
+    title: 'No on-device AI here',
+    body: 'Use desktop Chrome or a supported Android phone.',
+    icon: 'alert-circle-outline',
+    tone: 'off',
+  },
 };
 
 export function StatusBanner({
@@ -278,7 +398,10 @@ export function StatusBanner({
         </View>
         <Switch
           value={privateMode}
-          onValueChange={onTogglePrivate}
+          onValueChange={(v) => {
+            haptics.tap();
+            onTogglePrivate(v);
+          }}
           disabled={locked}
           trackColor={{ true: theme.accent, false: theme.border }}
           accessibilityLabel="Private mode"
@@ -307,6 +430,7 @@ export function Composer({
   busy,
   minHeight = 48,
   sendLabel = 'Send',
+  autoFocus,
 }: {
   value: string;
   onChange(v: string): void;
@@ -316,16 +440,19 @@ export function Composer({
   busy?: boolean;
   minHeight?: number;
   sendLabel?: string;
+  autoFocus?: boolean;
 }) {
   const can = !!value.trim() && !busy;
   return (
-    <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={theme.subtle}
         multiline
+        autoFocus={autoFocus}
+        accessibilityLabel={placeholder}
         onKeyPress={(e) => {
           // Web: Enter sends, Shift+Enter adds a line.
           const ne = e.nativeEvent as { key: string; shiftKey?: boolean };
@@ -342,14 +469,22 @@ export function Composer({
         onPress={onSubmit}
         disabled={!can}
         style={({ pressed }) => [
-          styles.send,
-          { backgroundColor: can ? theme.accent : theme.surfaceAlt, opacity: pressed ? 0.8 : 1 },
+          styles.sendWrap,
+          { opacity: can ? (pressed ? 0.85 : 1) : 0.5, transform: [{ scale: pressed && can ? 0.94 : 1 }] },
         ]}
       >
-        {busy ? (
-          <ActivityIndicator color={theme.onAccent} size="small" />
+        {can && !busy ? (
+          <Gradient theme={theme} style={styles.send}>
+            <Icon name="arrow-up" size={20} color={theme.onAccent} />
+          </Gradient>
         ) : (
-          <Icon name="arrow-up" size={20} color={can ? theme.onAccent : theme.subtle} />
+          <View style={[styles.send, { backgroundColor: theme.surfaceAlt }]}>
+            {busy ? (
+              <ActivityIndicator color={theme.muted} size="small" />
+            ) : (
+              <Icon name="arrow-up" size={20} color={theme.subtle} />
+            )}
+          </View>
         )}
       </Pressable>
     </View>
@@ -365,6 +500,49 @@ export function EmptyState({ icon, title, body, theme }: { icon: IconName; title
     </View>
   );
 }
+
+/**
+ * The build/edit progress checklist. Steps are real phases of the generation pipeline, so the
+ * user sees what is happening instead of an unexplained spinner.
+ */
+export function StepList({ steps, theme }: { steps: ProgressStep[]; theme: Theme }) {
+  return (
+    <View style={{ gap: space(2) }}>
+      {steps.map((s, i) => (
+        <FadeUp key={s.id} delay={i * 60} distance={6}>
+          <View style={styles.rowCenter}>
+            {s.state === 'done' ? (
+              <Icon name="checkmark-circle" size={16} color={theme.success} />
+            ) : (
+              <Pulse color={theme.accent} size={8} />
+            )}
+            <Text
+              style={[
+                type.caption,
+                { color: s.state === 'done' ? theme.muted : theme.text, fontWeight: s.state === 'done' ? '400' : '600' },
+              ]}
+            >
+              {s.label}
+            </Text>
+          </View>
+        </FadeUp>
+      ))}
+    </View>
+  );
+}
+
+/** Skeleton used while an app spec is still streaming in. */
+export function SpecSkeleton({ theme }: { theme: Theme }) {
+  return (
+    <View style={{ gap: space(3) }}>
+      <Shimmer color={theme.surfaceAlt} style={{ width: '45%', height: 20 }} />
+      <Shimmer color={theme.surfaceAlt} style={{ width: '80%' }} />
+      <Shimmer color={theme.surfaceAlt} style={{ width: '62%' }} />
+    </View>
+  );
+}
+
+export { TypingDots };
 
 export function relativeTime(at: number): string {
   const s = Math.round((Date.now() - at) / 1000);
@@ -423,6 +601,17 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeText: { fontSize: 12, fontWeight: '500' },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(2),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: space(3),
+    paddingVertical: space(2),
+    alignSelf: 'flex-start',
+  },
+  pillDot: { width: 7, height: 7, borderRadius: 4 },
   rowCenter: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   statusIcon: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   divider: { height: StyleSheet.hairlineWidth },
@@ -430,13 +619,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     paddingLeft: space(4),
     paddingRight: space(2),
     paddingVertical: space(2),
     gap: space(2),
   },
-  composerInput: { flex: 1, maxHeight: 160, paddingVertical: space(2), textAlignVertical: 'top', outlineStyle: 'none' } as never,
+  composerInput: {
+    flex: 1,
+    maxHeight: 160,
+    paddingVertical: space(2),
+    textAlignVertical: 'top',
+    outlineStyle: 'none',
+  } as never,
+  sendWrap: { borderRadius: radius.pill },
   send: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   empty: {
     alignItems: 'center',

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,11 +11,13 @@ import {
 } from 'react-native';
 
 import { useAI } from '../ai/AIContext';
+import { quickEdits } from '../spec/edit';
 import type { AppSpec } from '../spec/types';
 import { listMessages, type ChatMessage } from '../storage/store';
-import { Chip, Composer, Icon, SourceBadge, type IconName } from '../ui/components';
+import { Chip, Composer, Icon, SourceBadge, StepList, TypingDots, type IconName } from '../ui/components';
+import { FadeUp } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
-import { isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
+import { chatSteps, isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
   { label: 'What does this app do?', icon: 'help-circle-outline' },
@@ -33,8 +34,77 @@ function Avatar({ emoji, theme }: { emoji: string; theme: Theme }) {
   );
 }
 
-/** Chat about one app: ask questions or request changes. Changes apply immediately and can be undone. */
-export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: AppSpec; onShowApp(): void }) {
+/** A one-line "what changed" diff, shown above the preview after any edit. */
+export function ChangeSummary({
+  changes,
+  theme,
+  onUndo,
+  onDismiss,
+  onShowHistory,
+}: {
+  changes: string[];
+  theme: Theme;
+  onUndo(): void;
+  onDismiss(): void;
+  onShowHistory(): void;
+}) {
+  if (!changes.length) return null;
+  return (
+    <FadeUp distance={6}>
+      <View style={[styles.diff, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
+        <View style={styles.row}>
+          <Icon name="git-commit-outline" size={15} color={theme.success} />
+          <Text style={[type.label, { color: theme.text, flex: 1 }]} numberOfLines={1}>
+            {changes.length === 1 ? changes[0] : `${changes.length} changes applied`}
+          </Text>
+          <Pressable onPress={onDismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+            <Icon name="close" size={16} color={theme.subtle} />
+          </Pressable>
+        </View>
+        {changes.length > 1 &&
+          changes.slice(0, 4).map((c, i) => (
+            <View key={i} style={styles.row}>
+              <Text style={[type.caption, { color: theme.accent }]}>+</Text>
+              <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{c}</Text>
+            </View>
+          ))}
+        <View style={styles.row}>
+          <Pressable onPress={onUndo} hitSlop={6} style={styles.row} accessibilityRole="button">
+            <Icon name="arrow-undo-outline" size={14} color={theme.accent} />
+            <Text style={[type.label, { color: theme.accent }]}>Undo</Text>
+          </Pressable>
+          <Pressable onPress={onShowHistory} hitSlop={6} style={styles.row} accessibilityRole="button">
+            <Icon name="time-outline" size={14} color={theme.muted} />
+            <Text style={[type.label, { color: theme.muted }]}>History</Text>
+          </Pressable>
+        </View>
+      </View>
+    </FadeUp>
+  );
+}
+
+/**
+ * Chat about one app: ask questions or request changes.
+ *
+ * Two edit paths live here, and the distinction is the point:
+ *   - the quick-edit chips are pure functions over the spec — instant, offline, exactly what they
+ *     say, no model involved;
+ *   - free-text changes go to the model, stream in, and report what changed afterwards.
+ */
+export function ChatPanel({
+  appId,
+  spec,
+  onShowApp,
+  onLocalEdit,
+  onShowHistory,
+}: {
+  appId: string;
+  spec: AppSpec;
+  onShowApp(): void;
+  /** Applies a chip edit (already a complete spec) and records it. */
+  onLocalEdit(next: AppSpec, change: string): void;
+  onShowHistory(): void;
+}) {
   const theme = useTheme(spec.accent);
   const ai = useAI();
   const version = useChatVersion();
@@ -42,6 +112,8 @@ export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: App
   const [draft, setDraft] = useState('');
   const scroll = useRef<ScrollViewInstance>(null);
   const busy = isBusy(appId);
+  const steps = chatSteps(appId);
+  const chips = useMemo(() => quickEdits(spec), [spec]);
 
   useEffect(() => {
     let alive = true;
@@ -75,11 +147,14 @@ export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: App
             </View>
             <Text style={[type.title, { color: theme.text, textAlign: 'center' }]}>Improve {spec.name}</Text>
             <Text style={[type.body, { color: theme.muted, textAlign: 'center' }]}>
-              Ask how it works or describe a change. Changes apply right away and you can undo them.
+              Describe a change in your own words, or tap a quick edit below. Every change is saved as a version you
+              can put back.
             </Text>
             <View style={styles.row}>
               <Icon name={local ? 'lock-closed-outline' : 'phone-portrait-outline'} size={14} color={theme.success} />
-              <Text style={[type.caption, { color: theme.muted }]}>{local ? 'Runs on this device only' : 'Runs on-device first'}</Text>
+              <Text style={[type.caption, { color: theme.muted }]}>
+                {local ? 'Runs on this device only' : 'Runs on-device first'}
+              </Text>
             </View>
             <View style={styles.suggestions}>
               {SUGGESTIONS.map((s) => (
@@ -93,7 +168,9 @@ export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: App
           if (m.role === 'user') {
             return (
               <View key={m.id} style={[styles.bubble, styles.mine, { backgroundColor: theme.accent }]}>
-                <Text selectable style={[type.body, { color: theme.onAccent }]}>{m.text}</Text>
+                <Text selectable style={[type.body, { color: theme.onAccent }]}>
+                  {m.text}
+                </Text>
               </View>
             );
           }
@@ -111,7 +188,11 @@ export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: App
               >
                 {isEdit && (
                   <View style={styles.row}>
-                    <Icon name={m.undone ? 'arrow-undo' : 'checkmark-circle'} size={16} color={m.undone ? theme.subtle : theme.success} />
+                    <Icon
+                      name={m.undone ? 'arrow-undo' : 'checkmark-circle'}
+                      size={16}
+                      color={m.undone ? theme.subtle : theme.success}
+                    />
                     <Text style={[type.label, { color: m.undone ? theme.subtle : theme.text }]}>
                       {m.undone ? 'Change undone' : 'Updated your app'}
                     </Text>
@@ -159,16 +240,48 @@ export function ChatPanel({ appId, spec, onShowApp }: { appId: string; spec: App
         {busy && (
           <View style={styles.theirsRow}>
             <Avatar emoji={spec.emoji} theme={theme} />
-            <View style={[styles.bubble, styles.theirs, styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <ActivityIndicator size="small" color={theme.accent} />
-              <Text style={[type.caption, { color: theme.muted }]}>{local ? 'Thinking on this device…' : 'Thinking…'}</Text>
+            <View style={[styles.bubble, styles.theirs, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              {steps.length ? (
+                <StepList steps={steps} theme={theme} />
+              ) : (
+                <View style={styles.row}>
+                  <TypingDots color={theme.subtle} />
+                  <Text style={[type.caption, { color: theme.muted }]}>
+                    {local ? 'Thinking on this device…' : 'Thinking…'}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         )}
       </ScrollView>
 
       <View style={[styles.composerWrap, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-        <Composer value={draft} onChange={setDraft} onSubmit={() => send(draft)} placeholder="Ask or describe a change…" theme={theme} busy={busy} />
+        {chips.length > 0 && !busy && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            <View style={styles.row}>
+              <Icon name="flash-outline" size={13} color={theme.subtle} />
+              <Text style={[type.caption, { color: theme.subtle }]}>Quick edits</Text>
+            </View>
+            {chips.map((q) => (
+              <Chip
+                key={q.label}
+                label={q.label}
+                theme={theme}
+                onPress={() => onLocalEdit(q.apply(spec), q.label)}
+              />
+            ))}
+            <Chip label="History" icon="time-outline" theme={theme} onPress={onShowHistory} />
+          </ScrollView>
+        )}
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSubmit={() => send(draft)}
+          placeholder="Ask or describe a change…"
+          theme={theme}
+          busy={busy}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -186,5 +299,14 @@ const styles = StyleSheet.create({
   theirs: { borderWidth: 1, borderBottomLeftRadius: radius.sm, flexShrink: 1 },
   avatar: { width: 28, height: 28, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   struck: { textDecorationLine: 'line-through', opacity: 0.6 },
-  composerWrap: { padding: space(3), borderTopWidth: StyleSheet.hairlineWidth, maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  composerWrap: {
+    padding: space(3),
+    gap: space(2),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    maxWidth: MAX_WIDTH,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  chips: { gap: space(2), alignItems: 'center', paddingRight: space(4) },
+  diff: { borderWidth: 1, borderRadius: radius.md, padding: space(3), gap: space(2) },
 });

@@ -7,6 +7,7 @@ import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.InferenceMode
 import com.google.firebase.ai.InferenceSource
 import com.google.firebase.ai.OnDeviceConfig
+import com.google.firebase.ai.OnDeviceModelOption
 import com.google.firebase.ai.OnDeviceModelStatus
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.PublicPreviewAPI
@@ -21,9 +22,13 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /**
  * Bridges Firebase AI Logic's Android SDK (hybrid inference) to JavaScript.
  *
- * Every request goes through one GenerativeModel configured with an [OnDeviceConfig], so
+ * Every request goes through one [GenerativeModel] configured with an [OnDeviceConfig], so
  * Firebase AI Logic decides between Gemini Nano (AICore, on the phone) and Gemini in the cloud
  * according to the requested [InferenceMode]. The response reports which one answered.
+ *
+ * The on-device model is selectable so the app can use **Gemini Nano 4** (`nano-v4-full` /
+ * `nano-v4-fast`, published as the PREVIEW options) and fall back to the stable Nano on devices
+ * where the preview is not available yet.
  */
 @OptIn(PublicPreviewAPI::class)
 class NanoBridgeModule : Module() {
@@ -33,18 +38,23 @@ class NanoBridgeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("NanoBridge")
 
-    Events("onDownloadProgress")
+    Events("onDownloadProgress", "onStreamChunk")
 
-    /** Reports whether Gemini Nano can run on this phone. */
-    AsyncFunction("getStatus") Coroutine { cloudModel: String ->
-      val ext = model(cloudModel, "prefer_on_device", null, false).onDeviceExtension
+    /** Reports whether the selected on-device model can run on this phone. */
+    AsyncFunction("getStatus") Coroutine { cloudModel: String, modelOption: String ->
+      val ext = model(cloudModel, "prefer_on_device", null, false, modelOption).onDeviceExtension
         ?: return@Coroutine "unavailable"
       statusName(ext.checkStatus())
     }
 
-    /** Downloads Gemini Nano (if needed) and streams progress to JS. */
-    AsyncFunction("download") Coroutine { cloudModel: String ->
-      val ext = model(cloudModel, "prefer_on_device", null, false).onDeviceExtension
+    /** The concrete on-device model this device would use, for example "nano-v4-full". */
+    AsyncFunction("getModelName") Coroutine { cloudModel: String, modelOption: String ->
+      model(cloudModel, "prefer_on_device", null, false, modelOption).onDeviceExtension?.getModelName() ?: ""
+    }
+
+    /** Downloads the on-device model (if needed) and streams progress to JS. */
+    AsyncFunction("download") Coroutine { cloudModel: String, modelOption: String ->
+      val ext = model(cloudModel, "prefer_on_device", null, false, modelOption).onDeviceExtension
         ?: return@Coroutine "unavailable"
       var total = 0L
       ext.download().collect { status ->
@@ -65,14 +75,60 @@ class NanoBridgeModule : Module() {
       statusName(ext.checkStatus())
     }
 
+    /**
+     * Loads the model into memory so the first real request is fast. Best-effort: a failure here
+     * must never break the app, so the exception is reported as `false` rather than thrown.
+     */
+    AsyncFunction("warmUp") Coroutine { cloudModel: String, modelOption: String ->
+      try {
+        model(cloudModel, "prefer_on_device", null, false, modelOption).onDeviceExtension?.warmUp()
+        true
+      } catch (e: Exception) {
+        false
+      }
+    }
+
     /** Runs one prompt with the requested inference mode. */
     AsyncFunction("generate") Coroutine {
-        prompt: String, cloudModel: String, mode: String, system: String?, json: Boolean ->
-      val response = model(cloudModel, mode, system, json).generateContent(prompt)
+        prompt: String, cloudModel: String, mode: String, system: String?, json: Boolean, modelOption: String ->
+      val response = model(cloudModel, mode, system, json, modelOption).generateContent(prompt)
       mapOf(
         "text" to (response.text ?: ""),
         "source" to if (response.inferenceSource == InferenceSource.ON_DEVICE) "on_device" else "in_cloud",
       )
+    }
+
+    /**
+     * Streams one prompt. Each chunk is sent as an `onStreamChunk` event tagged with `streamId`
+     * so several streams can be in flight at once; the JS side assembles them.
+     */
+    AsyncFunction("streamGenerate") Coroutine {
+        prompt: String, cloudModel: String, mode: String, system: String?, json: Boolean, modelOption: String, streamId: String ->
+      var last = ""
+      try {
+        model(cloudModel, mode, system, json, modelOption).generateContentStream(prompt).collect { response ->
+          val piece = response.text ?: ""
+          if (piece.isNotEmpty()) {
+            // Some SDK versions emit cumulative text and others emit deltas; normalise to cumulative.
+            last = if (piece.startsWith(last)) piece else last + piece
+            sendEvent(
+              "onStreamChunk",
+              mapOf(
+                "streamId" to streamId,
+                "text" to last,
+                "done" to false,
+                "source" to if (response.inferenceSource == InferenceSource.ON_DEVICE) "on_device" else "in_cloud",
+              ),
+            )
+          }
+        }
+        sendEvent("onStreamChunk", mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to null))
+      } catch (e: Exception) {
+        sendEvent(
+          "onStreamChunk",
+          mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to (e.message ?: "stream failed")),
+        )
+      }
     }
   }
 
@@ -88,17 +144,30 @@ class NanoBridgeModule : Module() {
     firebaseReady = true
   }
 
-  private fun model(cloudModel: String, mode: String, system: String?, json: Boolean): GenerativeModel {
-    val key = listOf(cloudModel, mode, system.orEmpty(), json.toString()).joinToString("\u0000")
+  private fun model(
+    cloudModel: String,
+    mode: String,
+    system: String?,
+    json: Boolean,
+    modelOption: String,
+  ): GenerativeModel {
+    val key = listOf(cloudModel, mode, system.orEmpty(), json.toString(), modelOption).joinToString("\u0000")
     return models.getOrPut(key) {
       ensureFirebase()
       FirebaseAI.getInstance(backend = GenerativeBackend.googleAI()).generativeModel(
         modelName = cloudModel,
         generationConfig = if (json) generationConfig { responseMimeType = "application/json" } else null,
         systemInstruction = system?.let { content { text(it) } },
-        onDeviceConfig = OnDeviceConfig(mode = inferenceMode(mode)),
+        onDeviceConfig = OnDeviceConfig(mode = inferenceMode(mode), modelOption = modelOptionOf(modelOption)),
       )
     }
+  }
+
+  /** Maps the JS setting onto the SDK's model options. Gemini Nano 4 is behind the preview flags. */
+  private fun modelOptionOf(name: String): OnDeviceModelOption = when (name) {
+    "nano4_fast" -> OnDeviceModelOption.PREVIEW_FAST
+    "stable" -> OnDeviceModelOption.STABLE
+    else -> OnDeviceModelOption.PREVIEW
   }
 
   private fun inferenceMode(mode: String): InferenceMode = when (mode) {
