@@ -9,6 +9,7 @@ const missing =
 
 export const engine: AIEngine = {
   runtime: NanoBridge ? 'android-aicore' : 'none',
+  streaming: false,
 
   async status() {
     if (!NanoBridge) return 'unsupported';
@@ -32,5 +33,10 @@ export const engine: AIEngine = {
   async generate(prompt, { mode, system, json }) {
     if (!NanoBridge) throw new Error(missing);
     return NanoBridge.generate(prompt, cloudModel, mode, system ?? null, !!json);
+  },
+
+  // The native module returns a whole response; yield it as one chunk so callers have one code path.
+  async *stream(prompt, options) {
+    yield await this.generate(prompt, options);
   },
 };

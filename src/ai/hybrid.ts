@@ -14,7 +14,7 @@ import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
-import { engine } from './engine';
+import { engine } from './engineSelect';
 import {
   ACTION_SYSTEM,
   CHAT_SYSTEM,
@@ -55,6 +55,112 @@ async function generateSpec(prompt: string, mode: InferenceMode) {
 
 export async function buildApp(request: string, ctx: RouteContext): Promise<{ spec: AppSpec; source: InferenceSource }> {
   return generateSpec(specPrompt(request), modeFor('build', ctx));
+}
+
+/* ------------------------------------------------------------------ *
+ * Progressive generation
+ *
+ * The model output is streamed so the UI can show what is happening instead of a bare spinner.
+ * Two things are surfaced while the JSON is still arriving:
+ *   - `partial`: the raw text so far, for a "writing" ticker;
+ *   - `peek`:    name / emoji / description scraped out of the unfinished JSON, so the app card
+ *                can appear before the spec is valid.
+ * ------------------------------------------------------------------ */
+
+export type ProgressStep = { id: string; label: string; state: 'active' | 'done' };
+export type BuildEvent =
+  | { type: 'step'; step: ProgressStep }
+  | { type: 'partial'; text: string }
+  | { type: 'peek'; peek: SpecPeek }
+  | { type: 'retry' }
+  | { type: 'done'; spec: AppSpec; source: InferenceSource };
+
+export interface SpecPeek {
+  name?: string;
+  emoji?: string;
+  description?: string;
+  accent?: string;
+  components: number;
+}
+
+const unescape = (s: string) => s.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+/** Best-effort read of the fields that make a nice preview, from incomplete JSON. */
+export function peekSpec(text: string): SpecPeek {
+  const field = (key: string) => {
+    const m = text.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+    return m ? unescape(m[1]) : undefined;
+  };
+  return {
+    name: field('name'),
+    emoji: field('emoji'),
+    description: field('description'),
+    accent: field('accent'),
+    components: (text.match(/"type"\s*:\s*"/g) ?? []).length,
+  };
+}
+
+const STEP_LABELS: Record<'build' | 'edit', string[]> = {
+  build: ['Reading your idea', 'Designing the screen', 'Checking the layout'],
+  edit: ['Reading your app', 'Applying the change', 'Checking the result'],
+};
+
+async function generateSpecProgressive(
+  prompt: string,
+  mode: InferenceMode,
+  task: 'build' | 'edit',
+  onEvent: (e: BuildEvent) => void,
+): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  const labels = STEP_LABELS[task];
+  const opts = { mode, system: SPEC_SYSTEM, json: true, schema: appSpecJsonSchema };
+  let attempt = 0;
+
+  for (;;) {
+    onEvent({ type: 'step', step: { id: 'read', label: labels[0], state: 'active' } });
+    let text = '';
+    let source: InferenceSource = 'on_device';
+    let sawFirstToken = false;
+    for await (const chunk of engine.stream(attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`, opts)) {
+      text = chunk.text;
+      source = chunk.source;
+      if (!sawFirstToken) {
+        sawFirstToken = true;
+        onEvent({ type: 'step', step: { id: 'read', label: labels[0], state: 'done' } });
+        onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'active' } });
+      }
+      onEvent({ type: 'partial', text });
+      onEvent({ type: 'peek', peek: peekSpec(text) });
+    }
+    try {
+      const spec = sanitizeSpec(extractJson(text));
+      onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'done' } });
+      onEvent({ type: 'step', step: { id: 'check', label: labels[2], state: 'done' } });
+      return { spec, source };
+    } catch (e) {
+      // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
+      if (attempt++ > 0) throw e;
+      onEvent({ type: 'retry' });
+    }
+  }
+}
+
+/** Builds an app, reporting progress as the spec streams in. */
+export async function buildAppProgressive(
+  request: string,
+  ctx: RouteContext,
+  onEvent: (e: BuildEvent) => void,
+): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  return generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
+}
+
+/** Applies a requested change, reporting progress as the new spec streams in. */
+export async function editAppProgressive(
+  spec: AppSpec,
+  change: string,
+  ctx: RouteContext,
+  onEvent: (e: BuildEvent) => void,
+): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  return generateSpecProgressive(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx), 'edit', onEvent);
 }
 
 export async function editApp(

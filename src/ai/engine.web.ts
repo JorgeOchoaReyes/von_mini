@@ -5,7 +5,7 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-ch
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceSource, type GenerativeModel } from 'firebase/ai';
 
 import { appCheckDebugToken, cloudModel, firebaseWebConfig, onDeviceOnly, recaptchaSiteKey } from '../config';
-import type { AIEngine, DeviceStatus, GenerateOptions } from './types';
+import type { AIEngine, DeviceStatus, GenerateOptions, InferenceSource as Source } from './types';
 
 /** Chrome's built-in Prompt API global (only present in supported desktop Chrome). */
 type LanguageModelGlobal = {
@@ -67,6 +67,7 @@ const normalize = (s: string): DeviceStatus =>
 
 export const engine: AIEngine = {
   runtime: 'chrome',
+  streaming: true,
 
   async status() {
     const lm = languageModel();
@@ -94,20 +95,56 @@ export const engine: AIEngine = {
   },
 
   async generate(prompt, options) {
-    if (options.mode === 'only_on_device') {
-      const status = await this.status();
-      if (status !== 'available') {
-        throw new Error(
-          status === 'downloadable' || status === 'downloading'
-            ? 'Gemini Nano is not downloaded yet. Tap "Download Gemini Nano" on the home screen and try again.'
-            : 'Gemini Nano is not available in this browser. Use desktop Chrome with built-in AI (check chrome://on-device-internals).',
-        );
-      }
-    }
+    await assertOnDeviceReady(options, this);
     const result = await model(options).generateContent(prompt);
     return {
       text: result.response.text(),
       source: result.response.inferenceSource === InferenceSource.ON_DEVICE ? 'on_device' : 'in_cloud',
     };
   },
+
+  /**
+   * Streams the response so the UI can show output as it arrives. `generateContentStream` is a
+   * long-standing part of the JS SDK; if a build of it is missing or the stream fails, this falls
+   * back to a single whole-response chunk rather than failing the request.
+   */
+  async *stream(prompt, options) {
+    await assertOnDeviceReady(options, this);
+    const m = model(options) as GenerativeModel & {
+      generateContentStream?: (input: string) => Promise<{ stream: AsyncIterable<{ text(): string }> }>;
+    };
+    if (typeof m.generateContentStream !== 'function') {
+      yield await this.generate(prompt, options);
+      return;
+    }
+    try {
+      const result = await m.generateContentStream(prompt);
+      let text = '';
+      const source: Source = options.mode === 'only_in_cloud' ? 'in_cloud' : 'on_device';
+      let emitted = false;
+      for await (const chunk of result.stream) {
+        const piece = chunk.text();
+        if (!piece) continue;
+        // Some SDK builds emit cumulative text and others emit deltas; handle both.
+        text = piece.startsWith(text) ? piece : text + piece;
+        emitted = true;
+        yield { text, source };
+      }
+      if (!emitted || !text.trim()) yield await this.generate(prompt, options);
+    } catch {
+      yield await this.generate(prompt, options);
+    }
+  },
 };
+
+/** On-device-only requests need the model present; give a useful message instead of a raw failure. */
+async function assertOnDeviceReady(options: GenerateOptions, e: AIEngine) {
+  if (options.mode !== 'only_on_device') return;
+  const status = await e.status();
+  if (status === 'available') return;
+  throw new Error(
+    status === 'downloadable' || status === 'downloading'
+      ? 'Gemini Nano is not downloaded yet. Tap "Download Gemini Nano" on the home screen and try again.'
+      : 'Gemini Nano is not available in this browser. Use desktop Chrome with built-in AI (check chrome://on-device-internals).',
+  );
+}
