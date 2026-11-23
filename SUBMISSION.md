@@ -387,7 +387,7 @@ origin/master..HEAD` is the record.
 | `npx expo-doctor` | 20/20 checks passed |
 | `npm run export:web` | succeeds; static build in `dist/` |
 | Web flows in real Chromium | build, edit (tap / chip / chat), change summary, history + restore, settings, dark mode — screenshotted |
-| Android debug build | not built on the submission machine (no Android SDK/JDK 17 available; see `final-report.md`). The native module's Firebase AI Logic API usage was verified against the pinned AARs with `javap`; it has not been compile-verified here. **Human step:** `npm run android` on a machine with the SDK. |
+| Android debug build | **Could not be run here.** `npx expo prebuild --platform android` succeeds, but a Gradle build does not fit on the submission machine: with JDK 17 and a minimal SDK (cmdline-tools + platform-36 + build-tools 36) installed, `./gradlew :app:compileDebugKotlin` twice exhausted the 7.8 GB disk (Gradle resolved ~3 GB of dependencies and `sdkmanager` pulled a 2 GB NDK). The native module's Firebase AI Logic API usage was verified against the pinned AARs with `javap`, but it is **not compile-verified**. **Human step:** `npm run android` on a machine with the Android SDK. |
 
 ### Performance (measured, before → after)
 
