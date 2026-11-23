@@ -1,20 +1,28 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../ai/AIContext';
-import { buildApp } from '../ai/hybrid';
+import { buildApp, modeFor } from '../ai/hybrid';
 import { listApps, newId, saveApp, type SavedApp } from '../storage/store';
-import { Button, Card, SourceBadge, StatusPill } from '../ui/components';
-import { ACCENT_COLORS, radius, space, useTheme } from '../ui/theme';
+import { Card, Chip, Composer, Icon, SectionHeader, SourceBadge, StatusBanner, type IconName } from '../ui/components';
+import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
 
-const IDEAS = ['A habit tracker that reflects on my week', 'Expense logger that categorizes purchases', 'Gratitude journal', 'Recipe idea helper from what is in my fridge'];
+const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
+  { label: 'Habit tracker', icon: 'repeat', prompt: 'A habit tracker that reflects on my week' },
+  { label: 'Expense log', icon: 'wallet-outline', prompt: 'An expense logger that categorizes what I buy' },
+  { label: 'Gratitude', icon: 'heart-outline', prompt: 'A gratitude journal with a kind daily reflection' },
+  { label: 'Fridge recipes', icon: 'restaurant-outline', prompt: 'Recipe ideas from what is in my fridge' },
+  { label: 'Workout log', icon: 'barbell-outline', prompt: 'A workout log that suggests what to train next' },
+];
 
 export default function Home() {
   const theme = useTheme();
   const ai = useAI();
+  const insets = useSafeAreaInsets();
   const [request, setRequest] = useState('');
-  const [building, setBuilding] = useState(false);
+  const [building, setBuilding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apps, setApps] = useState<SavedApp[]>([]);
 
@@ -24,119 +32,159 @@ export default function Home() {
     }, []),
   );
 
+  const onDevice = modeFor('build', ai) === 'only_on_device';
+
   const build = async () => {
-    if (!request.trim()) return;
-    setBuilding(true);
+    const text = request.trim();
+    if (!text || building) return;
+    setBuilding(text);
     setError(null);
     try {
-      const { spec, source } = await buildApp(request, ai);
-      const app: SavedApp = { id: newId(), request: request.trim(), spec, builtWith: source, createdAt: Date.now(), updatedAt: Date.now() };
+      const { spec, source } = await buildApp(text, ai);
+      const app: SavedApp = { id: newId(), request: text, spec, builtWith: source, createdAt: Date.now(), updatedAt: Date.now() };
       await saveApp(app);
       setRequest('');
       router.push({ pathname: '/app/[id]', params: { id: app.id } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBuilding(false);
+      setBuilding(null);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-      <View style={{ gap: space(2) }}>
-        <Text style={[styles.title, { color: theme.text }]}>Build a private AI app in one sentence.</Text>
-        <Text style={[styles.subtitle, { color: theme.muted }]}>
-          Apps run on your device with Gemini Nano. Your data stays here, even offline.
-        </Text>
-      </View>
-
-      <StatusPill status={ai.deviceStatus} online={ai.online} privateMode={ai.privateMode} />
-      {ai.deviceStatus === 'downloadable' && (
-        <Button
-          label={ai.downloadProgress != null ? `Downloading… ${Math.round(ai.downloadProgress * 100)}%` : 'Download Gemini Nano'}
-          theme={theme}
-          variant="secondary"
-          loading={ai.downloadProgress != null && ai.downloadProgress === 0}
-          onPress={() => ai.downloadModel().catch((e) => setError(String(e?.message ?? e)))}
-        />
-      )}
-
-      <Card theme={theme} style={{ gap: space(3) }}>
-        <TextInput
-          value={request}
-          onChangeText={setRequest}
-          placeholder="Describe an app… e.g. a journal that tags my mood"
-          placeholderTextColor={theme.muted}
-          multiline
-          style={[styles.prompt, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]}
-        />
-        <View style={styles.chips}>
-          {IDEAS.map((idea) => (
-            <Pressable key={idea} onPress={() => setRequest(idea)} style={[styles.chip, { borderColor: theme.border }]}>
-              <Text style={{ color: theme.muted, fontSize: 13 }}>{idea}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.row}>
-          <View style={styles.toggle}>
-            <Switch
-              value={ai.privateMode}
-              onValueChange={ai.setPrivateMode}
-              disabled={ai.locked}
-              trackColor={{ true: theme.accent }}
-            />
-            <Text style={{ color: theme.text, fontSize: 14 }}>
-              🔒 Private (on-device only){ai.locked ? ' · offline mode' : ''}
-            </Text>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        style={{ backgroundColor: theme.bg }}
+        contentContainerStyle={[styles.page, { paddingTop: insets.top + space(4), paddingBottom: insets.bottom + space(10) }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brand}>
+          <View style={[styles.logo, { backgroundColor: theme.accent }]}>
+            <Text style={styles.logoText}>v</Text>
           </View>
+          <Text style={[type.headline, { color: theme.text }]}>von mini</Text>
         </View>
-        <Button label={building ? 'Building…' : 'Build ✨'} theme={theme} loading={building} disabled={!request.trim()} onPress={build} />
-        <Text style={[styles.hint, { color: theme.muted }]}>
-          {ai.privateMode || !ai.online
-            ? 'Building on this device with Gemini Nano.'
-            : 'Online: Gemini in the cloud designs the app; it falls back to Gemini Nano if needed.'}
-        </Text>
-        {error && <Text style={{ color: theme.danger }}>{error}</Text>}
-      </Card>
 
-      <Text style={[styles.section, { color: theme.text }]}>Your apps</Text>
-      <View style={styles.grid}>
-        {apps.map((app) => (
-          <Pressable
-            key={app.id}
-            onPress={() => router.push({ pathname: '/app/[id]', params: { id: app.id } })}
-            style={({ pressed }) => [styles.appCard, { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}
-          >
-            <View style={[styles.icon, { backgroundColor: ACCENT_COLORS[app.spec.accent][theme.scheme] + '22' }]}>
-              <Text style={{ fontSize: 24 }}>{app.spec.emoji}</Text>
+        <View style={{ gap: space(2) }}>
+          <Text style={[type.display, { color: theme.text }]}>What do you want to build?</Text>
+          <Text style={[type.body, { color: theme.muted }]}>
+            Describe a small app. It’s ready in seconds, runs its AI on your device, and keeps your data here.
+          </Text>
+        </View>
+
+        <View style={{ gap: space(3) }}>
+          <Composer
+            value={request}
+            onChange={setRequest}
+            onSubmit={build}
+            placeholder="A journal that tags my mood…"
+            theme={theme}
+            busy={!!building}
+            minHeight={72}
+            sendLabel="Build app"
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ideas}>
+            {IDEAS.map((idea) => (
+              <Chip key={idea.label} label={idea.label} icon={idea.icon} theme={theme} onPress={() => setRequest(idea.prompt)} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {building && (
+          <Card theme={theme} tinted style={styles.buildingCard}>
+            <ActivityIndicator color={theme.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={[type.label, { color: theme.text }]} numberOfLines={1}>
+                Designing “{building}”
+              </Text>
+              <Text style={[type.caption, { color: theme.muted }]}>
+                {onDevice ? 'Gemini Nano is designing it on this device.' : 'Gemini is designing it; Nano takes over if you go offline.'}
+              </Text>
             </View>
-            <Text style={[styles.appName, { color: theme.text }]} numberOfLines={1}>
-              {app.spec.name}
-            </Text>
-            <Text style={[styles.hint, { color: theme.muted }]} numberOfLines={2}>
-              {app.spec.description || app.request}
-            </Text>
-            <SourceBadge source={app.builtWith} />
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
+          </Card>
+        )}
+        {error && (
+          <Card theme={theme} style={[styles.row, { borderColor: alpha(theme.danger, 0.4) }]}>
+            <Icon name="alert-circle-outline" size={18} color={theme.danger} />
+            <Text style={[type.caption, { color: theme.danger, flex: 1 }]}>{error}</Text>
+          </Card>
+        )}
+
+        <StatusBanner
+          status={ai.deviceStatus}
+          online={ai.online}
+          privateMode={ai.privateMode}
+          locked={ai.locked}
+          onTogglePrivate={ai.setPrivateMode}
+          onDownload={() => ai.downloadModel().catch((e) => setError(String(e?.message ?? e)))}
+          downloadProgress={ai.downloadProgress}
+        />
+
+        <SectionHeader
+          title="Your apps"
+          theme={theme}
+          right={<Text style={[type.caption, { color: theme.subtle }]}>{apps.length}</Text>}
+        />
+        <View style={styles.grid}>
+          {apps.map((app) => {
+            const color = ACCENT_COLORS[app.spec.accent][theme.scheme];
+            return (
+              <Pressable
+                key={app.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${app.spec.name}`}
+                onPress={() => router.push({ pathname: '/app/[id]', params: { id: app.id } })}
+                style={({ pressed }) => [
+                  styles.tile,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    boxShadow: theme.shadow,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  },
+                ]}
+              >
+                <View style={[styles.tileIcon, { backgroundColor: alpha(color, theme.scheme === 'dark' ? 0.22 : 0.12) }]}>
+                  <Text style={styles.tileEmoji}>{app.spec.emoji}</Text>
+                </View>
+                <View style={{ gap: 2, flex: 1 }}>
+                  <Text style={[type.label, { color: theme.text }]} numberOfLines={1}>
+                    {app.spec.name}
+                  </Text>
+                  <Text style={[type.caption, { color: theme.muted }]} numberOfLines={2}>
+                    {app.spec.description || app.request}
+                  </Text>
+                </View>
+                <SourceBadge source={app.builtWith} />
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: space(4), gap: space(4), maxWidth: 760, width: '100%', alignSelf: 'center' },
-  title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
-  subtitle: { fontSize: 16, lineHeight: 22 },
-  prompt: { minHeight: 90, borderWidth: 1, borderRadius: radius.md, padding: space(3), fontSize: 16, textAlignVertical: 'top' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
-  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: space(3), paddingVertical: space(1) + 2 },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  toggle: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  hint: { fontSize: 13, lineHeight: 18 },
-  section: { fontSize: 20, fontWeight: '700', marginTop: space(2) },
+  page: { paddingHorizontal: space(4), gap: space(6), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
+  logo: { width: 28, height: 28, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  logoText: { color: '#fff', fontWeight: '800', fontSize: 16, marginTop: -2 },
+  ideas: { gap: space(2), paddingRight: space(4) },
+  buildingCard: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space(3) },
-  appCard: { flexBasis: 160, flexGrow: 1, borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(2) },
-  icon: { width: 44, height: 44, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  appName: { fontSize: 16, fontWeight: '700' },
+  tile: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    minHeight: 168,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: space(4),
+    gap: space(3),
+  },
+  tileIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  tileEmoji: { fontSize: 26 },
 });

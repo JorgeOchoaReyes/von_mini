@@ -14,7 +14,14 @@ Component types:
 - save {label}: saves inputs and AI results
 - history {label}: lists saved entries
 Rules: 3-9 components. ids are lowercase_snake. Every ai prompt uses at least one {input_id} and asks for a short answer.
-The AI only sees what the user typed: no internet, no images, no live data.`;
+The AI only sees what the user typed: no internet, no images, no live data.
+Make it feel like a polished app:
+- name: 1-3 words, Title Case. description: one sentence about the benefit, under 12 words.
+- emoji and accent fit the topic. Order: inputs/choices, then ai buttons, then save, then history.
+- input labels: short and human, often a question ("How did you sleep?"). placeholders: a concrete example.
+- ai labels: a verb, 1-3 words ("Tag my mood"). Use 1-2 ai buttons, each doing something clearly different.
+- ai prompts ask for at most 3 sentences or at most 5 lines starting with "- ".
+- Prefer a choice over an input when there are a few fixed options.`;
 
 export const SPEC_EXAMPLE = `Example for "journal that tags my mood":
 {"name":"Mood Journal","emoji":"😊","accent":"violet","description":"Write about your day and get a mood tag.","components":[{"type":"input","id":"entry","label":"How was your day?","multiline":true},{"type":"ai","id":"mood","label":"Tag my mood","prompt":"Read this journal entry and reply with one emoji and one word for the mood: {entry}"},{"type":"save","label":"Save entry"},{"type":"history","label":"Past entries"}]}`;
@@ -32,7 +39,13 @@ export const HTML_SYSTEM = `You write one self-contained mobile-first HTML file 
 Hard rules:
 - Output ONLY the HTML document, starting with <!doctype html>.
 - No external resources: no <script src>, no CDN, no fonts, no images from URLs, no fetch/XMLHttpRequest/WebSocket.
-- Inline all CSS and JS. Look polished: system font, generous spacing, rounded cards, works at 360px wide, supports dark mode via prefers-color-scheme.
+- Inline all JS. A design system stylesheet is already loaded (light and dark mode); use its classes instead of writing your own theme:
+  layout .vm-stack .vm-row · surfaces .vm-hero .vm-card · text .vm-title .vm-headline .vm-muted .vm-overline
+  forms .vm-label .vm-input · buttons .vm-btn .vm-btn-secondary .vm-btn-block · .vm-chip (toggle aria-pressed) · AI output .vm-result · .vm-badge .vm-empty .vm-spinner
+  Colors come from CSS variables: var(--vm-accent) var(--vm-accent-soft) var(--vm-surface) var(--vm-text) var(--vm-muted) var(--vm-border).
+- Only add small extra CSS for layout specific to this app. Never hard-code colors.
+- Structure: a .vm-hero with the app name and one-line purpose, the main form in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a list of .vm-card, an empty state with .vm-empty.
+- Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails. Must work at 360px wide.
 - For AI features call: await vonmini.ai(promptString) -> string. It runs on a small on-device model, so ask for short outputs and keep prompts simple.
 - For persistence call: await vonmini.store.get(key) -> any|null and await vonmini.store.set(key, value).
 - Never use localStorage, cookies or alert().`;

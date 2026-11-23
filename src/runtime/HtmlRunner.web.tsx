@@ -2,9 +2,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 
 import { useAI } from '../ai/AIContext';
+import type { Accent } from '../spec/types';
+import { ACCENT_COLORS } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
-export function HtmlRunner({ appId, html }: { appId: string; html: string }) {
+export function HtmlRunner({ appId, html, accent }: { appId: string; html: string; accent: Accent }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const ai = useAI();
   // Keep the latest routing context for the message listener without re-subscribing.
@@ -22,8 +24,9 @@ export function HtmlRunner({ appId, html }: { appId: string; html: string }) {
         // Sandboxed frames have an opaque origin, so the target must be '*'.
         bridgeScript("(function(m){ parent.postMessage(m, '*'); })") +
           `window.addEventListener('message', function(e){ var m=e.data; if(m && m.__vmReply) window.__vmReply(m.id, m.ok, m.v); });`,
+        ACCENT_COLORS[accent],
       ),
-    [html],
+    [html, accent],
   );
 
   useEffect(() => {
