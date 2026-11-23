@@ -111,8 +111,16 @@ export async function pushVersion(
   changes: string[],
   origin: Version['origin'],
   source: Version['source'],
+  /**
+   * The spec as it was before this change. When the app has no history yet (a starter, or an app
+   * made before version history existed) it is recorded first, so the original can be restored.
+   */
+  prev?: AppSpec,
 ): Promise<void> {
-  const all = await listVersions(appId);
+  let all = await listVersions(appId);
+  if (!all.length && prev && JSON.stringify(prev) !== JSON.stringify(spec)) {
+    all = [{ id: newId(), at: Date.now() - 1, spec: prev, changes: ['The original version.'], origin: 'build', source }];
+  }
   // Skip a snapshot identical to the newest one (e.g. a no-op edit) to keep the list meaningful.
   if (all[0] && JSON.stringify(all[0].spec) === JSON.stringify(spec)) return;
   const next = [{ id: newId(), at: Date.now(), spec, changes, origin, source }, ...all].slice(0, MAX_VERSIONS);

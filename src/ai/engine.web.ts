@@ -156,19 +156,19 @@ export const engine: AIEngine = {
    */
   async *stream(prompt, options) {
     await assertOnDeviceReady(options, this);
-    const m = model(options) as GenerativeModel & {
-      generateContentStream?: (input: string) => Promise<{ stream: AsyncIterable<{ text(): string }> }>;
-    };
+    const m = model(options);
     if (typeof m.generateContentStream !== 'function') {
       yield await this.generate(prompt, options);
       return;
     }
+    let emitted = false;
     try {
       const result = await m.generateContentStream(prompt);
       let text = '';
-      const source: Source = options.mode === 'only_in_cloud' ? 'in_cloud' : 'on_device';
-      let emitted = false;
+      // Report where each chunk actually ran: with prefer_* modes the SDK can fall back either way.
+      let source: Source = options.mode === 'only_in_cloud' || options.mode === 'prefer_in_cloud' ? 'in_cloud' : 'on_device';
       for await (const chunk of result.stream) {
+        if (chunk.inferenceSource) source = chunk.inferenceSource === InferenceSource.ON_DEVICE ? 'on_device' : 'in_cloud';
         const piece = chunk.text();
         if (!piece) continue;
         // Some SDK builds emit cumulative text and others emit deltas; handle both.
@@ -177,7 +177,10 @@ export const engine: AIEngine = {
         yield { text, source };
       }
       if (!emitted || !text.trim()) yield await this.generate(prompt, options);
-    } catch {
+    } catch (e) {
+      // Fall back to one whole response only if nothing was produced; otherwise retrying would
+      // double the request (and its cost) and hide the real error.
+      if (emitted) throw e;
       yield await this.generate(prompt, options);
     }
   },

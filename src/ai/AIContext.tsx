@@ -94,10 +94,12 @@ export function AIProvider({ children }: { children: ReactNode }) {
    * forget: warm-up failing must never block or fail a real request.
    */
   const warmUp = useCallback(() => {
-    if (warmed) return;
+    // Only warm a model that is already on the device: warming a "downloadable" model starts the
+    // multi-GB download behind the user's back, bypassing the explicit download button.
+    if (warmed || deviceStatus !== 'available') return;
     setWarmed(true);
     void engine.warmUp?.().catch(() => false);
-  }, [warmed]);
+  }, [warmed, deviceStatus]);
 
   const value = useMemo(
     () => ({

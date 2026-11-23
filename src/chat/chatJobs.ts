@@ -23,6 +23,18 @@ const progress = new Map<string, ProgressStep[]>();
 const listeners = new Set<() => void>();
 let version = 0;
 
+/**
+ * Screens with unsaved edits register a flusher here, so a chat job starts from the spec the user
+ * actually sees rather than an older one in storage (which would discard their edits on save).
+ */
+const flushers = new Map<string, () => Promise<void>>();
+export function registerFlusher(appId: string, flush: () => Promise<void>) {
+  flushers.set(appId, flush);
+  return () => {
+    if (flushers.get(appId) === flush) flushers.delete(appId);
+  };
+}
+
 function emit() {
   version++;
   listeners.forEach((l) => l());
@@ -61,6 +73,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
   await appendMessage(appId, { role: 'user', text: message });
   emit();
   try {
+    await flushers.get(appId)?.();
     const app = await getApp(appId);
     if (!app) throw new Error('This app no longer exists.');
     const history = (await listMessages(appId))
@@ -78,8 +91,15 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
           text: "I couldn't find anything to change for that. Try naming the field or button, e.g. “add a field for sleep hours”.",
         });
       } else {
-        await saveApp({ ...app, spec: reply.spec, builtWith: reply.source });
-        await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source);
+        // The app may have changed while the model was working (another edit, a restore). Saving
+        // now would silently overwrite that, so only apply the edit to the spec it was made for.
+        const latest = await getApp(appId);
+        if (!latest) throw new Error('This app no longer exists.');
+        if (JSON.stringify(latest.spec) !== JSON.stringify(app.spec)) {
+          throw new Error('The app changed while I was working on this, so I left it as it is. Ask again to apply the change.');
+        }
+        await saveApp({ ...latest, spec: reply.spec, builtWith: reply.source });
+        await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source, app.spec);
         await appendMessage(appId, {
           role: 'assistant',
           kind: 'edit',
@@ -106,7 +126,7 @@ export async function undoEdit(appId: string, msg: ChatMessage): Promise<void> {
   const app = await getApp(appId);
   if (!app) return;
   await saveApp({ ...app, spec: msg.prevSpec });
-  await pushVersion(appId, msg.prevSpec, ['Undid a chat edit.'], 'restore', app.builtWith);
+  await pushVersion(appId, msg.prevSpec, ['Undid a chat edit.'], 'restore', app.builtWith, app.spec);
   await updateMessage(appId, msg.id, { undone: true });
   await appendMessage(appId, { role: 'assistant', kind: 'undo', text: 'Undid that change.' });
   emit();

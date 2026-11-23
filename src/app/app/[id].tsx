@@ -29,7 +29,7 @@ import { useAI } from '../../ai/AIContext';
 import { buildCustomHtml } from '../../ai/hybrid';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
-import { isBusy, notifyAppsChanged, useChatVersion } from '../../chat/chatJobs';
+import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecEditor } from '../../runtime/SpecEditor';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
@@ -87,7 +87,7 @@ export default function AppScreen() {
     if (!d || !current) return;
     dirty.current = null;
     await saveApp({ ...current, spec: d.spec });
-    await pushVersion(current.id, d.spec, d.changes, d.origin, current.builtWith);
+    await pushVersion(current.id, d.spec, d.changes, d.origin, current.builtWith, d.prev);
     notifyAppsChanged();
   }, []);
 
@@ -115,11 +115,21 @@ export default function AppScreen() {
   // Leaving the screen must not lose the last keystroke.
   useEffect(() => () => void flush(), [flush]);
 
+  // A chat job saves pending edits first, so it never works from (and overwrites with) a stale spec.
+  useEffect(() => registerFlusher(id, flush), [id, flush]);
+
   /** The single funnel every edit goes through. */
   const edit = useCallback(
     (next: AppSpec, change: string, origin: Version['origin'] = 'manual') => {
       const prev = appRef.current?.spec;
       if (!prev) return;
+      // While a chat change is in flight, a direct edit would be overwritten when it lands (or
+      // would overwrite it), so hold direct edits until the chat finishes.
+      if (appRef.current && isBusy(appRef.current.id)) {
+        setError('Wait for the chat to finish its change, then edit again.');
+        return;
+      }
+      setError(null);
       setApp((a) => (a ? { ...a, spec: next } : a));
       appRef.current = appRef.current ? { ...appRef.current, spec: next } : null;
       const pending = dirty.current;
