@@ -10,6 +10,7 @@
  * Builds prefer the cloud for quality but still succeed on Nano offline; everything users do
  * inside their apps prefers the device, so their data stays local and costs nothing.
  */
+import { onDeviceOnly } from '../config';
 import { sanitizeSpec, extractJson } from '../spec/validate';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { engine } from './engine';
@@ -22,7 +23,7 @@ export interface RouteContext {
   privateMode: boolean;
 }
 
-const local = (ctx: RouteContext) => !ctx.online || ctx.privateMode;
+const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
 
 export function modeFor(task: 'build' | 'edit' | 'action', ctx: RouteContext): InferenceMode {
   if (local(ctx)) return 'only_on_device';
@@ -58,6 +59,7 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
 }
 
 export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {
+  if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
   const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify(spec)), {
     mode: 'only_in_cloud',

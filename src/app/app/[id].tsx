@@ -129,7 +129,9 @@ export default function AppScreen() {
             <Text style={[styles.hint, { color: theme.muted }]}>
               {canCustom
                 ? 'Gemini in the cloud writes a fully custom version. Its AI features still run on-device.'
-                : 'Custom versions need the cloud. Go online and turn off private mode.'}
+                : ai.locked
+                  ? 'Custom versions need the cloud; this build runs in offline (on-device only) mode.'
+                  : 'Custom versions need the cloud. Go online and turn off private mode.'}
             </Text>
             {error && <Text style={{ color: theme.danger }}>{error}</Text>}
             {!isStarter && <Button label="Delete app" theme={theme} variant="ghost" onPress={remove} />}

@@ -17,5 +17,8 @@ export const recaptchaSiteKey = process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY ?? ''
 /** App Check debug token for web development (register it in the Firebase console). */
 export const appCheckDebugToken = process.env.EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN ?? '';
 
+/** Offline mode: when true, every AI call runs on-device only and the cloud is never used. */
+export const onDeviceOnly = process.env.EXPO_PUBLIC_ON_DEVICE_ONLY === 'true';
+
 /** Cloud model used when Firebase AI Logic runs in the cloud. */
 export const cloudModel = process.env.EXPO_PUBLIC_CLOUD_MODEL ?? 'gemini-3.8-flash';

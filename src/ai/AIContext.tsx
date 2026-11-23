@@ -1,11 +1,14 @@
 import NetInfo from '@react-native-community/netinfo';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { onDeviceOnly } from '../config';
 import { engine } from './engine';
 import type { RouteContext } from './hybrid';
 import type { DeviceStatus } from './types';
 
 interface AIState extends RouteContext {
+  /** True when the build forces on-device only (EXPO_PUBLIC_ON_DEVICE_ONLY). */
+  locked: boolean;
   deviceStatus: DeviceStatus;
   downloadProgress: number | null;
   setPrivateMode(v: boolean): void;
@@ -17,7 +20,8 @@ const Ctx = createContext<AIState | null>(null);
 
 export function AIProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
-  const [privateMode, setPrivateMode] = useState(false);
+  const [privateMode, setPrivateModeState] = useState(onDeviceOnly);
+  const setPrivateMode = useCallback((v: boolean) => setPrivateModeState(onDeviceOnly || v), []);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>('unavailable');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
@@ -46,8 +50,17 @@ export function AIProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ online, privateMode, deviceStatus, downloadProgress, setPrivateMode, refreshStatus, downloadModel }),
-    [online, privateMode, deviceStatus, downloadProgress, refreshStatus, downloadModel],
+    () => ({
+      online,
+      privateMode,
+      locked: onDeviceOnly,
+      deviceStatus,
+      downloadProgress,
+      setPrivateMode,
+      refreshStatus,
+      downloadModel,
+    }),
+    [online, privateMode, deviceStatus, downloadProgress, setPrivateMode, refreshStatus, downloadModel],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

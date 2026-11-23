@@ -75,7 +75,9 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 4. **Run on Android:** `npm run android` builds a development build with the native bridge. Expo Go cannot load it.
    - On first launch, the App Check debug token is printed to logcat (`DebugAppCheckProvider`). Add it in the Firebase console under App Check > Manage debug tokens.
 
-Useful scripts: `npm run typecheck`, `npm run export:web`, `npx expo-doctor`.
+**Offline mode:** set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` to force every AI call to run on-device (`ONLY_ON_DEVICE`). Private mode is locked on and cloud-only features are disabled. This mode needs no App Check or cloud setup.
+
+Useful scripts: `npm run lint`, `npm run typecheck`, `npm run export:web`, `npx expo-doctor`.
 
 ## Testing it
 

@@ -4,7 +4,7 @@ import { getApps, initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceSource, type GenerativeModel } from 'firebase/ai';
 
-import { appCheckDebugToken, cloudModel, firebaseWebConfig, recaptchaSiteKey } from '../config';
+import { appCheckDebugToken, cloudModel, firebaseWebConfig, onDeviceOnly, recaptchaSiteKey } from '../config';
 import type { AIEngine, DeviceStatus, GenerateOptions } from './types';
 
 /** Chrome's built-in Prompt API global (only present in supported desktop Chrome). */
@@ -32,7 +32,8 @@ function firebaseAI() {
       provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
       isTokenAutoRefreshEnabled: true,
     });
-  } else {
+  } else if (!onDeviceOnly) {
+    // On-device-only (offline) mode never calls the cloud, so App Check is not needed there.
     console.warn('App Check is not initialized: set EXPO_PUBLIC_RECAPTCHA_SITE_KEY.');
   }
   ai = getAI(app, { backend: new GoogleAIBackend() });
@@ -93,6 +94,16 @@ export const engine: AIEngine = {
   },
 
   async generate(prompt, options) {
+    if (options.mode === 'only_on_device') {
+      const status = await this.status();
+      if (status !== 'available') {
+        throw new Error(
+          status === 'downloadable' || status === 'downloading'
+            ? 'Gemini Nano is not downloaded yet. Tap "Download Gemini Nano" on the home screen and try again.'
+            : 'Gemini Nano is not available in this browser. Use desktop Chrome with built-in AI (check chrome://on-device-internals).',
+        );
+      }
+    }
     const result = await model(options).generateContent(prompt);
     return {
       text: result.response.text(),

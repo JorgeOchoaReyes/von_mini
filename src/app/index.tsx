@@ -79,8 +79,15 @@ export default function Home() {
         </View>
         <View style={styles.row}>
           <View style={styles.toggle}>
-            <Switch value={ai.privateMode} onValueChange={ai.setPrivateMode} trackColor={{ true: theme.accent }} />
-            <Text style={{ color: theme.text, fontSize: 14 }}>🔒 Private (on-device only)</Text>
+            <Switch
+              value={ai.privateMode}
+              onValueChange={ai.setPrivateMode}
+              disabled={ai.locked}
+              trackColor={{ true: theme.accent }}
+            />
+            <Text style={{ color: theme.text, fontSize: 14 }}>
+              🔒 Private (on-device only){ai.locked ? ' · offline mode' : ''}
+            </Text>
           </View>
         </View>
         <Button label={building ? 'Building…' : 'Build ✨'} theme={theme} loading={building} disabled={!request.trim()} onPress={build} />
