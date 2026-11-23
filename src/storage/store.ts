@@ -42,6 +42,22 @@ const APPS_KEY = 'vm:apps';
 const entriesKey = (appId: string) => `vm:entries:${appId}`;
 const kvKey = (appId: string) => `vm:kv:${appId}`;
 const chatKey = (appId: string) => `vm:chat:${appId}`;
+const versionsKey = (appId: string) => `vm:versions:${appId}`;
+
+/** How many spec snapshots to keep per app. Enough to undo a session's worth of edits. */
+const MAX_VERSIONS = 30;
+
+/** A saved snapshot of an app's spec, so any change can be reviewed and reversed. */
+export interface Version {
+  id: string;
+  at: number;
+  spec: AppSpec;
+  /** Plain-words summary of what this version changed, computed locally by `describeChanges`. */
+  changes: string[];
+  /** How the version came about. */
+  origin: 'build' | 'chat' | 'manual' | 'restore';
+  source: InferenceSource | 'starter';
+}
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
   try {
@@ -79,7 +95,38 @@ export async function deleteApp(id: string): Promise<void> {
     APPS_KEY,
     mine.filter((a) => a.id !== id),
   );
-  await AsyncStorage.multiRemove([entriesKey(id), kvKey(id), chatKey(id)]);
+  await AsyncStorage.multiRemove([entriesKey(id), kvKey(id), chatKey(id), versionsKey(id)]);
+}
+
+/** Newest first. */
+export const listVersions = (appId: string) => readJson<Version[]>(versionsKey(appId), []);
+
+/**
+ * Records a snapshot of the app's spec. Called after every change — a build, a chat edit, a
+ * manual tweak — so the version list is a complete, restorable timeline of the app's design.
+ */
+export async function pushVersion(
+  appId: string,
+  spec: AppSpec,
+  changes: string[],
+  origin: Version['origin'],
+  source: Version['source'],
+): Promise<void> {
+  const all = await listVersions(appId);
+  // Skip a snapshot identical to the newest one (e.g. a no-op edit) to keep the list meaningful.
+  if (all[0] && JSON.stringify(all[0].spec) === JSON.stringify(spec)) return;
+  const next = [{ id: newId(), at: Date.now(), spec, changes, origin, source }, ...all].slice(0, MAX_VERSIONS);
+  await writeJson(versionsKey(appId), next);
+}
+
+/** Restores a spec from the version list, recording the restore itself as a new version. */
+export async function restoreVersion(appId: string, versionId: string): Promise<AppSpec | undefined> {
+  const version = (await listVersions(appId)).find((v) => v.id === versionId);
+  const app = await getApp(appId);
+  if (!version || !app) return undefined;
+  await saveApp({ ...app, spec: version.spec });
+  await pushVersion(appId, version.spec, [`Restored the version from ${new Date(version.at).toLocaleString()}.`], 'restore', app.builtWith);
+  return version.spec;
 }
 
 export const listMessages = (appId: string) => readJson<ChatMessage[]>(chatKey(appId), []);

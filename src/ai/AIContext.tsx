@@ -10,10 +10,16 @@ interface AIState extends RouteContext {
   /** True when the build forces on-device only (EXPO_PUBLIC_ON_DEVICE_ONLY). */
   locked: boolean;
   deviceStatus: DeviceStatus;
+  /** The concrete on-device model in use, e.g. "nano-v4-full". Empty when unknown. */
+  modelName: string;
   downloadProgress: number | null;
+  /** True once the on-device model has been loaded ahead of the first request. */
+  warmed: boolean;
   setPrivateMode(v: boolean): void;
   refreshStatus(): Promise<void>;
   downloadModel(): Promise<void>;
+  /** Loads the on-device model so the first real request is fast. Safe to call often. */
+  warmUp(): void;
 }
 
 const Ctx = createContext<AIState | null>(null);
@@ -23,17 +29,33 @@ export function AIProvider({ children }: { children: ReactNode }) {
   const [privateMode, setPrivateModeState] = useState(onDeviceOnly);
   const setPrivateMode = useCallback((v: boolean) => setPrivateModeState(onDeviceOnly || v), []);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>('unavailable');
+  const [modelName, setModelName] = useState('');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [warmed, setWarmed] = useState(false);
 
   useEffect(
     () => NetInfo.addEventListener((s) => setOnline(s.isConnected !== false && s.isInternetReachable !== false)),
     [],
   );
 
-  const refreshStatus = useCallback(async () => setDeviceStatus(await engine.status()), []);
+  const loadStatus = useCallback(async () => {
+    const [status, name] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
+    setDeviceStatus(status);
+    setModelName(name);
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    await loadStatus();
+  }, [loadStatus]);
+
   useEffect(() => {
     let alive = true;
-    engine.status().then((s) => alive && setDeviceStatus(s));
+    void (async () => {
+      const [status, name] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
+      if (!alive) return;
+      setDeviceStatus(status);
+      setModelName(name);
+    })();
     return () => {
       alive = false;
     };
@@ -49,18 +71,43 @@ export function AIProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /**
+   * Loads the model into memory. Called when the user first interacts with the builder, because
+   * both platforms require a user gesture before touching the on-device model. It is fire-and-
+   * forget: warm-up failing must never block or fail a real request.
+   */
+  const warmUp = useCallback(() => {
+    if (warmed) return;
+    setWarmed(true);
+    void engine.warmUp?.().catch(() => false);
+  }, [warmed]);
+
   const value = useMemo(
     () => ({
       online,
       privateMode,
       locked: onDeviceOnly,
       deviceStatus,
+      modelName,
       downloadProgress,
+      warmed,
       setPrivateMode,
       refreshStatus,
       downloadModel,
+      warmUp,
     }),
-    [online, privateMode, deviceStatus, downloadProgress, setPrivateMode, refreshStatus, downloadModel],
+    [
+      online,
+      privateMode,
+      deviceStatus,
+      modelName,
+      downloadProgress,
+      warmed,
+      setPrivateMode,
+      refreshStatus,
+      downloadModel,
+      warmUp,
+    ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -2,7 +2,7 @@
 // On-device requests run on Chrome's built-in Gemini Nano; cloud requests go to Gemini.
 import { getApps, initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
-import { getAI, getGenerativeModel, GoogleAIBackend, InferenceSource, type GenerativeModel } from 'firebase/ai';
+import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource, type GenerativeModel } from 'firebase/ai';
 
 import { appCheckDebugToken, cloudModel, firebaseWebConfig, onDeviceOnly, recaptchaSiteKey } from '../config';
 import type { AIEngine, DeviceStatus, GenerateOptions, InferenceSource as Source } from './types';
@@ -62,6 +62,28 @@ function model({ mode, system, json, schema }: GenerateOptions) {
   return m;
 }
 
+/** A model instance that can only run on-device; used for warm-up and for reporting the model name. */
+let deviceModelInstance: GenerativeModel | undefined;
+function onDeviceOnlyModel() {
+  deviceModelInstance ??= getGenerativeModel(firebaseAI(), { mode: InferenceMode.ONLY_ON_DEVICE });
+  return deviceModelInstance;
+}
+
+/** Chrome's Prompt API reports the concrete model name (for example "Gemini Nano"). */
+async function chromeModelName(): Promise<string> {
+  const lm = languageModel() as (LanguageModelGlobal & { params?: () => Promise<{ defaultTopK?: number }> }) | undefined;
+  if (!lm) return '';
+  // `LanguageModel.params()` is the documented way to describe the loaded model; it is optional.
+  const withName = lm as { params?: () => Promise<Record<string, unknown>> };
+  try {
+    const p = await withName.params?.();
+    const name = p && typeof p === 'object' ? (p as { modelName?: string }).modelName : undefined;
+    return typeof name === 'string' ? name : 'Gemini Nano (Chrome)';
+  } catch {
+    return 'Gemini Nano (Chrome)';
+  }
+}
+
 const normalize = (s: string): DeviceStatus =>
   s === 'available' || s === 'downloadable' || s === 'downloading' ? s : 'unavailable';
 
@@ -92,6 +114,26 @@ export const engine: AIEngine = {
     });
     session.destroy();
     return this.status();
+  },
+
+  async modelName() {
+    return chromeModelName();
+  },
+
+  /**
+   * Firebase AI Logic requires `initializeDeviceModel()` to be called on or after a user gesture
+   * and before the first on-device request; it loads the model so the first real prompt is fast.
+   * Best-effort: if the SDK build or browser does not support it, the request path still works.
+   */
+  async warmUp() {
+    const m = onDeviceOnlyModel() as GenerativeModel & { initializeDeviceModel?: (cb?: (p: number) => void) => Promise<void> };
+    if (typeof m.initializeDeviceModel !== 'function') return false;
+    try {
+      await m.initializeDeviceModel();
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async generate(prompt, options) {

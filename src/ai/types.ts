@@ -36,6 +36,13 @@ export interface AIEngine {
   status(): Promise<DeviceStatus>;
   /** Starts (or waits for) the on-device model download. */
   download(onProgress?: (downloaded: number, total: number) => void): Promise<DeviceStatus>;
+  /**
+   * Loads the on-device model ahead of the first real request. Best-effort: false when the
+   * platform cannot warm up. Used to take model load time off the user's first interaction.
+   */
+  warmUp?(): Promise<boolean>;
+  /** The concrete on-device model in use, for example "nano-v4-full". Empty when unknown. */
+  modelName?(): Promise<string>;
   generate(prompt: string, options: GenerateOptions): Promise<GenerateResult>;
   /**
    * Yields the answer as it is produced. Engines without native streaming yield a single chunk,
