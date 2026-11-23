@@ -25,9 +25,23 @@ export interface Entry {
   values: Record<string, string>;
 }
 
+export interface ChatMessage {
+  id: string;
+  at: number;
+  role: 'user' | 'assistant';
+  text: string;
+  /** assistant only: what the reply did. */
+  kind?: 'answer' | 'edit' | 'undo' | 'error';
+  source?: InferenceSource;
+  /** For edits: the spec before the change, so it can be undone. */
+  prevSpec?: AppSpec;
+  undone?: boolean;
+}
+
 const APPS_KEY = 'vm:apps';
 const entriesKey = (appId: string) => `vm:entries:${appId}`;
 const kvKey = (appId: string) => `vm:kv:${appId}`;
+const chatKey = (appId: string) => `vm:chat:${appId}`;
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
   try {
@@ -65,7 +79,25 @@ export async function deleteApp(id: string): Promise<void> {
     APPS_KEY,
     mine.filter((a) => a.id !== id),
   );
-  await AsyncStorage.multiRemove([entriesKey(id), kvKey(id)]);
+  await AsyncStorage.multiRemove([entriesKey(id), kvKey(id), chatKey(id)]);
+}
+
+export const listMessages = (appId: string) => readJson<ChatMessage[]>(chatKey(appId), []);
+
+export async function appendMessage(appId: string, msg: Omit<ChatMessage, 'id' | 'at'>): Promise<ChatMessage> {
+  const full: ChatMessage = { ...msg, id: newId(), at: Date.now() };
+  const all = await listMessages(appId);
+  // Keep the thread bounded; snapshots for undo make old messages heavy.
+  await writeJson(chatKey(appId), [...all, full].slice(-200));
+  return full;
+}
+
+export async function updateMessage(appId: string, id: string, patch: Partial<ChatMessage>): Promise<void> {
+  const all = await listMessages(appId);
+  await writeJson(
+    chatKey(appId),
+    all.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+  );
 }
 
 export const listEntries = (appId: string) => readJson<Entry[]>(entriesKey(appId), []);

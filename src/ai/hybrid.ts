@@ -11,10 +11,21 @@
  * inside their apps prefers the device, so their data stays local and costs nothing.
  */
 import { onDeviceOnly } from '../config';
+import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { engine } from './engine';
-import { ACTION_SYSTEM, HTML_SYSTEM, SPEC_SYSTEM, editSpecPrompt, htmlPrompt, specPrompt } from './prompts';
+import {
+  ACTION_SYSTEM,
+  CHAT_SYSTEM,
+  HTML_SYSTEM,
+  INTENT_SYSTEM,
+  SPEC_SYSTEM,
+  chatPrompt,
+  editSpecPrompt,
+  htmlPrompt,
+  specPrompt,
+} from './prompts';
 import type { GenerateResult, InferenceMode, InferenceSource } from './types';
 
 export interface RouteContext {
@@ -52,6 +63,43 @@ export async function editApp(
   ctx: RouteContext,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
   return generateSpec(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx));
+}
+
+export type ChatReply =
+  | { kind: 'answer'; text: string; source: InferenceSource }
+  | { kind: 'edit'; spec: AppSpec; changes: string[]; source: InferenceSource };
+
+const CHANGE_WORDS =
+  /^(please\s+)?(can you\s+|could you\s+)?(add|remove|delete|drop|rename|change|make|replace|put|move|include|turn|use|set|show|hide|reword|shorten|swap|let|give|improve|split|merge)\b/i;
+
+async function classify(message: string, ctx: RouteContext): Promise<'change' | 'question'> {
+  const m = message.trim();
+  if (CHANGE_WORDS.test(m)) return 'change';
+  if (m.endsWith('?')) return 'question';
+  try {
+    const r = await engine.generate(m, { mode: modeFor('action', ctx), system: INTENT_SYSTEM, json: true });
+    return (extractJson(r.text) as { intent?: string }).intent === 'change' ? 'change' : 'question';
+  } catch {
+    return 'question';
+  }
+}
+
+/** One chat turn about an app: answers questions, or applies the requested change. */
+export async function chatAboutApp(
+  spec: AppSpec,
+  history: { role: string; text: string }[],
+  message: string,
+  ctx: RouteContext,
+): Promise<ChatReply> {
+  if ((await classify(message, ctx)) === 'change') {
+    const { spec: next, source } = await editApp(spec, message, ctx);
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), source };
+  }
+  const r = await engine.generate(chatPrompt(JSON.stringify(spec), history.slice(-6), message), {
+    mode: modeFor('action', ctx),
+    system: CHAT_SYSTEM,
+  });
+  return { kind: 'answer', text: r.text.trim(), source: r.source };
 }
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {

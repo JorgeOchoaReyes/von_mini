@@ -43,5 +43,18 @@ export function htmlPrompt(request: string, specJson?: string) {
     : `Build this app: "${request.trim()}"`;
 }
 
+/** Chat about one app: decide whether the user wants a change or an answer. */
+export const INTENT_SYSTEM =
+  'Classify a message a user sent about their app. Reply with ONLY JSON: {"intent":"change"} if they want the app modified (add, remove, rename, reword, restyle, improve), or {"intent":"question"} if they are asking or chatting.';
+
+export const CHAT_SYSTEM = `You help a user understand and improve a small app they built. The app is described by JSON:
+input = text field, choice = pick one, ai = button that sends its prompt (with {field} values) to a small on-device AI, save = stores an entry, history = past entries.
+Answer in 1-3 short, friendly sentences. Do not show JSON. When useful, suggest one concrete change they could ask for.`;
+
+export function chatPrompt(specJson: string, history: { role: string; text: string }[], message: string) {
+  const convo = history.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n');
+  return `App JSON:\n${specJson}\n\n${convo ? `${convo}\n` : ''}User: ${message.trim()}\nAssistant:`;
+}
+
 export const ACTION_SYSTEM =
   'You are a helpful assistant inside a small personal app. Answer briefly and directly. Plain text only, no markdown headings.';

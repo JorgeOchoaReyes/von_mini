@@ -1,31 +1,37 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAI } from '../../ai/AIContext';
-import { buildCustomHtml, editApp } from '../../ai/hybrid';
+import { buildCustomHtml } from '../../ai/hybrid';
+import { ChatPanel } from '../../chat/ChatPanel';
+import { isBusy, useChatVersion } from '../../chat/chatJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
 import { deleteApp, getApp, saveApp, type SavedApp } from '../../storage/store';
 import { Button, Card, SourceBadge } from '../../ui/components';
-import { radius, space, useTheme } from '../../ui/theme';
+import { space, useTheme } from '../../ui/theme';
+
+type Tab = 'app' | 'chat' | 'custom';
 
 export default function AppScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const ai = useAI();
+  const version = useChatVersion();
   const [app, setApp] = useState<SavedApp | null | undefined>(undefined);
-  const [view, setView] = useState<'blocks' | 'custom'>('blocks');
-  const [change, setChange] = useState('');
-  const [busy, setBusy] = useState<'edit' | 'custom' | null>(null);
+  const [tab, setTab] = useState<Tab>('app');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const theme = useTheme(app?.spec.accent);
 
+  // Reload whenever a chat job (possibly started earlier) updates this app.
   useEffect(() => {
-    getApp(id).then((a) => {
-      setApp(a ?? null);
-      if (a?.html) setView('custom');
-    });
-  }, [id]);
+    let alive = true;
+    getApp(id).then((a) => alive && setApp(a ?? null));
+    return () => {
+      alive = false;
+    };
+  }, [id, version]);
 
   if (app === undefined) return null;
   if (app === null) {
@@ -36,38 +42,19 @@ export default function AppScreen() {
     );
   }
 
-  const update = async (next: SavedApp) => {
-    await saveApp(next);
-    setApp(next);
-  };
-
-  const applyEdit = async () => {
-    if (!change.trim()) return;
-    setBusy('edit');
-    setError(null);
-    try {
-      const { spec, source } = await editApp(app.spec, change, ai);
-      await update({ ...app, spec, builtWith: source });
-      setChange('');
-      setView('blocks');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const makeCustom = async () => {
-    setBusy('custom');
+    setBusy(true);
     setError(null);
     try {
       const html = await buildCustomHtml(app.request, ai, app.spec);
-      await update({ ...app, html });
-      setView('custom');
+      const next = { ...app, html };
+      await saveApp(next);
+      setApp(next);
+      setTab('custom');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -87,18 +74,31 @@ export default function AppScreen() {
   };
 
   const canCustom = ai.online && !ai.privateMode;
-  const isStarter = app.builtWith === 'starter';
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'app', label: 'App' },
+    { key: 'chat', label: isBusy(app.id) ? 'Chat •' : 'Chat' },
+    ...(app.html ? [{ key: 'custom' as const, label: 'Custom ✨' }] : []),
+  ];
 
   return (
     <>
       <Stack.Screen options={{ title: `${app.spec.emoji} ${app.spec.name}` }} />
-      {app.html && (
-        <View style={[styles.tabs, { borderColor: theme.border }]}>
-          <Button label="Blocks" theme={theme} variant={view === 'blocks' ? 'primary' : 'ghost'} onPress={() => setView('blocks')} style={styles.tab} />
-          <Button label="Custom ✨" theme={theme} variant={view === 'custom' ? 'primary' : 'ghost'} onPress={() => setView('custom')} style={styles.tab} />
-        </View>
-      )}
-      {view === 'custom' && app.html ? (
+      <View style={[styles.tabs, { borderColor: theme.border }]}>
+        {tabs.map((t) => (
+          <Button
+            key={t.key}
+            label={t.label}
+            theme={theme}
+            variant={tab === t.key ? 'primary' : 'ghost'}
+            onPress={() => setTab(t.key)}
+            style={styles.tab}
+          />
+        ))}
+      </View>
+
+      {tab === 'chat' ? (
+        <ChatPanel appId={app.id} spec={app.spec} onShowApp={() => setTab('app')} />
+      ) : tab === 'custom' && app.html ? (
         <HtmlRunner appId={app.id} html={app.html} />
       ) : (
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
@@ -110,20 +110,13 @@ export default function AppScreen() {
           <SpecRenderer key={JSON.stringify(app.spec)} appId={app.id} spec={app.spec} />
 
           <Card theme={theme} style={{ gap: space(3), marginTop: space(4) }}>
-            <Text style={[styles.section, { color: theme.text }]}>Change this app</Text>
-            <TextInput
-              value={change}
-              onChangeText={setChange}
-              placeholder="e.g. add a field for sleep hours"
-              placeholderTextColor={theme.muted}
-              style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]}
-            />
-            <Button label="Apply change" theme={theme} variant="secondary" loading={busy === 'edit'} disabled={!!busy || !change.trim()} onPress={applyEdit} />
+            <Text style={[styles.section, { color: theme.text }]}>Improve this app</Text>
+            <Button label="💬 Chat about this app" theme={theme} variant="secondary" onPress={() => setTab('chat')} />
             <Button
               label={app.html ? 'Regenerate custom version ✨' : 'Make it custom ✨'}
               theme={theme}
-              loading={busy === 'custom'}
-              disabled={!!busy || !canCustom}
+              loading={busy}
+              disabled={busy || !canCustom}
               onPress={makeCustom}
             />
             <Text style={[styles.hint, { color: theme.muted }]}>
@@ -134,7 +127,7 @@ export default function AppScreen() {
                   : 'Custom versions need the cloud. Go online and turn off private mode.'}
             </Text>
             {error && <Text style={{ color: theme.danger }}>{error}</Text>}
-            {!isStarter && <Button label="Delete app" theme={theme} variant="ghost" onPress={remove} />}
+            {app.builtWith !== 'starter' && <Button label="Delete app" theme={theme} variant="ghost" onPress={remove} />}
           </Card>
         </ScrollView>
       )}
@@ -147,7 +140,6 @@ const styles = StyleSheet.create({
   desc: { fontSize: 15, lineHeight: 21 },
   section: { fontSize: 16, fontWeight: '700' },
   hint: { fontSize: 13, lineHeight: 18 },
-  input: { borderWidth: 1, borderRadius: radius.md, padding: space(3), fontSize: 15 },
   tabs: { flexDirection: 'row', gap: space(2), padding: space(2), borderBottomWidth: 1 },
   tab: { flex: 1, minHeight: 40 },
 });
