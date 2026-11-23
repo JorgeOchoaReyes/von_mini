@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAI } from '../../ai/AIContext';
 import { buildCustomHtml } from '../../ai/hybrid';
@@ -9,10 +9,49 @@ import { isBusy, useChatVersion } from '../../chat/chatJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
 import { deleteApp, getApp, saveApp, type SavedApp } from '../../storage/store';
-import { Button, Card, SourceBadge } from '../../ui/components';
-import { space, useTheme } from '../../ui/theme';
+import { Card, Icon, Segmented, SourceBadge, type IconName } from '../../ui/components';
+import { MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../../ui/theme';
 
 type Tab = 'app' | 'chat' | 'custom';
+
+function ActionRow({
+  icon,
+  title,
+  body,
+  onPress,
+  theme,
+  disabled,
+  loading,
+  danger,
+}: {
+  icon: IconName;
+  title: string;
+  body?: string;
+  onPress(): void;
+  theme: Theme;
+  disabled?: boolean;
+  loading?: boolean;
+  danger?: boolean;
+}) {
+  const color = danger ? theme.danger : theme.accent;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [styles.action, { opacity: disabled ? 0.45 : pressed ? 0.7 : 1 }]}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: danger ? `${theme.danger}18` : theme.accentSoft }]}>
+        <Icon name={icon} size={18} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[type.label, { color: danger ? theme.danger : theme.text }]}>{loading ? 'Working…' : title}</Text>
+        {body ? <Text style={[type.caption, { color: theme.muted }]}>{body}</Text> : null}
+      </View>
+      {!danger && <Icon name="chevron-forward" size={18} color={theme.subtle} />}
+    </Pressable>
+  );
+}
 
 export default function AppScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -74,61 +113,77 @@ export default function AppScreen() {
   };
 
   const canCustom = ai.online && !ai.privateMode;
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'app', label: 'App' },
-    { key: 'chat', label: isBusy(app.id) ? 'Chat •' : 'Chat' },
-    ...(app.html ? [{ key: 'custom' as const, label: 'Custom ✨' }] : []),
-  ];
 
   return (
     <>
-      <Stack.Screen options={{ title: `${app.spec.emoji} ${app.spec.name}` }} />
-      <View style={[styles.tabs, { borderColor: theme.border }]}>
-        {tabs.map((t) => (
-          <Button
-            key={t.key}
-            label={t.label}
-            theme={theme}
-            variant={tab === t.key ? 'primary' : 'ghost'}
-            onPress={() => setTab(t.key)}
-            style={styles.tab}
-          />
-        ))}
+      <Stack.Screen options={{ title: app.spec.name }} />
+      <View style={[styles.tabs, { backgroundColor: theme.bg }]}>
+        <Segmented<Tab>
+          theme={theme}
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'app', label: 'App', icon: 'apps-outline' },
+            { value: 'chat', label: 'Chat', icon: 'chatbubble-ellipses-outline', dot: isBusy(app.id) },
+            ...(app.html ? [{ value: 'custom' as const, label: 'Custom', icon: 'color-wand-outline' as const }] : []),
+          ]}
+        />
       </View>
 
       {tab === 'chat' ? (
         <ChatPanel appId={app.id} spec={app.spec} onShowApp={() => setTab('app')} />
       ) : tab === 'custom' && app.html ? (
-        <HtmlRunner appId={app.id} html={app.html} />
+        <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
       ) : (
-        <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-          <View style={{ gap: space(2) }}>
-            {app.spec.description ? <Text style={[styles.desc, { color: theme.muted }]}>{app.spec.description}</Text> : null}
-            <SourceBadge source={app.builtWith} />
+        <ScrollView style={{ backgroundColor: theme.bg }} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+          <View style={[styles.hero, { backgroundColor: theme.accentSoft }]}>
+            <View style={[styles.heroIcon, { backgroundColor: theme.surface }]}>
+              <Text style={styles.heroEmoji}>{app.spec.emoji}</Text>
+            </View>
+            <View style={{ flex: 1, gap: space(1) }}>
+              <Text style={[type.title, { color: theme.text }]}>{app.spec.name}</Text>
+              {app.spec.description ? <Text style={[type.caption, { color: theme.muted }]}>{app.spec.description}</Text> : null}
+              <SourceBadge source={app.builtWith} />
+            </View>
           </View>
 
           <SpecRenderer key={JSON.stringify(app.spec)} appId={app.id} spec={app.spec} />
 
-          <Card theme={theme} style={{ gap: space(3), marginTop: space(4) }}>
-            <Text style={[styles.section, { color: theme.text }]}>Improve this app</Text>
-            <Button label="💬 Chat about this app" theme={theme} variant="secondary" onPress={() => setTab('chat')} />
-            <Button
-              label={app.html ? 'Regenerate custom version ✨' : 'Make it custom ✨'}
-              theme={theme}
-              loading={busy}
-              disabled={busy || !canCustom}
-              onPress={makeCustom}
-            />
-            <Text style={[styles.hint, { color: theme.muted }]}>
-              {canCustom
-                ? 'Gemini in the cloud writes a fully custom version. Its AI features still run on-device.'
-                : ai.locked
-                  ? 'Custom versions need the cloud; this build runs in offline (on-device only) mode.'
-                  : 'Custom versions need the cloud. Go online and turn off private mode.'}
-            </Text>
-            {error && <Text style={{ color: theme.danger }}>{error}</Text>}
-            {app.builtWith !== 'starter' && <Button label="Delete app" theme={theme} variant="ghost" onPress={remove} />}
-          </Card>
+          <View style={{ gap: space(2), marginTop: space(4) }}>
+            <Text style={[type.overline, { color: theme.subtle }]}>Improve this app</Text>
+            <Card theme={theme} style={{ paddingVertical: space(1) }}>
+              <ActionRow
+                icon="chatbubble-ellipses-outline"
+                title="Chat about this app"
+                body="Ask questions or describe changes."
+                onPress={() => setTab('chat')}
+                theme={theme}
+              />
+              <View style={[styles.sep, { backgroundColor: theme.border }]} />
+              <ActionRow
+                icon="color-wand-outline"
+                title={app.html ? 'Regenerate custom version' : 'Make it custom'}
+                body={
+                  canCustom
+                    ? 'Gemini designs a fully custom version. Its AI still runs on-device.'
+                    : ai.locked
+                      ? 'Needs the cloud; this build is on-device only.'
+                      : 'Needs the cloud. Go online and turn off private mode.'
+                }
+                onPress={makeCustom}
+                theme={theme}
+                disabled={!canCustom}
+                loading={busy}
+              />
+              {app.builtWith !== 'starter' && (
+                <>
+                  <View style={[styles.sep, { backgroundColor: theme.border }]} />
+                  <ActionRow icon="trash-outline" title="Delete app" onPress={remove} theme={theme} danger />
+                </>
+              )}
+            </Card>
+            {error && <Text style={[type.caption, { color: theme.danger }]}>{error}</Text>}
+          </View>
         </ScrollView>
       )}
     </>
@@ -136,10 +191,12 @@ export default function AppScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: space(4), gap: space(4), maxWidth: 760, width: '100%', alignSelf: 'center' },
-  desc: { fontSize: 15, lineHeight: 21 },
-  section: { fontSize: 16, fontWeight: '700' },
-  hint: { fontSize: 13, lineHeight: 18 },
-  tabs: { flexDirection: 'row', gap: space(2), padding: space(2), borderBottomWidth: 1 },
-  tab: { flex: 1, minHeight: 40 },
+  page: { padding: space(4), paddingBottom: space(12), gap: space(5), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  tabs: { paddingHorizontal: space(4), paddingBottom: space(3), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  hero: { flexDirection: 'row', gap: space(4), padding: space(4), borderRadius: radius.xl, alignItems: 'center' },
+  heroIcon: { width: 64, height: 64, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
+  heroEmoji: { fontSize: 34 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: space(3), paddingVertical: space(3) },
+  actionIcon: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  sep: { height: StyleSheet.hairlineWidth, marginLeft: 48 },
 });

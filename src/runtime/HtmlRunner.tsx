@@ -3,6 +3,8 @@ import { useMemo, useRef, type ComponentType, type RefAttributes } from 'react';
 import WebViewBase, { type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview';
 
 import { useAI } from '../ai/AIContext';
+import type { Accent } from '../spec/types';
+import { ACCENT_COLORS } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
 // Upstream typings default the class generic to `undefined`, which collapses props to `never`
@@ -10,12 +12,12 @@ import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge'
 type WebViewHandle = { injectJavaScript(script: string): void };
 const WebView = WebViewBase as unknown as ComponentType<WebViewProps & RefAttributes<WebViewHandle>>;
 
-export function HtmlRunner({ appId, html }: { appId: string; html: string }) {
+export function HtmlRunner({ appId, html, accent }: { appId: string; html: string; accent: Accent }) {
   const ref = useRef<WebViewHandle>(null);
   const ai = useAI();
   const source = useMemo(
-    () => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage')) }),
-    [html],
+    () => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage'), ACCENT_COLORS[accent]) }),
+    [html, accent],
   );
 
   const onMessage = async (event: WebViewMessageEvent) => {

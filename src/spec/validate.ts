@@ -97,8 +97,22 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     emoji: (str(r.emoji, 8) || '✨').slice(0, 4),
     accent,
     description: str(r.description, 160) ?? '',
-    components,
+    components: normalizeLayout(components),
   };
+}
+
+const RANK: Record<SpecComponent['type'], number> = { heading: 0, text: 0, input: 1, choice: 1, ai: 2, save: 3, history: 4 };
+
+/**
+ * Enforces a predictable, good-looking layout whatever order the model used:
+ * intro text, then the form, then AI actions, then save, then history.
+ * The sort is stable, so the model's order is kept within each group.
+ */
+export function normalizeLayout(components: SpecComponent[]): SpecComponent[] {
+  return components
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => RANK[a.c.type] - RANK[b.c.type] || a.i - b.i)
+    .map(({ c }) => c);
 }
 
 /** Replaces {field_id} placeholders with current values. */
