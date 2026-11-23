@@ -1,0 +1,32 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.nanobridge'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.nanobridge"
+  defaultConfig {
+    // ML Kit GenAI (Gemini Nano via AICore) requires API 26+.
+    minSdkVersion 26
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Firebase AI Logic with hybrid (on-device + cloud) inference.
+  // Pinned: firebase-ai-ondevice beta08 pulls ML Kit GenAI built with Kotlin 2.4, which the
+  // Kotlin 2.2 compiler used by Expo SDK 58 cannot read. beta07 uses ML Kit built with Kotlin 2.3.
+  implementation 'com.google.firebase:firebase-ai:18.1.0'
+  implementation 'com.google.firebase:firebase-ai-ondevice:16.0.0-beta07'
+  // App Check is required by Firebase AI Logic. Debug tokens are accepted for the hackathon.
+  implementation 'com.google.firebase:firebase-appcheck:20.1.0'
+  implementation 'com.google.firebase:firebase-appcheck-debug:20.1.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+}
