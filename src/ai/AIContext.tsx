@@ -2,7 +2,8 @@ import NetInfo from '@react-native-community/netinfo';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { onDeviceOnly } from '../config';
-import { engine } from './engine';
+import { getDeviceModel, loadDeviceModel, setDeviceModel as persistDeviceModel, type DeviceModel } from './deviceModel';
+import { engine } from './engineSelect';
 import type { RouteContext } from './hybrid';
 import type { DeviceStatus } from './types';
 
@@ -12,10 +13,13 @@ interface AIState extends RouteContext {
   deviceStatus: DeviceStatus;
   /** The concrete on-device model in use, e.g. "nano-v4-full". Empty when unknown. */
   modelName: string;
+  /** Which Nano build is requested from the on-device runtime. */
+  deviceModel: DeviceModel;
   downloadProgress: number | null;
   /** True once the on-device model has been loaded ahead of the first request. */
   warmed: boolean;
   setPrivateMode(v: boolean): void;
+  setDeviceModel(v: DeviceModel): void;
   refreshStatus(): Promise<void>;
   downloadModel(): Promise<void>;
   /** Loads the on-device model so the first real request is fast. Safe to call often. */
@@ -30,6 +34,7 @@ export function AIProvider({ children }: { children: ReactNode }) {
   const setPrivateMode = useCallback((v: boolean) => setPrivateModeState(onDeviceOnly || v), []);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>('unavailable');
   const [modelName, setModelName] = useState('');
+  const [deviceModel, setDeviceModelState] = useState<DeviceModel>(getDeviceModel);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [warmed, setWarmed] = useState(false);
 
@@ -51,6 +56,8 @@ export function AIProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     void (async () => {
+      const saved = await loadDeviceModel();
+      if (alive) setDeviceModelState(saved);
       const [status, name] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
       if (!alive) return;
       setDeviceStatus(status);
@@ -60,6 +67,16 @@ export function AIProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, []);
+
+  /** Switching model changes what the runtime reports, so re-read the status afterwards. */
+  const setDeviceModel = useCallback(
+    (m: DeviceModel) => {
+      setDeviceModelState(m);
+      setWarmed(false);
+      void persistDeviceModel(m).then(loadStatus);
+    },
+    [loadStatus],
+  );
 
   const downloadModel = useCallback(async () => {
     setDownloadProgress(0);
@@ -89,9 +106,11 @@ export function AIProvider({ children }: { children: ReactNode }) {
       locked: onDeviceOnly,
       deviceStatus,
       modelName,
+      deviceModel,
       downloadProgress,
       warmed,
       setPrivateMode,
+      setDeviceModel,
       refreshStatus,
       downloadModel,
       warmUp,
@@ -101,9 +120,11 @@ export function AIProvider({ children }: { children: ReactNode }) {
       privateMode,
       deviceStatus,
       modelName,
+      deviceModel,
       downloadProgress,
       warmed,
       setPrivateMode,
+      setDeviceModel,
       refreshStatus,
       downloadModel,
       warmUp,

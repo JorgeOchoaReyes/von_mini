@@ -69,18 +69,22 @@ function onDeviceOnlyModel() {
   return deviceModelInstance;
 }
 
-/** Chrome's Prompt API reports the concrete model name (for example "Gemini Nano"). */
+/**
+ * Chrome's Prompt API reports the concrete model name (for example "Gemini Nano").
+ *
+ * Only reported once the model is actually usable: the API can be present while the model is
+ * still downloading, and claiming a model is "loaded" then would contradict the status banner.
+ */
 async function chromeModelName(): Promise<string> {
-  const lm = languageModel() as (LanguageModelGlobal & { params?: () => Promise<{ defaultTopK?: number }> }) | undefined;
+  const lm = languageModel() as (LanguageModelGlobal & { params?: () => Promise<Record<string, unknown>> }) | undefined;
   if (!lm) return '';
-  // `LanguageModel.params()` is the documented way to describe the loaded model; it is optional.
-  const withName = lm as { params?: () => Promise<Record<string, unknown>> };
   try {
-    const p = await withName.params?.();
+    if ((await lm.availability()) !== 'available') return '';
+    const p = await lm.params?.();
     const name = p && typeof p === 'object' ? (p as { modelName?: string }).modelName : undefined;
-    return typeof name === 'string' ? name : 'Gemini Nano (Chrome)';
+    return typeof name === 'string' && name ? name : 'Gemini Nano (Chrome)';
   } catch {
-    return 'Gemini Nano (Chrome)';
+    return '';
   }
 }
 
