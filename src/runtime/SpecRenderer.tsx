@@ -225,10 +225,20 @@ export function SpecRenderer({
   /**
    * Wraps a block with the tap-to-select affordance when the builder asks for it.
    *
-   * Blocks that are themselves buttons (AI actions, save) get a small pencil in the corner
-   * instead of a tap target, so selecting one never competes with pressing it.
+   * Three modes, because the right gesture differs per block:
+   *   - `tap`    static text: the whole block is the tap target;
+   *   - `corner` blocks that are themselves buttons (AI actions, save, history): a pencil in the
+   *              corner, so selecting never competes with pressing the button;
+   *   - `ring`   form fields: the field's own label carries the pencil, so the wrapper only draws
+   *              the selection ring (and never nests interactive elements).
    */
-  const selectable_ = (c: SpecComponent, i: number, node: ReactNode, label?: string, interactive?: boolean) => {
+  const selectable_ = (
+    c: SpecComponent,
+    i: number,
+    node: ReactNode,
+    label?: string,
+    mode: 'tap' | 'corner' | 'ring' = 'tap',
+  ) => {
     if (!selectable) return node;
     const key = componentKey(c, i);
     const on = selectedKey === key;
@@ -239,21 +249,24 @@ export function SpecRenderer({
         <Text style={styles.selectTagText}>Editing</Text>
       </View>
     );
+    const toggle = () => onSelect?.(on ? null : key);
 
-    if (interactive) {
+    if (mode === 'corner' || mode === 'ring') {
       return (
         <View key={key} style={[styles.selectable, ring]}>
           {node}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${label ?? c.type}`}
-            accessibilityState={{ selected: on }}
-            onPress={() => onSelect?.(on ? null : key)}
-            hitSlop={8}
-            style={[styles.editCorner, { backgroundColor: on ? theme.accent : theme.surface, borderColor: theme.border }]}
-          >
-            <Icon name="create-outline" size={14} color={on ? theme.onAccent : theme.muted} />
-          </Pressable>
+          {mode === 'corner' && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${label ?? c.type}`}
+              accessibilityState={{ selected: on }}
+              onPress={toggle}
+              hitSlop={8}
+              style={[styles.editCorner, { backgroundColor: on ? theme.accent : theme.surface, borderColor: theme.border }]}
+            >
+              <Icon name="create-outline" size={14} color={on ? theme.onAccent : theme.muted} />
+            </Pressable>
+          )}
           {tag}
         </View>
       );
@@ -265,7 +278,7 @@ export function SpecRenderer({
         accessibilityRole="button"
         accessibilityLabel={`Edit ${label ?? c.type}`}
         accessibilityState={{ selected: on }}
-        onPress={() => onSelect?.(on ? null : key)}
+        onPress={toggle}
         style={[styles.selectable, ring]}
       >
         {node}
@@ -275,9 +288,28 @@ export function SpecRenderer({
   };
 
   const field = (c: SpecComponent, i: number): ReactNode => {
+    const key = componentKey(c, i);
+    const on = selectedKey === key;
+    // The label is the tap target for selecting a field: wrapping the input itself would nest
+    // interactive elements (invalid on web, and it would swallow taps meant for typing).
+    const label = selectable ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${c.label}`}
+        accessibilityState={{ selected: on }}
+        onPress={() => onSelect?.(on ? null : key)}
+        style={styles.fieldLabel}
+      >
+        <Text style={[type.label, { color: theme.text, flex: 1 }]}>{c.label}</Text>
+        <Icon name="create-outline" size={14} color={on ? theme.accent : theme.subtle} />
+      </Pressable>
+    ) : (
+      <Text style={[type.label, { color: theme.text }]}>{c.label}</Text>
+    );
+
     const node = (
       <View key={c.id} style={{ gap: space(2) }}>
-        <Text style={[type.label, { color: theme.text }]}>{c.label}</Text>
+        {label}
         {c.type === 'choice' ? (
           <View style={styles.chips}>
             {c.options!.map((o) => (
@@ -308,7 +340,7 @@ export function SpecRenderer({
         )}
       </View>
     );
-    return selectable ? selectable_(c, i, node, c.label) : node;
+    return selectable ? selectable_(c, i, node, c.label, 'ring') : node;
   };
 
   const block = (c: SpecComponent, i: number): ReactNode => {
@@ -366,7 +398,7 @@ export function SpecRenderer({
             ) : null}
           </View>
         );
-        return selectable ? selectable_(c, i, node, c.label, true) : node;
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
       case 'save': {
         const node = (
@@ -380,7 +412,7 @@ export function SpecRenderer({
             )}
           </View>
         );
-        return selectable ? selectable_(c, i, node, c.label, true) : node;
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
       case 'history': {
         const node = (
@@ -395,7 +427,7 @@ export function SpecRenderer({
             onChange={setEntries}
           />
         );
-        return selectable ? selectable_(c, i, node, c.label, true) : node;
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
       default:
         return null;
@@ -432,6 +464,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(3) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
+  fieldLabel: { flexDirection: 'row', alignItems: 'center', gap: space(2), minHeight: 24 },
   result: { borderRadius: radius.md, borderLeftWidth: 3, padding: space(4), gap: space(2) },
   bulletRow: { flexDirection: 'row', gap: space(2), alignItems: 'flex-start' },
   bulletDot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },

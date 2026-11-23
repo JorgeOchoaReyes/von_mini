@@ -1,13 +1,25 @@
 /**
  * Chat jobs run outside any screen: leaving the chat (or the app screen) does not cancel them.
  * Results are written to on-device storage and subscribers are notified to reload.
+ *
+ * Each turn streams, so the chat can show the real pipeline steps ("Applying the change") rather
+ * than an unexplained spinner, and every applied edit records a version snapshot for undo.
  */
 import { useSyncExternalStore } from 'react';
 
-import { chatAboutApp, type RouteContext } from '../ai/hybrid';
-import { appendMessage, getApp, listMessages, saveApp, updateMessage, type ChatMessage } from '../storage/store';
+import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
+import {
+  appendMessage,
+  getApp,
+  listMessages,
+  pushVersion,
+  saveApp,
+  updateMessage,
+  type ChatMessage,
+} from '../storage/store';
 
 const busy = new Set<string>();
+const progress = new Map<string, ProgressStep[]>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -23,10 +35,24 @@ export function subscribe(listener: () => void) {
   };
 }
 
-/** Changes whenever any thread or app is updated by a chat job. */
+/** Changes whenever any thread, progress step or app is updated by a chat job. */
 export const useChatVersion = () => useSyncExternalStore(subscribe, () => version, () => version);
 
 export const isBusy = (appId: string) => busy.has(appId);
+export const chatSteps = (appId: string) => progress.get(appId) ?? [];
+
+/** Lets the builder tell subscribers that it changed an app outside the chat. */
+export const notifyAppsChanged = emit;
+
+function applyEvent(appId: string, e: BuildEvent) {
+  if (e.type !== 'step') return;
+  const prev = progress.get(appId) ?? [];
+  const next = prev.map((s) =>
+    s.id === e.step.id ? e.step : s.state === 'active' ? { ...s, state: 'done' as const } : s,
+  );
+  progress.set(appId, next.some((s) => s.id === e.step.id) ? next : [...next, e.step]);
+  emit();
+}
 
 export async function sendMessage(appId: string, text: string, ctx: RouteContext): Promise<void> {
   const message = text.trim();
@@ -41,7 +67,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       .filter((m) => m.kind !== 'error')
       .slice(0, -1)
       .map((m) => ({ role: m.role, text: m.text }));
-    const reply = await chatAboutApp(app.spec, history, message, ctx);
+    const reply = await chatAboutApp(app.spec, history, message, ctx, (e) => applyEvent(appId, e));
 
     if (reply.kind === 'edit') {
       if (!reply.changes.length) {
@@ -53,6 +79,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
         });
       } else {
         await saveApp({ ...app, spec: reply.spec, builtWith: reply.source });
+        await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source);
         await appendMessage(appId, {
           role: 'assistant',
           kind: 'edit',
@@ -68,6 +95,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
     await appendMessage(appId, { role: 'assistant', kind: 'error', text: e instanceof Error ? e.message : String(e) });
   } finally {
     busy.delete(appId);
+    progress.delete(appId);
     emit();
   }
 }
@@ -78,6 +106,7 @@ export async function undoEdit(appId: string, msg: ChatMessage): Promise<void> {
   const app = await getApp(appId);
   if (!app) return;
   await saveApp({ ...app, spec: msg.prevSpec });
+  await pushVersion(appId, msg.prevSpec, ['Undid a chat edit.'], 'restore', app.builtWith);
   await updateMessage(appId, msg.id, { undone: true });
   await appendMessage(appId, { role: 'assistant', kind: 'undo', text: 'Undid that change.' });
   emit();

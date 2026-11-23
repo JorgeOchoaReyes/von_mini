@@ -15,6 +15,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /water|hydrat|drink/i,
+    json: `{"name":"Water Tracker","emoji":"💧","accent":"blue","description":"Log every glass and get a nudge when you fall behind.","components":[
+      {"type":"choice","id":"amount","label":"How much did you drink?","options":["A glass","A bottle","A lot"]},
+      {"type":"input","id":"note","label":"How do you feel?","placeholder":"A bit tired","multiline":true},
+      {"type":"ai","id":"nudge","label":"Nudge me","prompt":"I just logged {amount} of water and I feel like this: {note}. In two short sentences, encourage me kindly."},
+      {"type":"save","label":"Log it"},{"type":"history","label":"Today"}]}`,
+  },
+  {
     match: /mood|journal|diary|feel/i,
     json: `{"name":"Mood Journal","emoji":"😊","accent":"violet","description":"Write about your day and get a private mood tag.","components":[
       {"type":"input","id":"entry","label":"How was your day?","placeholder":"Write freely…","multiline":true},
@@ -158,10 +166,11 @@ export const mockEngine: AIEngine = {
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
     const full = respond(prompt, options);
-    // Emit a few characters at a time so the UI shows a real progressive reveal.
+    // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
+    // end to end), so the streaming UI is exercised realistically rather than flashing past.
     const step = Math.max(6, Math.round(full.length / 26));
     for (let i = step; i < full.length; i += step) {
-      await sleep(14);
+      await sleep(80);
       yield { text: full.slice(0, i), source: 'on_device' };
     }
     yield { text: full, source: 'on_device' };

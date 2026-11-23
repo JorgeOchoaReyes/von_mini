@@ -8,7 +8,6 @@
  * Every control writes straight into the spec, so the preview updates on the keystroke. This is
  * the fastest possible edit path: no model, no network, no waiting.
  */
-import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
@@ -41,7 +40,15 @@ const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'text', label: 'Paragraph', icon: 'reorder-four-outline' },
 ];
 
-/** A labelled text input that keeps a local draft so typing never fights the store. */
+/**
+ * A labelled text input.
+ *
+ * Deliberately uncontrolled (`defaultValue`): every keystroke writes straight into the spec and
+ * straight back into the live preview, so a local draft would only fight the store. Being
+ * uncontrolled also means clearing the field stays cleared while you retype, even though the spec
+ * refuses to store an empty label. The parent re-keys the editor when the selection changes, so
+ * the fields always start from the spec's current text.
+ */
 function Field({
   label,
   value,
@@ -59,17 +66,12 @@ function Field({
   theme: ReturnType<typeof useTheme>;
   hint?: string;
 }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
   return (
     <View style={{ gap: space(1) }}>
       <Text style={[type.overline, { color: theme.subtle }]}>{label}</Text>
       <TextInput
-        value={draft}
-        onChangeText={(v) => {
-          setDraft(v);
-          onChange(v);
-        }}
+        defaultValue={value}
+        onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={theme.subtle}
         multiline={multiline}

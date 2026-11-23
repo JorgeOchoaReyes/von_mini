@@ -196,9 +196,13 @@ export async function chatAboutApp(
   history: { role: string; text: string }[],
   message: string,
   ctx: RouteContext,
+  /** Optional: streams the edit so the chat can show progress instead of a bare spinner. */
+  onEvent?: (e: BuildEvent) => void,
 ): Promise<ChatReply> {
   if ((await classify(message, ctx)) === 'change') {
-    const { spec: next, source } = await editApp(spec, message, ctx);
+    const { spec: next, source } = onEvent
+      ? await editAppProgressive(spec, message, ctx, onEvent)
+      : await editApp(spec, message, ctx);
     return { kind: 'edit', spec: next, changes: describeChanges(spec, next), source };
   }
   const r = await engine.generate(chatPrompt(JSON.stringify(spec), history.slice(-6), message), {
