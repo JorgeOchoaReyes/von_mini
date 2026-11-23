@@ -9,8 +9,12 @@
  *
  * All animations respect the OS "reduce motion" setting: when it is on, values jump to their
  * final state instead of tweening.
+ *
+ * Animated values are held in state initialisers rather than refs: they are created once per
+ * component and never need to be re-created, and this keeps them out of the "refs during render"
+ * lint rule that React 19's compiler rules enforce.
  */
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 export const motion = {
@@ -20,6 +24,9 @@ export const motion = {
   /** Standard ease-out curve used by modern design systems. */
   ease: Easing.bezier(0.2, 0.8, 0.2, 1),
 } as const;
+
+/** A stable animated value, created once. */
+const useValue = (initial: number) => useState(() => new Animated.Value(initial))[0];
 
 /** Reads the OS "reduce motion" preference without pulling in a dependency. */
 function useReduceMotion(): boolean {
@@ -45,7 +52,7 @@ export function FadeUp({
   style?: StyleProp<ViewStyle>;
 }) {
   const reduce = useReduceMotion();
-  const t = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  const t = useValue(reduce ? 1 : 0);
   useEffect(() => {
     if (reduce) {
       t.setValue(1);
@@ -68,7 +75,7 @@ export function FadeUp({
 /** Grows a bar from 0 to `progress` (0–1). Used for model downloads and build progress. */
 export function ProgressBar({ progress, color, track }: { progress: number; color: string; track: string }) {
   const reduce = useReduceMotion();
-  const w = useRef(new Animated.Value(0)).current;
+  const w = useValue(0);
   useEffect(() => {
     const to = Math.max(0, Math.min(1, progress));
     if (reduce) {
@@ -95,7 +102,7 @@ export function ProgressBar({ progress, color, track }: { progress: number; colo
 /** A soft pulsing dot, used while a model is thinking. */
 export function Pulse({ color, size = 8 }: { color: string; size?: number }) {
   const reduce = useReduceMotion();
-  const v = useRef(new Animated.Value(0.6)).current;
+  const v = useValue(0.6);
   useEffect(() => {
     if (reduce) return;
     const loop = Animated.loop(
@@ -109,17 +116,20 @@ export function Pulse({ color, size = 8 }: { color: string; size?: number }) {
   }, [v, reduce]);
   return (
     <Animated.View
-      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }, { opacity: v, transform: [{ scale: v }] }]}
+      style={[
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
+        { opacity: v, transform: [{ scale: v }] },
+      ]}
     />
   );
 }
 
-/** A three-dot typing indicator, one `Animated.Value` per dot so no hook is called in a loop. */
+/** A three-dot typing indicator, one animated value per dot so no hook is called in a loop. */
 export function TypingDots({ color }: { color: string }) {
   const reduce = useReduceMotion();
-  const a = useRef(new Animated.Value(0)).current;
-  const b = useRef(new Animated.Value(0)).current;
-  const c = useRef(new Animated.Value(0)).current;
+  const a = useValue(0);
+  const b = useValue(0);
+  const c = useValue(0);
   useEffect(() => {
     if (reduce) return;
     const step = (v: Animated.Value, delay: number) =>
@@ -151,7 +161,7 @@ export function TypingDots({ color }: { color: string }) {
 /** A slow shimmering sheen for skeleton placeholders. */
 export function Shimmer({ color, style }: { color: string; style?: StyleProp<ViewStyle> }) {
   const reduce = useReduceMotion();
-  const v = useRef(new Animated.Value(0)).current;
+  const v = useValue(0);
   useEffect(() => {
     if (reduce) return;
     const loop = Animated.loop(
@@ -165,7 +175,12 @@ export function Shimmer({ color, style }: { color: string; style?: StyleProp<Vie
   }, [v, reduce]);
   return (
     <Animated.View
-      style={[styles.skeleton, { backgroundColor: color }, style, { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.9] }) }]}
+      style={[
+        styles.skeleton,
+        { backgroundColor: color },
+        style,
+        { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.9] }) },
+      ]}
     />
   );
 }

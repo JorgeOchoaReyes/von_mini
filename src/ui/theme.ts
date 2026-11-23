@@ -71,6 +71,13 @@ export const alpha = (hex: string, a: number) =>
     .toString(16)
     .padStart(2, '0')}`;
 
+/** Blends two #RRGGBB colors. `t` is how much of `b` to mix in. */
+export const mix = (a: string, b: string, t: number) => {
+  const part = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const channel = (i: number) => Math.round(part(a, i) * (1 - t) + part(b, i) * t);
+  return `#${[0, 1, 2].map((i) => channel(i).toString(16).padStart(2, '0')).join('')}`;
+};
+
 export type Theme = typeof light & {
   scheme: 'light' | 'dark';
   accent: string;
@@ -94,7 +101,8 @@ export function useTheme(accent: Accent = 'violet'): Theme {
     accent: a,
     accentAlt: b,
     accentSoft: alpha(a, scheme === 'dark' ? 0.2 : 0.1),
-    gradient: [a, b] as const,
+    // Kept deliberately tight: a wide two-hue gradient puts white button text on a pale stop.
+    gradient: [a, mix(a, b, 0.35)] as const,
     onAccent: '#FFFFFF',
   };
 }
