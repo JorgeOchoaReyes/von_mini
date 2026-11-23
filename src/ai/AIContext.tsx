@@ -28,8 +28,12 @@ export function AIProvider({ children }: { children: ReactNode }) {
 
   const refreshStatus = useCallback(async () => setDeviceStatus(await engine.status()), []);
   useEffect(() => {
-    refreshStatus();
-  }, [refreshStatus]);
+    let alive = true;
+    engine.status().then((s) => alive && setDeviceStatus(s));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const downloadModel = useCallback(async () => {
     setDownloadProgress(0);

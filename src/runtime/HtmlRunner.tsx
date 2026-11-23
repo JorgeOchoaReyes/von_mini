@@ -2,13 +2,13 @@
 import { useMemo, useRef, type ComponentType, type RefAttributes } from 'react';
 import WebViewBase, { type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview';
 
+import { useAI } from '../ai/AIContext';
+import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
+
 // Upstream typings default the class generic to `undefined`, which collapses props to `never`
 // under TypeScript 6. Re-type the component with the props and the one ref method we use.
 type WebViewHandle = { injectJavaScript(script: string): void };
 const WebView = WebViewBase as unknown as ComponentType<WebViewProps & RefAttributes<WebViewHandle>>;
-
-import { useAI } from '../ai/AIContext';
-import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
 export function HtmlRunner({ appId, html }: { appId: string; html: string }) {
   const ref = useRef<WebViewHandle>(null);

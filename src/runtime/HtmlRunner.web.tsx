@@ -7,8 +7,11 @@ import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge'
 export function HtmlRunner({ appId, html }: { appId: string; html: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const ai = useAI();
+  // Keep the latest routing context for the message listener without re-subscribing.
   const aiRef = useRef(ai);
-  aiRef.current = ai;
+  useEffect(() => {
+    aiRef.current = ai;
+  }, [ai]);
 
   // The iframe posts JSON strings to the host; the host posts back a reply object that a tiny
   // listener inside the frame forwards to window.__vmReply. No code is evaluated across the boundary.
