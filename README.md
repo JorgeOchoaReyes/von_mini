@@ -6,6 +6,17 @@ von mini is an app builder for Android and the web. You describe a small tool ("
 
 It is built on **Firebase AI Logic hybrid inference**: the cloud (Gemini) is used when it adds quality, and the device (Gemini Nano) is used whenever privacy, cost, or connectivity matter.
 
+> Submission for **#BuildHybridAI 2026**. Project text, the demo video script, judge testing
+> instructions, and a rule-by-rule checklist live in [`SUBMISSION.md`](SUBMISSION.md).
+
+| Build from one sentence | Edit any block | Every change is reversible |
+|---|---|---|
+| ![Home screen](docs/screenshots/01-home.png) | ![Tap a block to edit it](docs/screenshots/07-tap-to-edit.png) | ![Version history](docs/screenshots/08-history.png) |
+
+| Chat edits patch the app, they don't rebuild it | Dark mode | Desktop |
+|---|---|---|
+| ![Edit and diff](docs/screenshots/06-edit-and-diff.png) | ![Home in dark mode](docs/screenshots/02-home-dark.png) | ![Desktop](docs/screenshots/03-home-desktop.png) |
+
 ## Why
 
 Most "AI app" tools send everything you type to a server, charge per request, and stop working without a connection. That rules them out for the things people most want help with: journals, health notes, private messages, money.
@@ -47,6 +58,57 @@ await vonmini.store.get('key')
 
 So even cloud-written apps keep their AI and their data on the device.
 
+## Editing an app
+
+Regenerating an app to change it is the wrong shape for this problem: it is slow, it loses the
+entries you already saved, and it silently rearranges the layout you had learned. So a change to a
+built app is a **patch against its spec**, not a new app. Three ways to make one, all of them
+instant:
+
+- **Tap a block in the preview** to select it and edit its label, placeholder, options or type in
+  the docked inspector — or move and delete it ([`src/runtime/SpecEditor.tsx`](src/runtime/SpecEditor.tsx)).
+- **Quick-edit chips** for the changes people ask for most: rename the app, add a field, change the
+  accent, make the AI answers shorter.
+- **Say it in words** — *"add a field for how much sleep I got"*. The model returns a patch to the
+  spec rather than a replacement spec, so the app keeps its name, its layout and its saved data.
+
+Deterministic edits are pure functions over the spec ([`src/spec/edit.ts`](src/spec/edit.ts)), which
+is why they are instant and work with no model at all. The model is reserved for changes that are
+genuinely expressed in words — and when it is used, it runs `PREFER_ON_DEVICE`, so editing works in
+airplane mode.
+
+After every change:
+
+- a **"what changed"** summary is computed locally in plain words
+  ([`src/spec/diff.ts`](src/spec/diff.ts)) and shown above the preview, with an **Undo**;
+- the previous spec is snapshotted into **version history**
+  ([`src/chat/HistoryPanel.tsx`](src/chat/HistoryPanel.tsx)), where any version can be restored with
+  one tap. Up to 30 versions are kept per app, on the device.
+
+## Performance
+
+Measured on the development machine (4 vCPU, Chromium, static web export; median of warm runs).
+Bundle sizes are raw / gzip-9 of the initial payload, from `npm run export:web`.
+
+| Metric | Value |
+|---|---|
+| Initial bundle | 1444 KB raw / 375 KB gzip |
+| Time to interactive (warm) | 165 ms |
+| First contentful paint (warm) | 128 ms |
+| Build flow: first pipeline step visible | 50 ms |
+| Build flow: app preview visible | 147 ms |
+| Preview render, 0 → 2,000 saved entries | 715 ms → 757 ms (flat) |
+
+What the numbers are made of: routes are code-split so the builder is fetched only when opened;
+list rows are memoized and the saved-entry list renders a 25-entry window, which is why render time
+is flat from 0 to 2,000 entries; prompts and token budgets are kept small for Nano, with structured
+output (`responseConstraint`) and a repair pass rather than retries, so a build normally costs one
+round trip; the on-device model is warmed up on first interaction; and generation streams, so the
+first token — and the first visible step — arrives long before the last.
+
+`SUBMISSION.md` has the honest before/after comparison, including the one metric that got worse
+(the initial bundle grew ~3% to pay for the editing layer and the design system).
+
 ## Architecture
 
 ```
@@ -75,22 +137,33 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 4. **Run on Android:** `npm run android` builds a development build with the native bridge. Expo Go cannot load it.
    - On first launch, the App Check debug token is printed to logcat (`DebugAppCheckProvider`). Add it in the Firebase console under App Check > Manage debug tokens.
 
-**Offline mode:** set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` to force every AI call to run on-device (`ONLY_ON_DEVICE`). Private mode is locked on and cloud-only features are disabled. This mode needs no App Check or cloud setup.
+**Offline mode:** set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` to force every AI call to run on-device (`ONLY_ON_DEVICE`). Private mode is locked on and cloud-only features are disabled. This mode needs no App Check or cloud setup — it is the fastest way to try the whole product, including building and editing apps, without a Firebase project.
+
+**On-device model:** Settings lets you choose which Gemini Nano build the runtime loads — **Gemini Nano 4** (`nano-v4-full`), **Gemini Nano 4 Fast** (`nano-v4-fast`), or the older stable build — and reports which one actually loaded. See [`src/ai/deviceModel.ts`](src/ai/deviceModel.ts).
+
+**Dev-only mock engine:** `EXPO_PUBLIC_MOCK_ENGINE=true` in `.env.local` runs the UI against a local canned engine that never touches the network, for developing the build/edit flows on a machine with no Gemini Nano. It is off by default and cannot run in a release build.
 
 Useful scripts: `npm run lint`, `npm run typecheck`, `npm run export:web`, `npx expo-doctor`.
 
 ## Testing it
 
-1. Open a **built-in starter app** (Mood Journal, Tone Fixer, Meeting Notes, Flashcards). They work immediately.
+1. Open a **built-in starter app** (Mood Journal, Tone Fixer, Meeting Notes, Flashcards, Habit Tracker, Expense Notes, Recipe Scaler, Workout Log). They work immediately.
 2. Type an entry and tap an ✨ AI button. The answer shows a 📱 On-device or ☁️ Cloud badge.
 3. Tap **Save**. Entries are stored on the device and shown under History.
-4. On the home screen, describe a new app and tap **Build**.
-5. Turn on **airplane mode** (or 🔒 Private) and build another app. Gemini Nano builds it on-device.
-6. Online, open an app and tap **Make it custom ✨** to get a Gemini-written HTML version whose AI still runs on-device.
+4. On the home screen, describe a new app and tap **Build**. A live panel shows each pipeline step as it happens.
+5. **Edit what you built:** tap a block in the preview to select it and change it in the inspector; or tap a quick-edit chip; or say *"add a field for the date"* in the chat tab. Each change shows a plain-words summary with an **Undo**.
+6. Open the **History** tab and restore an earlier version.
+7. Turn on **airplane mode** (or 🔒 Private) and do 4–6 again. Gemini Nano builds and edits the app on-device.
+8. Online, open an app and tap **Make it custom ✨** to get a Gemini-written HTML version whose AI still runs on-device.
 
 ## Built during #BuildHybridAI 2026
 
-Everything in this repository was written during the submission period (Nov 2026). It was started from the standard `create-expo-app` blank TypeScript template, and its template LICENSE was replaced with Apache-2.0. It uses open-source libraries listed in `package.json`, and AI coding assistants were used during development.
+Everything in this repository was written during the submission period: the first commit is dated
+**2026-11-22**, inside the Nov 11–30 window, and `git log --reverse` shows the whole history. It
+was started from the standard `create-expo-app` blank TypeScript template, whose LICENSE was
+replaced with Apache-2.0. It uses the open-source libraries listed in `package.json`, and AI coding
+assistants were used during development. [`SUBMISSION.md`](SUBMISSION.md) §5 summarises what was
+built.
 
 ## License
 

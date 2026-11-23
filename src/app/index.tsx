@@ -344,7 +344,9 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   ideas: { gap: space(2), paddingRight: space(4) },
-  ideasWrap: { flexWrap: 'wrap', paddingRight: 0 },
+  // A vertical ScrollView's content container is a column by default, so wrapping needs the row
+  // direction spelled out — otherwise every chip lands on its own line.
+  ideasWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingRight: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   buildBody: { flexDirection: 'row', gap: space(4), flexWrap: 'wrap' },
   peek: { minWidth: 168, flexGrow: 1, flexBasis: 168, borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(1) },
