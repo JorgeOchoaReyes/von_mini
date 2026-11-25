@@ -84,7 +84,7 @@ async function generateSpec(prompt: string, mode: InferenceMode) {
   } catch {
     // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
     result = await engine.generate(`${prompt}\n\nReturn valid JSON only, no other text.`, opts);
-    return { spec: sanitizeSpec(extractJson(result.text)), source: result.source };
+    return { spec: sanitizeSpec(extractJson(result.text), { rescue: true }), source: result.source };
   }
 }
 
@@ -328,7 +328,8 @@ async function generateSpecOnce(
       source = r.source;
     }
     try {
-      const spec = sanitizeSpec(extractJson(text));
+      // The last attempt keeps a usable app even if it came back with nothing to fill in.
+      const spec = sanitizeSpec(extractJson(text), { rescue: attempt > 0 });
       onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'done' } });
       onEvent({ type: 'step', step: { id: 'check', label: labels[2], state: 'done' } });
       return { spec, source };
@@ -436,17 +437,31 @@ export async function chatAboutApp(
 ): Promise<ChatReply> {
   checkLocal(ctx);
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
-  const turn = await withDeviceFallback(modeFor('edit', ctx), onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
-  if (turn.app) {
-    const changes = describeChanges(spec, turn.app);
-    if (changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
+  const mode = modeFor('edit', ctx);
+  let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  const edit = (t: typeof turn) => (t.app ? describeChanges(spec, t.app) : []);
+  let changes = edit(turn);
+  // The model sent the app back unchanged while saying it changed something (or said nothing):
+  // the edit was lost on the way. Ask once more, pointing that out, before giving up.
+  if (turn.app && !changes.length && (!turn.reply || CLAIMS_CHANGE.test(turn.reply))) {
+    const again = `${prompt}\n\nYour last answer returned the app unchanged. If the user asked for any change, return the full app with that change applied (use "code" for what the blocks can't do). If they didn't ask for a change, set "app" to null and just reply.`;
+    try {
+      turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(again, m, onEvent));
+      changes = edit(turn);
+    } catch {
+      // Keep the first answer.
+    }
   }
-  // An "updated" app identical to the current one: its reply would claim a change that didn't
-  // happen, so say so plainly instead.
+  if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
   const noChange =
     'I couldn’t work out a change from that, so the app is as it was. Try naming what to change, e.g. “add a daily total of calories” or “make the AI answers shorter”.';
-  return { kind: 'answer', source: turn.source, text: turn.app ? noChange : turn.reply || noChange };
+  // No change: show the model's own words, unless they claim a change that didn't happen.
+  const reply = turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : noChange;
+  return { kind: 'answer', source: turn.source, text: reply };
 }
+
+/** A reply that says the app was changed. */
+const CLAIMS_CHANGE = /\b(added|add(ing)?|changed|updated|removed|renamed|made|turned|replaced|switched|set|now (has|shows|uses|rolls|is))\b/i;
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {
   const problem = appModeProblem(ctx);

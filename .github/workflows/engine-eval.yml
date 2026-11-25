@@ -1,0 +1,62 @@
+# Sends ~80 real app ideas and ~30 chat messages through the app's own AI pipeline (cloud Gemini,
+# via a web build with a test hook), to catch requests that fail or produce a poor app.
+# Runs by hand, or when the ideas change on a branch. Uses the EXPO_PUBLIC_ENV secret.
+name: Engine eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Only run ideas whose text contains this
+        required: false
+  push:
+    branches-ignore: [master]
+    paths: ['scripts/engine-eval/**', '.github/workflows/engine-eval.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Write config from secrets
+        env:
+          APP_ENV: ${{ secrets.EXPO_PUBLIC_ENV }}
+        run: |
+          if [ -z "$APP_ENV" ]; then echo "::error::Missing the EXPO_PUBLIC_ENV secret."; exit 1; fi
+          printf '%s\n' "$APP_ENV" | grep -vE '^(EXPO_PUBLIC_ENGINE_EVAL|EXPO_PUBLIC_MOCK_ENGINE|EXPO_PUBLIC_ON_DEVICE_ONLY)=' > .env
+          printf 'EXPO_PUBLIC_ENGINE_EVAL=true\nEXPO_PUBLIC_MOCK_ENGINE=false\nEXPO_PUBLIC_ON_DEVICE_ONLY=false\n' >> .env
+
+      - name: Web build with the eval hook
+        run: npx expo export --platform web --output-dir dist
+        env:
+          CI: '1'
+
+      - name: Install a browser
+        run: npm i --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Run the eval
+        run: node scripts/engine-eval/run.mjs dist engine-eval-results
+        env:
+          ONLY: ${{ inputs.only }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-eval-results
+          path: engine-eval-results

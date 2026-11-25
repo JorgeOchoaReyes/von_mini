@@ -95,7 +95,7 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'st
  * Unknown component types are dropped, ids are normalized and de-duplicated,
  * and missing pieces (save / history) are added so every app is usable.
  */
-export function sanitizeSpec(raw: unknown): AppSpec {
+export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): AppSpec {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid app description.');
   const r = raw as Record<string, unknown>;
   // {today}, {entries}… read saved data, so no field may take those names.
@@ -333,7 +333,13 @@ export function sanitizeSpec(raw: unknown): AppSpec {
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
   if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game' || c.type === 'random')) {
-    throw new Error('The generated app has no inputs. Try describing it differently.');
+    // A build's last attempt keeps what the model made and adds a place to write, rather than
+    // failing: a usable app beats an error. (Chat edits throw, so the turn is retried instead.)
+    if (opts.rescue) {
+      components.splice(MAX_COMPONENTS - 3, Infinity); // room for the note, save and history
+      const id = ids.some((x) => x.id === 'note') ? 'note_2' : 'note';
+      components.push({ type: 'input', id, label: 'Note', placeholder: 'Write it down…', multiline: true });
+    } else throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   // A game saves its own scores, so a games-only app needs no save button.
   const fillable2 = components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist');

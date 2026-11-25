@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 
 import { AIProvider } from '../ai/AIContext';
 import { initAlerts } from '../alerts/notifications';
+import { installEvalHook } from '../dev/evalHook';
 import { loadRemoteConfig } from '../remote/remoteConfig';
 import { loadSchemePref, useTheme } from '../ui/theme';
 
@@ -30,6 +31,7 @@ export default function RootLayout() {
   useEffect(() => {
     void loadRemoteConfig();
     void loadSchemePref();
+    installEvalHook();
   }, []);
   // Show notifications in the foreground, and open the app a tapped notification points at.
   useEffect(() => initAlerts((url) => router.push(url as never)), []);
