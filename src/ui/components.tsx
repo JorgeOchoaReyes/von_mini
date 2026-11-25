@@ -486,6 +486,7 @@ export function Composer({
   sendLabel = 'Send',
   autoFocus,
   accessory,
+  onStop,
 }: {
   value: string;
   onChange(v: string): void;
@@ -498,9 +499,13 @@ export function Composer({
   autoFocus?: boolean;
   /** Extra control shown next to the send button, e.g. a microphone. */
   accessory?: ReactNode;
+  /** When set, the send button turns into Stop while `busy`, and calls this. */
+  onStop?: () => void;
 }) {
   const can = !!value.trim() && !busy;
   const sendPress = usePressScale(0.88);
+  // While the AI is thinking or streaming, the send button becomes Stop (when the caller allows it).
+  const stoppableNow = !!busy && !!onStop;
   return (
     <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
       <TextInput
@@ -524,13 +529,19 @@ export function Composer({
       {accessory}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={sendLabel}
-        onPress={onSubmit}
-        disabled={!can}
+        accessibilityLabel={stoppableNow ? 'Stop' : sendLabel}
+        onPress={stoppableNow ? onStop : onSubmit}
+        disabled={!can && !stoppableNow}
         {...sendPress.handlers}
-        style={[styles.sendWrap, { opacity: can ? 1 : 0.5 }]}
+        style={[styles.sendWrap, { opacity: can || stoppableNow ? 1 : 0.5 }]}
       >
-        {can && !busy ? (
+        {stoppableNow ? (
+          <PopIn>
+            <Animated.View style={[styles.send, sendPress.style, { backgroundColor: theme.text }]}>
+              <Icon name="stop" size={18} color={theme.bg} />
+            </Animated.View>
+          </PopIn>
+        ) : can && !busy ? (
           // Pops in the moment there is something to send.
           <PopIn>
             <Animated.View style={sendPress.style}>

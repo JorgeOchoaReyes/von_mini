@@ -19,7 +19,7 @@ import { FadeUp } from '../ui/motion';
 import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
-import { chatSteps, isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
+import { chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
   { label: 'What does this app do?', icon: 'help-circle-outline' },
@@ -300,6 +300,11 @@ export function ChatPanel({
           placeholder="Ask or describe a change…"
           theme={theme}
           busy={busy}
+          // While it's thinking or streaming, the send button becomes Stop.
+          onStop={() => {
+            stopMessage(appId);
+            stopSpeaking();
+          }}
           accessory={
             <MicButton
               theme={theme}

@@ -4,6 +4,7 @@ import { Animated, Image, Platform, Pressable, ScrollView, StyleSheet, Text, use
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
+import { stoppable, StoppedError } from '../../ai/stoppable';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { STARTERS } from '../../spec/starters';
@@ -102,6 +103,8 @@ export default function Home() {
   const [retrying, setRetrying] = useState(false);
   const [building, setBuilding] = useState<string | null>(null);
   const builtRef = useRef(false);
+  /** Stops the build in flight (its late result is discarded). */
+  const stopBuild = useRef<(() => void) | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -142,8 +145,10 @@ export default function Home() {
     builtRef.current = false;
     // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
     void ensureAlertPermission().catch(() => false);
+    const run = stoppable(buildAppProgressive(value, ai, onEvent));
+    stopBuild.current = run.stop;
     try {
-      const { spec, source } = await buildAppProgressive(value, ai, onEvent);
+      const { spec, source } = await run.promise;
       const app: SavedApp = {
         id: newId(),
         request: value,
@@ -164,12 +169,15 @@ export default function Home() {
       });
       router.push({ pathname: '/app/[id]', params: { id: app.id } });
     } catch (e) {
+      // Stopped by the user: back to the prompt, which still holds what they typed.
+      if (e instanceof StoppedError) return;
       haptics.error();
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
       // Always notify on failure, even with the app open: the build may have been left running.
       void notify({ title: 'Couldn’t build your app', body: message.slice(0, 180), url: '/' });
     } finally {
+      stopBuild.current = null;
       setBuilding(null);
       setSteps([]);
       setPeek(null);
@@ -253,6 +261,7 @@ export default function Home() {
               placeholder="A journal that tags my mood…"
               theme={theme}
               busy={!!building}
+              onStop={() => stopBuild.current?.()}
               minHeight={64}
               sendLabel="Build app"
               accessory={
@@ -297,6 +306,7 @@ export default function Home() {
                   Building “{building}”
                 </Text>
                 {retrying && <Text style={[type.caption, { color: theme.warning }]}>retrying…</Text>}
+                <Button label="Stop" icon="stop" size="sm" variant="secondary" theme={theme} onPress={() => stopBuild.current?.()} />
               </View>
 
               <View style={styles.buildBody}>

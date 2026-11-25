@@ -9,6 +9,7 @@ import { useSyncExternalStore } from 'react';
 
 import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
+import { stoppable, StoppedError } from '../ai/stoppable';
 import {
   appendMessage,
   getApp,
@@ -20,6 +21,8 @@ import {
 } from '../storage/store';
 
 const busy = new Set<string>();
+/** Stop handles for in-flight chat turns, by app. */
+const stops = new Map<string, () => void>();
 const progress = new Map<string, ProgressStep[]>();
 const listeners = new Set<() => void>();
 let version = 0;
@@ -52,13 +55,19 @@ export function subscribe(listener: () => void) {
 export const useChatVersion = () => useSyncExternalStore(subscribe, () => version, () => version);
 
 export const isBusy = (appId: string) => busy.has(appId);
+
+/** Stops the chat turn in flight for this app (thinking or streaming). Its result is discarded. */
+export function stopMessage(appId: string) {
+  stops.get(appId)?.();
+}
 export const chatSteps = (appId: string) => progress.get(appId) ?? [];
 
 /** Lets the builder tell subscribers that it changed an app outside the chat. */
 export const notifyAppsChanged = emit;
 
 function applyEvent(appId: string, e: BuildEvent) {
-  if (e.type !== 'step') return;
+  // A stopped turn keeps running in the background; don't let its progress reappear.
+  if (e.type !== 'step' || !busy.has(appId)) return;
   const prev = progress.get(appId) ?? [];
   const next = prev.map((s) =>
     s.id === e.step.id ? e.step : s.state === 'active' ? { ...s, state: 'done' as const } : s,
@@ -81,7 +90,9 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       .filter((m) => m.kind !== 'error')
       .slice(0, -1)
       .map((m) => ({ role: m.role, text: m.text }));
-    const reply = await chatAboutApp(app.spec, history, message, ctx, (e) => applyEvent(appId, e));
+    const turn = stoppable(chatAboutApp(app.spec, history, message, ctx, (e) => applyEvent(appId, e)));
+    stops.set(appId, turn.stop);
+    const reply = await turn.promise;
 
     if (reply.kind === 'edit') {
       if (!reply.changes.length) {
@@ -118,10 +129,16 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       await appendMessage(appId, { role: 'assistant', kind: 'answer', source: reply.source, text: reply.text });
     }
   } catch (e) {
+    if (e instanceof StoppedError) {
+      // The user stopped it: nothing was changed, and that's not an error worth a notification.
+      await appendMessage(appId, { role: 'assistant', kind: 'answer', text: 'Stopped. Nothing was changed.' });
+      return;
+    }
     const text = e instanceof Error ? e.message : String(e);
     await appendMessage(appId, { role: 'assistant', kind: 'error', text });
     void notify({ title: 'Couldn’t change your app', body: text.slice(0, 180), url: `/app/${appId}` });
   } finally {
+    stops.delete(appId);
     busy.delete(appId);
     progress.delete(appId);
     emit();
