@@ -24,6 +24,7 @@ import {
   setPrompt,
   setAccent,
   setText,
+  setTimes,
   toggleMultiline,
 } from '../spec/edit';
 import { ACCENTS, type Accent, type AppSpec, type ComponentType } from '../spec/types';
@@ -37,6 +38,7 @@ const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
   { type: 'voice', label: 'Voice chat', icon: 'mic-outline' },
+  { type: 'reminder', label: 'Reminders', icon: 'alarm-outline' },
   { type: 'heading', label: 'Heading', icon: 'text-outline' },
   { type: 'text', label: 'Paragraph', icon: 'reorder-four-outline' },
 ];
@@ -221,6 +223,25 @@ function BlockFields({
             multiline
             onChange={(v) => emit(setText(spec, index, v), `Changed how “${title}” opens.`)}
             hint="What the AI says first. Leave empty to let the user speak first."
+            theme={theme}
+          />
+        </>
+      )}
+
+      {c.type === 'reminder' && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the reminder to “${v}”.`)} theme={theme} />
+          <Field
+            label="Notification message"
+            value={c.text ?? ''}
+            onChange={(v) => emit(setText(spec, index, v), 'Changed the reminder message.')}
+            theme={theme}
+          />
+          <Field
+            label="Times"
+            value={(c.times ?? []).join(', ')}
+            onChange={(v) => emit(setTimes(spec, index, v), 'Changed the reminder times.')}
+            hint="Daily, 24-hour or am/pm, separated by commas: 8:00, 1pm, 19:30. Up to 6."
             theme={theme}
           />
         </>

@@ -86,6 +86,15 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.text = str(comp.text, 240);
         break;
       }
+      case 'reminder': {
+        // Daily local notifications. At most one reminder block per app.
+        if (components.some((x) => x.type === 'reminder')) continue;
+        out.id = uniqueId(str(comp.id) ?? 'reminder');
+        out.label = label ?? 'Daily reminders';
+        out.text = str(comp.text, 120) || 'Time to check in.';
+        out.times = normalizeTimes(comp.times);
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
@@ -112,7 +121,39 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   };
 }
 
-const RANK: Record<SpecComponent['type'], number> = { heading: 0, text: 0, input: 1, choice: 1, ai: 2, voice: 2, save: 3, history: 4 };
+/**
+ * Reminder times as sorted, unique 24-hour "HH:MM" strings (at most 6). Accepts "8:00", "08:00"
+ * or "8am"-style input; anything unreadable is dropped, and an empty result becomes 09:00.
+ */
+export function normalizeTimes(raw: unknown): string[] {
+  const list = (Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(/[,\s]+/) : []).map((t) => String(t));
+  const out = new Set<string>();
+  for (const t of list) {
+    const m = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i.exec(t.trim());
+    if (!m) continue;
+    let hour = Number(m[1]);
+    const minute = Number(m[2] ?? '0');
+    const ap = m[3]?.toLowerCase();
+    if (ap === 'pm' && hour < 12) hour += 12;
+    if (ap === 'am' && hour === 12) hour = 0;
+    if (hour > 23 || minute > 59) continue;
+    out.add(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  }
+  const sorted = [...out].sort().slice(0, 6);
+  return sorted.length ? sorted : ['09:00'];
+}
+
+const RANK: Record<SpecComponent['type'], number> = {
+  heading: 0,
+  text: 0,
+  input: 1,
+  choice: 1,
+  ai: 2,
+  voice: 2,
+  reminder: 3,
+  save: 4,
+  history: 5,
+};
 
 /**
  * Enforces a predictable, good-looking layout whatever order the model used:

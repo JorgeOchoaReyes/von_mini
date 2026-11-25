@@ -1,8 +1,15 @@
 import NetInfo from '@react-native-community/netinfo';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { onDeviceOnly } from '../config';
-import { getDeviceModel, loadDeviceModel, setDeviceModel as persistDeviceModel, type DeviceModel } from './deviceModel';
+import {
+  deviceModelChosenByUser,
+  getDeviceModel,
+  loadDeviceModel,
+  setDeviceModel as persistDeviceModel,
+  setSessionDeviceModel,
+  type DeviceModel,
+} from './deviceModel';
 import { engine } from './engineSelect';
 import type { RouteContext } from './hybrid';
 import type { DeviceStatus } from './types';
@@ -58,7 +65,19 @@ export function AIProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const saved = await loadDeviceModel();
       if (alive) setDeviceModelState(saved);
-      const [status, name] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
+      let [status, name] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
+      // Nano 4 is a preview that AICore doesn't offer on every Nano phone. If it's unavailable,
+      // try the stable Nano before concluding this phone has no on-device model at all.
+      if (status === 'unavailable' && saved !== 'stable' && !deviceModelChosenByUser() && engine.runtime === 'android-aicore') {
+        setSessionDeviceModel('stable');
+        const [s2, n2] = await Promise.all([engine.status(), engine.modelName?.() ?? Promise.resolve('')]);
+        if (s2 !== 'unavailable') {
+          [status, name] = [s2, n2];
+          if (alive) setDeviceModelState('stable');
+        } else {
+          setSessionDeviceModel(saved);
+        }
+      }
       if (!alive) return;
       setDeviceStatus(status);
       setModelName(name);
@@ -83,10 +102,26 @@ export function AIProvider({ children }: { children: ReactNode }) {
     try {
       const status = await engine.download((done, total) => setDownloadProgress(total > 0 ? done / total : null));
       setDeviceStatus(status);
+    } catch {
+      // AICore refused or the download failed: the status card keeps the manual button.
+      setDeviceStatus(await engine.status());
     } finally {
       setDownloadProgress(null);
     }
   }, []);
+  /**
+   * The phone supports Nano but hasn't downloaded it: fetch it once on Wi-Fi (it's large), so
+   * on-device AI and offline use just work. On mobile data the Download button stays.
+   */
+  const autoDownloadTried = useRef(false);
+  useEffect(() => {
+    if (deviceStatus !== 'downloadable' || autoDownloadTried.current || engine.runtime !== 'android-aicore') return;
+    autoDownloadTried.current = true;
+    void NetInfo.fetch().then((net) => {
+      const expensive = (net.details as { isConnectionExpensive?: boolean } | null)?.isConnectionExpensive;
+      if (net.type === 'wifi' && !expensive) void downloadModel();
+    });
+  }, [deviceStatus, downloadModel]);
 
   /**
    * Loads the model into memory. Called when the user first interacts with the builder, because

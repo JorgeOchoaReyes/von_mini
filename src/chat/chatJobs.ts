@@ -8,6 +8,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
+import { notifyIfInBackground } from '../alerts/notifications';
 import {
   appendMessage,
   getApp,
@@ -100,6 +101,11 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
         }
         await saveApp({ ...latest, spec: reply.spec, builtWith: reply.source });
         await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source, app.spec);
+        void notifyIfInBackground({
+          title: `${reply.spec.emoji} ${reply.spec.name} updated`,
+          body: reply.changes[0] ?? 'Your change is done. Tap to see it.',
+          url: `/app/${appId}`,
+        });
         await appendMessage(appId, {
           role: 'assistant',
           kind: 'edit',

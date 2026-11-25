@@ -1,9 +1,10 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { useEffect } from 'react';
 
 import { AIProvider } from '../ai/AIContext';
+import { initAlerts } from '../alerts/notifications';
 import { loadRemoteConfig } from '../remote/remoteConfig';
 import { useTheme } from '../ui/theme';
 
@@ -13,6 +14,8 @@ export default function RootLayout() {
   useEffect(() => {
     void loadRemoteConfig();
   }, []);
+  // Show notifications in the foreground, and open the app a tapped notification points at.
+  useEffect(() => initAlerts((url) => router.push(url as never)), []);
   return (
     <AIProvider>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
@@ -28,9 +31,10 @@ export default function RootLayout() {
           animation: 'slide_from_right',
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'von mini' }} />
+        {/* Home and Settings, with the bottom bar. Apps open above it, full screen. */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="app/[id]" options={{ title: '' }} />
-        <Stack.Screen name="settings" options={{ title: 'AI settings', presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="s/[id]" options={{ title: 'Shared app' }} />
       </Stack>
     </AIProvider>
   );

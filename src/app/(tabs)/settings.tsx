@@ -5,17 +5,17 @@
  * loaded, whether the cloud is allowed, and how to get on-device AI when the device does not have
  * it yet.
  */
-import { router, Stack } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAI } from '../ai/AIContext';
-import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
-import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
-import { ProgressBar } from '../ui/motion';
-import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
-import { useRemoteConfig } from '../remote/remoteConfig';
-import { UpdatesCard } from '../ui/UpdatesCard';
-import { useSttSupport } from '../voice/useVoice';
+import { useAI } from '../../ai/AIContext';
+import { DEVICE_MODELS, type DeviceModel } from '../../ai/deviceModel';
+import { Card, Icon, Segmented, StatusBanner, type IconName } from '../../ui/components';
+import { ProgressBar } from '../../ui/motion';
+import { MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
+import { useRemoteConfig } from '../../remote/remoteConfig';
+import { UpdatesCard } from '../../ui/UpdatesCard';
+import { useSttSupport } from '../../voice/useVoice';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -37,11 +37,15 @@ export default function Settings() {
   const onDevice = ai.deviceStatus === 'available';
   const stt = useSttSupport();
   const rc = useRemoteConfig();
+  const insets = useSafeAreaInsets();
 
   return (
     <>
-      <Stack.Screen options={{ title: 'AI settings' }} />
-      <ScrollView style={{ backgroundColor: theme.bg }} contentContainerStyle={styles.page}>
+      <ScrollView
+        style={{ backgroundColor: theme.bg }}
+        contentContainerStyle={[styles.page, { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4) }]}
+      >
+        <Text style={[type.display, { color: theme.text }]}>Settings</Text>
         <StatusBanner
           status={ai.deviceStatus}
           online={ai.online}
@@ -151,8 +155,6 @@ export default function Settings() {
         </Card>
 
         <UpdatesCard theme={theme} />
-
-        <Button label="Done" theme={theme} variant="secondary" onPress={() => router.back()} />
       </ScrollView>
     </>
   );

@@ -1,30 +1,35 @@
-import { router, Stack, useFocusEffect } from 'expo-router';
-import { memo, useCallback, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAI } from '../ai/AIContext';
-import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../ai/hybrid';
-import { STARTERS } from '../spec/starters';
-import { MicButton } from '../voice/MicButton';
-import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../storage/store';
+import { useAI } from '../../ai/AIContext';
+import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
+import { ensureAlertPermission, notifyIfInBackground } from '../../alerts/notifications';
+import { STARTERS } from '../../spec/starters';
+import { MicButton } from '../../voice/MicButton';
+import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
 import {
   Button,
   Card,
   Chip,
   Composer,
+  EmptyState,
   Gradient,
   Icon,
   ModePill,
-  SectionHeader,
+  Segmented,
   SourceBadge,
   SpecSkeleton,
   StepList,
   type IconName,
-} from '../ui/components';
-import { haptics } from '../ui/haptics';
-import { Drift, FadeUp, Pulse, usePressScale } from '../ui/motion';
-import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+} from '../../ui/components';
+import { haptics } from '../../ui/haptics';
+import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
+import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
+
+/** Which shelf of the app gallery is showing. */
+type Shelf = 'mine' | 'ready';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
@@ -112,6 +117,12 @@ export default function Home() {
     } else if (e.type === 'peek') setPeek(e.peek);
     else if (e.type === 'partial') setPartial(e.text);
     else if (e.type === 'retry') setRetrying(true);
+    else if (e.type === 'fallback') {
+      // Start the visible pipeline over, headed by why it switched.
+      setSteps([{ id: 'fallback', label: 'Cloud is busy, so Gemini Nano is designing it on this device', state: 'done' }]);
+      setPeek(null);
+      setPartial('');
+    }
   }, []);
 
   const build = async (text: string) => {
@@ -126,6 +137,8 @@ export default function Home() {
     setPartial('');
     setRetrying(false);
     builtRef.current = false;
+    // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
+    void ensureAlertPermission().catch(() => false);
     try {
       const { spec, source } = await buildAppProgressive(value, ai, onEvent);
       const app: SavedApp = {
@@ -141,10 +154,17 @@ export default function Home() {
       builtRef.current = true;
       haptics.success();
       setRequest('');
+      void notifyIfInBackground({
+        title: `${spec.emoji} ${spec.name} is ready`,
+        body: 'Your app is built. Tap to open it.',
+        url: `/app/${app.id}`,
+      });
       router.push({ pathname: '/app/[id]', params: { id: app.id } });
     } catch (e) {
       haptics.error();
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      void notifyIfInBackground({ title: 'Couldn’t build your app', body: message.slice(0, 140), url: '/' });
     } finally {
       setBuilding(null);
       setSteps([]);
@@ -154,16 +174,33 @@ export default function Home() {
   };
 
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
-  const mine = apps.filter((a) => !STARTERS.some((s) => s.id === a.id));
+  const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
+  const mine = apps.filter((a) => !isStarter(a));
+  const ready = apps.filter(isStarter);
+  // Show your own apps once you have some; until then, the ready-made shelf.
+  const [shelfChoice, setShelfChoice] = useState<Shelf | null>(null);
+  const shelf: Shelf = shelfChoice ?? (mine.length ? 'mine' : 'ready');
+  const shown = shelf === 'mine' ? mine : ready;
+
+  // The bottom bar's voice button sends what was said here to build it (params.at keeps a repeat
+  // of the same request from being ignored).
+  const params = useLocalSearchParams<{ build?: string; at?: string }>();
+  const buildRef = useRef(build);
+  useEffect(() => {
+    buildRef.current = build;
+  });
+  useEffect(() => {
+    if (!params.build || !params.at) return;
+    void buildRef.current(params.build);
+  }, [params.at, params.build]);
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         style={{ backgroundColor: theme.bg }}
         contentContainerStyle={[
           styles.page,
-          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: insets.bottom + space(10) },
+          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: space(8) },
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -312,17 +349,34 @@ export default function Home() {
           </FadeUp>
         )}
 
-        <SectionHeader
-          title={mine.length ? 'Your apps' : 'Start with a ready-made app'}
-          theme={theme}
-          right={<Text style={[type.caption, { color: theme.subtle }]}>{apps.length}</Text>}
-        />
-        <View style={styles.grid}>
-          {apps.map((app, i) => (
-            <FadeUp key={app.id} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
-              <AppTile app={app} onOpen={openApp} />
-            </FadeUp>
-          ))}
+        {/* Two shelves: the apps you made, and the ones that ship with von mini. All stored on
+            this device. */}
+        <View style={{ gap: space(4) }}>
+          <Segmented<Shelf>
+            theme={theme}
+            value={shelf}
+            onChange={setShelfChoice}
+            options={[
+              { value: 'mine', label: `My apps${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
+              { value: 'ready', label: `Ready-made · ${ready.length}`, icon: 'cube-outline' },
+            ]}
+          />
+          {shown.length === 0 ? (
+            <EmptyState
+              icon="sparkles-outline"
+              title="No apps yet"
+              body="Describe one above, or tap the mic below and say what you want. Your apps stay on this device."
+              theme={theme}
+            />
+          ) : (
+            <View style={styles.grid}>
+              {shown.map((app, i) => (
+                <FadeUp key={`${shelf}:${app.id}`} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
+                  <AppTile app={app} onOpen={openApp} />
+                </FadeUp>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </>

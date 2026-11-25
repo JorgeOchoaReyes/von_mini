@@ -83,6 +83,8 @@ export type BuildEvent =
   | { type: 'partial'; text: string }
   | { type: 'peek'; peek: SpecPeek }
   | { type: 'retry' }
+  /** The cloud was busy or unreachable; continuing on Gemini Nano. */
+  | { type: 'fallback' }
   | { type: 'done'; spec: AppSpec; source: InferenceSource };
 
 export interface SpecPeek {
@@ -115,7 +117,82 @@ const STEP_LABELS: Record<'build' | 'edit', string[]> = {
   edit: ['Reading your app', 'Applying the change', 'Checking the result'],
 };
 
+/** How long to wait for the model to start answering, and then between chunks. */
+const FIRST_CHUNK_MS = 45_000;
+const IDLE_MS = 30_000;
+
+export class StalledError extends Error {
+  constructor() {
+    super('The model stopped responding.');
+  }
+}
+
+/**
+ * Yields from a stream, but gives up if it doesn't start within `firstMs` or goes quiet for
+ * `idleMs`. Without this, a stalled cloud request (an overloaded model the SDK keeps retrying)
+ * leaves the build spinning for minutes.
+ */
+async function* withTimeouts<T>(source: AsyncIterable<T>, firstMs: number, idleMs: number): AsyncIterable<T> {
+  const it = source[Symbol.asyncIterator]();
+  let first = true;
+  for (;;) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new StalledError()), first ? firstMs : idleMs);
+    });
+    let r: IteratorResult<T>;
+    try {
+      r = await Promise.race([it.next(), timeout]);
+    } catch (e) {
+      // Let the abandoned stream close (and drop its listeners) whenever it finishes.
+      void it.return?.(undefined)?.catch?.(() => undefined);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (r.done) return;
+    first = false;
+    yield r.value;
+  }
+}
+
+/** Cloud failures worth retrying on the device: the model is busy, over quota, or unreachable. */
+export function isCloudUnavailable(e: unknown): boolean {
+  if (e instanceof StalledError) return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /high demand|overloaded|unavailable|503|429|resource.?exhausted|quota|deadline|timed? ?out|network|fetch failed|failed to connect|unable to resolve host/i.test(
+    msg,
+  );
+}
+
 async function generateSpecProgressive(
+  prompt: string,
+  mode: InferenceMode,
+  task: 'build' | 'edit',
+  onEvent: (e: BuildEvent) => void,
+): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  try {
+    return await generateSpecOnce(prompt, mode, task, onEvent);
+  } catch (e) {
+    // Hybrid, for real: when the cloud is busy or unreachable, use Gemini Nano if this device has
+    // it. (The SDK's own PREFER_IN_CLOUD only falls back when offline, not on server errors.)
+    const cloudFirst = mode === 'prefer_in_cloud' || mode === 'prefer_on_device';
+    if (cloudFirst && isCloudUnavailable(e) && (await engine.status()) === 'available') {
+      onEvent({ type: 'fallback' });
+      return generateSpecOnce(prompt, 'only_on_device', task, onEvent);
+    }
+    if (isCloudUnavailable(e)) {
+      throw new Error(
+        e instanceof StalledError
+          ? 'Gemini in the cloud didn’t answer in time, and this device has no on-device model to fall back to. Try again in a minute.'
+          : 'Gemini in the cloud is busy right now, and this device has no on-device model to fall back to. Try again in a minute.',
+      );
+    }
+    throw e;
+  }
+}
+
+async function generateSpecOnce(
   prompt: string,
   mode: InferenceMode,
   task: 'build' | 'edit',
@@ -130,7 +207,8 @@ async function generateSpecProgressive(
     let text = '';
     let source: InferenceSource = 'on_device';
     let sawFirstToken = false;
-    for await (const chunk of engine.stream(attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`, opts)) {
+    const stream = engine.stream(attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`, opts);
+    for await (const chunk of withTimeouts(stream, FIRST_CHUNK_MS, IDLE_MS)) {
       text = chunk.text;
       source = chunk.source;
       if (!sawFirstToken) {

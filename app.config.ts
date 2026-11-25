@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: 'von-mini',
   owner: 'jorgeochoareyes',
   scheme: 'vonmini',
-  version: '0.1.0',
+  version: '0.2.0',
   orientation: 'portrait',
   // OTA updates only reach builds whose native code matches. The fingerprint changes whenever
   // native code or config changes (a new native module, a plugin), so a JS-only update is
@@ -38,7 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'app.vonmini',
     googleServicesFile,
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#6B4EFF',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',
@@ -60,6 +60,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         speechRecognitionPermission: 'Speech is turned into text on your device so you can talk to your apps.',
         androidSpeechServicePackages: ['com.google.android.as', 'com.google.android.googlequicksearchbox'],
       },
+    ],
+    // Launch screen: the logo on the app's background colour, light and dark.
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        imageWidth: 160,
+        resizeMode: 'contain',
+        backgroundColor: '#F6F5FA',
+        dark: { image: './assets/splash-icon.png', backgroundColor: '#0D0C12' },
+      },
+    ],
+    // Local notifications: app reminders and "your app is ready". Only local ones are used, so
+    // iOS doesn't need the push entitlement.
+    [
+      'expo-notifications',
+      { icon: './assets/notification-icon.png', color: '#6B4EFF', enableRemoteNotifications: false },
     ],
   ],
   experiments: { typedRoutes: true },

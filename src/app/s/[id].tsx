@@ -22,6 +22,7 @@ const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kin
   choice: { icon: 'radio-button-on-outline', kind: 'Choice' },
   ai: { icon: 'sparkles-outline', kind: 'AI action' },
   voice: { icon: 'mic-outline', kind: 'Voice chat' },
+  reminder: { icon: 'alarm-outline', kind: 'Reminders' },
   save: { icon: 'checkmark-outline', kind: 'Save' },
   history: { icon: 'time-outline', kind: 'History' },
 };

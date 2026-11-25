@@ -7,6 +7,7 @@ import type { InferenceSource } from '../ai/types';
 import { componentKey } from '../spec/edit';
 import { MicButton } from '../voice/MicButton';
 import { VoiceChat } from '../voice/VoiceChat';
+import { ReminderBlock } from '../alerts/ReminderBlock';
 import type { AppSpec, SpecComponent } from '../spec/types';
 import { fillTemplate } from '../spec/validate';
 import { addEntry, deleteEntry, listEntries, type Entry } from '../storage/store';
@@ -421,6 +422,10 @@ export function SpecRenderer({
         const node = (
           <VoiceChat key={`${c.id}:${saveCount}`} c={c} values={values} theme={theme} onTranscript={(t) => set(c.id!, t)} />
         );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
+      case 'reminder': {
+        const node = <ReminderBlock key={c.id} appId={appId} appName={spec.name} appEmoji={spec.emoji} c={c} theme={theme} />;
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
       case 'save': {

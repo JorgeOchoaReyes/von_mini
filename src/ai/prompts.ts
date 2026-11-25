@@ -12,6 +12,7 @@ Component types:
 - choice {id,label,options:[2-6 strings]}: user picks one
 - ai {id,label,prompt}: a button; prompt is an instruction for a small AI that reads the inputs, written with {input_id} placeholders
 - voice {id,label,prompt,text}: a spoken conversation with the AI (the user talks, the AI talks back out loud). prompt says who the AI plays and its goal, and may use {input_id}; text is the AI's short opening line
+- reminder {id,label,text,times:["HH:MM",...]}: daily phone notifications the user can switch on; text is the short notification message, times are 1-4 times of day in 24-hour format
 - save {label}: saves inputs and AI results
 - history {label}: lists saved entries
 Rules: 3-9 components. ids are lowercase_snake. Every ai prompt uses at least one {input_id} and asks for a short answer.
@@ -21,6 +22,7 @@ Make it feel like a polished app:
 - emoji and accent fit the topic. Order: inputs/choices, then ai buttons, then save, then history.
 - input labels: short and human, often a question ("How did you sleep?"). placeholders: a concrete example.
 - ai labels: a verb, 1-3 words ("Tag my mood"). Use 1-2 ai buttons, each doing something clearly different.
+- Use one reminder block when the app is about a regular habit or log (food, calories, water, medication, workouts, journaling, studying). Pick sensible times, e.g. meals at ["08:00","13:00","19:00"] or one evening check-in at ["20:00"]. The message is short and friendly, e.g. "Log what you ate".
 - Use a voice block when the user wants to practice, rehearse, role-play or talk something through (interviews, languages, tough conversations). Its prompt gives a clear role, e.g. "You are a tough but fair interviewer for a {role} job. Ask one hard question at a time and give brief feedback on each answer."
 - ai prompts ask for at most 3 sentences or at most 5 lines starting with "- ".
 - Prefer a choice over an input when there are a few fixed options.`;
