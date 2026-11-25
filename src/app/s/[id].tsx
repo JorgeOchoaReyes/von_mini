@@ -27,6 +27,7 @@ const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kin
   voice: { icon: 'mic-outline', kind: 'Voice chat' },
   reminder: { icon: 'alarm-outline', kind: 'Reminders' },
   save: { icon: 'checkmark-outline', kind: 'Save' },
+  game: { icon: 'game-controller-outline', kind: 'Game' },
   history: { icon: 'time-outline', kind: 'History' },
 };
 

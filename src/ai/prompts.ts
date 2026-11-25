@@ -16,6 +16,7 @@ Component types:
 - chart {id,label,field,op,days,unit}: bars per day over the last days (7-31). op: sum|avg|count|max|min
 - voice {id,label,prompt,text}: a spoken conversation with the AI (the user talks, the AI talks back out loud). prompt says who the AI plays and its goal, and may use {field_id} and {entries}; text is the AI's short opening line
 - reminder {id,label,text,times:["HH:MM",...]}: daily phone notifications the user can switch on; text is the short notification message, times are 1-4 times of day in 24-hour format
+- game {id,label,game,speed,player,item,text}: a built-in arcade game, played full screen; every finished run saves its score, and the card shows the best score. game: "blocks" (falling blocks: move, rotate, clear rows), "runner" (dodge obstacles across 3 lanes), "snake" (grow by eating) or "flyer" (tap to fly through gaps). speed: slow|normal|fast. player = one emoji for the player (runner, flyer); item = one emoji for the obstacles (runner) or the food (snake). text = one short line on how to play
 - save {label}: saves the fields, checklist ticks and AI results as one entry
 - history {label,groupBy,total}: lists saved entries. groupBy:"day" groups them under each day; total = a number or checklist field summed per day
 Rules: 3-12 components. ids are lowercase_snake. Every ai prompt uses a {placeholder} and asks for a short answer.
@@ -27,13 +28,21 @@ Make it feel like a polished app:
 - Trackers (food, water, money, workouts, sleep, habits): number fields, a stat for today's total or a streak, a chart, history grouped by day with a total. If the user won't know the number (calories in a meal), add an ai that estimates it with fills and auto:true.
 - Routines and habits: a checklist, a streak stat, a chart of items done per day.
 - Journals and reflection: a multiline text field, maybe a rating, an ai that reflects on {entry}, an ai that looks back over {entries} for patterns.
+- Games: one game block, an optional stat of the best score (field = the game id, op "max", range "all"), and history labelled "Scores". No save block, no inputs needed. Fit the theme with player/item emoji (a cat dodging dogs: player "🐱", item "🐶"). Always give the game an original name: never use the name of an existing game or brand (if asked for a well-known game, make the closest built-in game under a new name).
 - Coaches and practice: a voice block with a clear role; a text field for the topic it uses as {field_id}; optionally an ai that gives feedback.
 - ai labels: a verb, 1-3 words ("Tag my mood"). Use 1-3 ai buttons, each doing something clearly different.
 - Use one reminder block for regular habits or logs, e.g. meals at ["08:00","13:00","19:00"] or one evening check-in at ["20:00"].
 - ai prompts ask for at most 3 sentences or at most 5 lines starting with "- ".
 - Prefer a choice over an input when there are a few fixed options.`;
 
+const GAME_EXAMPLE = `Example for "a game where a cat dodges dogs":
+{"name":"Cat Dash","emoji":"🐱","accent":"teal","description":"Dodge the dogs and beat your best run.","components":[{"type":"game","id":"dash","label":"Cat Dash","game":"runner","speed":"normal","player":"🐱","item":"🐶","text":"Swipe left and right to dodge the dogs."},{"type":"stat","id":"best","label":"Best run","field":"dash","op":"max","range":"all"},{"type":"history","label":"Scores","groupBy":"day"}]}`;
+
 const EXAMPLES: { match: RegExp; text: string }[] = [
+  {
+    match: /\bgames?\b|arcade|tetris|snake|flappy|subway|runner|dodge|high ?score/i,
+    text: GAME_EXAMPLE,
+  },
   {
     match: /calor|food|meal|eat|water|drink|spend|expense|money|budget|workout|run|steps|sleep|weight|track|log|count/i,
     text: `Example for "log what I eat and count calories":

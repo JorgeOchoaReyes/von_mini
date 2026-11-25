@@ -12,6 +12,7 @@ const KIND: Record<SpecComponent['type'], string> = {
   voice: 'voice chat',
   reminder: 'reminder',
   save: 'save button',
+  game: 'game',
   history: 'history list',
 };
 

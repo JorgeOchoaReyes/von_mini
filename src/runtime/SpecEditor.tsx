@@ -25,6 +25,7 @@ import {
   setAccent,
   setText,
   setAiFill,
+  setGame,
   setHistoryDays,
   setKind,
   setStat,
@@ -32,6 +33,7 @@ import {
   setUnit,
   toggleMultiline,
 } from '../spec/edit';
+import { GAME_INFO, type GameKind } from '../games/GamePlayer';
 import { OP_LABEL, RANGE_LABEL, STAT_OPS, STAT_RANGES } from '../spec/stats';
 import { ACCENTS, INPUT_KINDS, type Accent, type AppSpec, type ComponentType, type InputKind } from '../spec/types';
 import { Button, Card, Chip, Icon, IconButton, type IconName } from '../ui/components';
@@ -43,6 +45,7 @@ const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'input', label: 'Text field', icon: 'create-outline' },
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
   { type: 'checklist', label: 'Checklist', icon: 'checkbox-outline' },
+  { type: 'game', label: 'Game', icon: 'game-controller-outline' },
   { type: 'stat', label: 'Stat', icon: 'stats-chart-outline' },
   { type: 'chart', label: 'Chart', icon: 'bar-chart-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
@@ -331,6 +334,48 @@ function BlockFields({
             />
           )}
           <Field label="Unit" value={c.unit ?? ''} onChange={(v) => emit(setUnit(spec, index, v), `Changed the unit of “${title}”.`)} placeholder="kcal, $, min…" theme={theme} />
+        </>
+      )}
+
+      {c.type === 'game' && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the game to “${v}”.`)} theme={theme} />
+          <Pick<NonNullable<typeof c.game>>
+            label="Game"
+            value={c.game}
+            options={(Object.keys(GAME_INFO) as GameKind[]).map((g) => ({ value: g, label: GAME_INFO[g].name }))}
+            onChange={(g) => emit(setGame(spec, index, { game: g }), `Made “${title}” a ${GAME_INFO[g].name.toLowerCase()} game.`)}
+            theme={theme}
+          />
+          <Pick<NonNullable<typeof c.speed>>
+            label="Speed"
+            value={c.speed ?? 'normal'}
+            options={[
+              { value: 'slow', label: 'Relaxed' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'fast', label: 'Fast' },
+            ]}
+            onChange={(sp) => emit(setGame(spec, index, { speed: sp }), `Changed the speed of “${title}”.`)}
+            theme={theme}
+          />
+          {c.game !== 'blocks' && (
+            <Field
+              label={c.game === 'snake' ? 'Food (emoji)' : c.game === 'flyer' ? 'Flyer (emoji)' : 'Runner (emoji)'}
+              value={(c.game === 'snake' ? c.item : c.player) ?? ''}
+              onChange={(v) => emit(setGame(spec, index, c.game === 'snake' ? { item: v } : { player: v }), `Changed the look of “${title}”.`)}
+              placeholder={c.game === 'snake' ? GAME_INFO.snake.item : GAME_INFO[c.game ?? 'runner'].player}
+              theme={theme}
+            />
+          )}
+          {c.game === 'runner' && (
+            <Field
+              label="Obstacle (emoji)"
+              value={c.item ?? ''}
+              onChange={(v) => emit(setGame(spec, index, { item: v }), `Changed the look of “${title}”.`)}
+              placeholder={GAME_INFO.runner.item}
+              theme={theme}
+            />
+          )}
         </>
       )}
 

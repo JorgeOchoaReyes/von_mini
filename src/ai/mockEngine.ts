@@ -15,6 +15,32 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /tetris|falling block|blocks? game|stack/i,
+    json: `{"name":"Block Drop","emoji":"🧱","accent":"violet","description":"Stack falling blocks and clear rows.","components":[
+      {"type":"game","id":"drop","label":"Block Drop","game":"blocks","speed":"normal"},
+      {"type":"stat","id":"best","label":"Best","field":"drop","op":"max","range":"all"},
+      {"type":"history","label":"Scores","groupBy":"day"}]}`,
+  },
+  {
+    match: /snake|worm/i,
+    json: `{"name":"Apple Snake","emoji":"🐍","accent":"green","description":"Eat apples, grow longer, don’t bite yourself.","components":[
+      {"type":"game","id":"snake","label":"Apple Snake","game":"snake","item":"🍎"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /flappy|fly|bird|tap game/i,
+    json: `{"name":"Sky Hop","emoji":"🐤","accent":"blue","description":"Tap to fly through the gaps.","components":[
+      {"type":"game","id":"hop","label":"Sky Hop","game":"flyer","player":"🐤"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /\bgames?\b|subway|runner|dodge|arcade/i,
+    json: `{"name":"Cat Dash","emoji":"🐱","accent":"teal","description":"Dodge the dogs and beat your best run.","components":[
+      {"type":"game","id":"dash","label":"Cat Dash","game":"runner","player":"🐱","item":"🐶","text":"Swipe left and right to dodge the dogs."},
+      {"type":"stat","id":"best","label":"Best run","field":"dash","op":"max","range":"all"},
+      {"type":"history","label":"Scores","groupBy":"day"}]}`,
+  },
+  {
     match: /calorie|food|meal|diet|nutrition|ate\b/i,
     json: `{"name":"Bite Log","emoji":"🍽️","accent":"amber","description":"Log meals and watch your daily calories.","components":[
       {"type":"stat","id":"kcal_today","label":"Today","field":"calories","op":"sum","range":"today","unit":"kcal"},

@@ -3,6 +3,25 @@ import type { SavedApp } from '../storage/store';
 /** Bundled apps: usable offline immediately, even before the user builds anything. */
 export const STARTERS: SavedApp[] = [
   {
+    id: 'starter-game',
+    request: 'A quick falling-blocks game that keeps my high scores',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Block Drop',
+      emoji: '🧱',
+      accent: 'violet',
+      description: 'Stack falling blocks, clear rows, beat your best.',
+      components: [
+        { type: 'game', id: 'drop', label: 'Block Drop', game: 'blocks', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'drop', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
     id: 'starter-interview',
     request: 'Help me practice answering tough interview questions out loud',
     builtWith: 'starter',
