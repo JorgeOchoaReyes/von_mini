@@ -14,10 +14,13 @@ import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlinx.coroutines.tasks.await
 
 /**
  * Bridges Firebase AI Logic's Android SDK (hybrid inference) to JavaScript.
@@ -86,6 +89,26 @@ class NanoBridgeModule : Module() {
       } catch (e: Exception) {
         false
       }
+    }
+
+    /**
+     * Firebase Remote Config. Sets the app's bundled defaults, fetches new values (throttled to
+     * once an hour) and activates them. A failed fetch (offline, no project) is not an error: the
+     * last activated values, or the defaults, are returned with `fetched = false`.
+     */
+    AsyncFunction("remoteConfig") Coroutine { defaults: Map<String, String> ->
+      ensureFirebase()
+      val rc = FirebaseRemoteConfig.getInstance()
+      rc.setConfigSettingsAsync(
+        FirebaseRemoteConfigSettings.Builder().setMinimumFetchIntervalInSeconds(3600).setFetchTimeoutInSeconds(8).build(),
+      ).await()
+      rc.setDefaultsAsync(defaults).await()
+      val fetched = try {
+        rc.fetchAndActivate().await()
+      } catch (e: Exception) {
+        false
+      }
+      mapOf("values" to defaults.keys.associateWith { rc.getString(it) }, "fetched" to fetched)
     }
 
     /** Runs one prompt with the requested inference mode. */

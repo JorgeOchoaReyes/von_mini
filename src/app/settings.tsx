@@ -13,6 +13,7 @@ import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
 import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
 import { ProgressBar } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+import { useRemoteConfig } from '../remote/remoteConfig';
 import { UpdatesCard } from '../ui/UpdatesCard';
 import { useSttSupport } from '../voice/useVoice';
 
@@ -35,6 +36,7 @@ export default function Settings() {
   const theme = useTheme();
   const onDevice = ai.deviceStatus === 'available';
   const stt = useSttSupport();
+  const rc = useRemoteConfig();
 
   return (
     <>
@@ -128,6 +130,24 @@ export default function Settings() {
           <Row icon="save-outline" title="Apps and entries stay on this device" body="Stored locally. Nothing is uploaded, and there is no account." theme={theme} />
           <Row icon="eye-off-outline" title="Private mode blocks the cloud entirely" body="Turn it on to make every request on-device only." theme={theme} />
           <Row icon="pricetag-outline" title="No paid services" body="On-device inference costs nothing, so the app has no usage limits." theme={theme} />
+        </Card>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.headline, { color: theme.text }]}>Remote Config</Text>
+          <Row
+            icon="options-outline"
+            title={
+              rc.status === 'remote'
+                ? 'Live settings from Firebase'
+                : rc.status === 'cached'
+                  ? 'Last settings fetched from Firebase'
+                  : 'Built-in defaults'
+            }
+            body={`Cloud model ${rc.string('cloud_model')} · new apps designed ${
+              rc.string('build_mode') === 'prefer_on_device' ? 'on-device first' : 'in the cloud first'
+            } · voice input ${rc.bool('voice_input') ? 'on' : 'off'} · sharing ${rc.bool('sharing') ? 'on' : 'off'}.`}
+            theme={theme}
+          />
         </Card>
 
         <UpdatesCard theme={theme} />

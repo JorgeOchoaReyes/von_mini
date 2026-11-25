@@ -28,5 +28,9 @@ dependencies {
   // App Check is required by Firebase AI Logic. Debug tokens are accepted for the hackathon.
   implementation 'com.google.firebase:firebase-appcheck:20.1.0'
   implementation 'com.google.firebase:firebase-appcheck-debug:20.1.0'
+  // Remote Config: model, routing and feature flags tunable from the Firebase console.
+  implementation 'com.google.firebase:firebase-config:22.1.2'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+  // Task.await() for the Remote Config calls.
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
 }

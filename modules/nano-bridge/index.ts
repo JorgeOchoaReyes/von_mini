@@ -21,6 +21,8 @@ declare class NanoBridgeModule extends NativeModule<NanoBridgeEvents> {
   getModelName(cloudModel: string, deviceModel: DeviceModel): Promise<string>;
   download(cloudModel: string, deviceModel: DeviceModel): Promise<string>;
   warmUp(cloudModel: string, deviceModel: DeviceModel): Promise<boolean>;
+  /** Firebase Remote Config: sets defaults, fetches (throttled) and activates, returns all values. */
+  remoteConfig(defaults: Record<string, string>): Promise<{ values: Record<string, string>; fetched: boolean }>;
   generate(
     prompt: string,
     cloudModel: string,

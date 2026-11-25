@@ -1,10 +1,9 @@
 // Web engine: Firebase AI Logic JS SDK with hybrid inference.
 // On-device requests run on Chrome's built-in Gemini Nano; cloud requests go to Gemini.
-import { getApps, initializeApp } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource, type GenerativeModel } from 'firebase/ai';
 
-import { appCheckDebugToken, cloudModel, firebaseWebConfig, onDeviceOnly, recaptchaSiteKey } from '../config';
+import { firebaseApp } from '../firebase/app';
+import { rcString } from '../remote/remoteConfig';
 import type { AIEngine, DeviceStatus, GenerateOptions, InferenceSource as Source } from './types';
 
 /** Chrome's built-in Prompt API global (only present in supported desktop Chrome). */
@@ -19,30 +18,15 @@ const languageModel = (): LanguageModelGlobal | undefined =>
 
 let ai: ReturnType<typeof getAI> | undefined;
 function firebaseAI() {
-  if (ai) return ai;
-  if (!firebaseWebConfig.apiKey) {
-    throw new Error('Firebase is not configured. Copy .env.example to .env.local and fill it in (see README).');
-  }
-  const app = getApps()[0] ?? initializeApp(firebaseWebConfig);
-  if (appCheckDebugToken) {
-    (globalThis as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string }).FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken;
-  }
-  if (recaptchaSiteKey) {
-    initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-      isTokenAutoRefreshEnabled: true,
-    });
-  } else if (!onDeviceOnly) {
-    // On-device-only (offline) mode never calls the cloud, so App Check is not needed there.
-    console.warn('App Check is not initialized: set EXPO_PUBLIC_RECAPTCHA_SITE_KEY.');
-  }
-  ai = getAI(app, { backend: new GoogleAIBackend() });
+  ai ??= getAI(firebaseApp(), { backend: new GoogleAIBackend() });
   return ai;
 }
 
 const models = new Map<string, GenerativeModel>();
 function model({ mode, system, json, schema }: GenerateOptions) {
-  const key = JSON.stringify([mode, system ?? '', !!json, schema ?? null]);
+  // The cloud model comes from Remote Config, so it can be switched without shipping a build.
+  const cloudModel = rcString('cloud_model');
+  const key = JSON.stringify([cloudModel, mode, system ?? '', !!json, schema ?? null]);
   let m = models.get(key);
   if (!m) {
     m = getGenerativeModel(firebaseAI(), {

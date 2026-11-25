@@ -1,11 +1,18 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { useEffect } from 'react';
+
 import { AIProvider } from '../ai/AIContext';
+import { loadRemoteConfig } from '../remote/remoteConfig';
 import { useTheme } from '../ui/theme';
 
 export default function RootLayout() {
   const theme = useTheme();
+  // Activate Remote Config values once per launch; bundled defaults apply until (or unless) it does.
+  useEffect(() => {
+    void loadRemoteConfig();
+  }, []);
   return (
     <AIProvider>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />

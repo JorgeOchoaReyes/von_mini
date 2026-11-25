@@ -2,13 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAI } from '../ai/AIContext';
+import { useRemoteConfig } from '../remote/remoteConfig';
 import { listen, sttSupport } from './stt';
 import type { Listening, SttSupport } from './types';
 
 let cached: Promise<SttSupport> | null = null;
 
-/** Whether speech recognition exists here and whether it can run on the device. */
+/**
+ * Whether speech recognition exists here and whether it can run on the device. Remote Config's
+ * `voice_input` flag can switch it off everywhere (typing and spoken replies still work).
+ */
 export function useSttSupport(): SttSupport | null {
+  const rc = useRemoteConfig();
   const [s, setS] = useState<SttSupport | null>(null);
   useEffect(() => {
     let alive = true;
@@ -18,6 +23,7 @@ export function useSttSupport(): SttSupport | null {
       alive = false;
     };
   }, []);
+  if (s && !rc.bool('voice_input')) return { available: false, onDevice: false };
   return s;
 }
 
