@@ -6,6 +6,9 @@ const KIND: Record<SpecComponent['type'], string> = {
   input: 'field',
   choice: 'choice',
   ai: 'AI button',
+  stat: 'stat',
+  chart: 'chart',
+  checklist: 'checklist',
   voice: 'voice chat',
   reminder: 'reminder',
   save: 'save button',
@@ -43,6 +46,11 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     }
     if (JSON.stringify(old.options) !== JSON.stringify(c.options) && c.options) {
       out.push(`Updated the options for “${nameOf(c)}”.`);
+    }
+    if (old.kind !== c.kind && c.type === 'input') out.push(`Made “${nameOf(c)}” a ${c.kind ?? 'text'} field.`);
+    if (old.fills !== c.fills && c.fills) out.push(`“${nameOf(c)}” now fills in a field.`);
+    if ((c.type === 'stat' || c.type === 'chart') && (old.field !== c.field || old.op !== c.op || old.range !== c.range || old.unit !== c.unit)) {
+      out.push(`Changed what “${nameOf(c)}” counts.`);
     }
     if (!!old.multiline !== !!c.multiline) out.push(`Made “${nameOf(c)}” ${c.multiline ? 'multi-line' : 'single-line'}.`);
   }

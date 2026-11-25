@@ -41,12 +41,15 @@ export function transcriptText(turns: Turn[]) {
 export function VoiceChat({
   c,
   values,
+  fill,
   theme,
   onTranscript,
 }: {
   c: SpecComponent;
   /** The app's other field values, used to fill {field} placeholders in the persona. */
   values: Record<string, string>;
+  /** Fills the persona with fields plus saved entries ({entries}, {today_entries}, {today}). */
+  fill?(template: string): string;
   theme: Theme;
   onTranscript(text: string): void;
 }) {
@@ -89,7 +92,7 @@ export function VoiceChat({
     [],
   );
 
-  const persona = fillTemplate(c.prompt ?? '', values);
+  const persona = fill ? fill(c.prompt ?? '') : fillTemplate(c.prompt ?? '', values);
 
   /** Runs the model for the latest user turn, speaking as it streams. */
   const respond = useCallback(

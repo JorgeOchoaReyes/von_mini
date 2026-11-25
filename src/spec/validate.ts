@@ -51,12 +51,28 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.text = text;
         break;
       }
-      case 'input':
+      case 'input': {
         out.id = uniqueId(str(comp.id) ?? label ?? 'input');
         out.label = label ?? 'Text';
         out.placeholder = str(comp.placeholder, 120);
-        out.multiline = comp.multiline === true;
+        const kind = comp.kind as SpecComponent['kind'];
+        if (kind && ['number', 'yesno', 'rating', 'date'].includes(kind)) out.kind = kind;
+        out.multiline = !out.kind && comp.multiline === true;
+        if (out.kind === 'number') out.unit = str(comp.unit, 16) || undefined;
         break;
+      }
+      case 'checklist': {
+        // Ticked items are saved as "a, b", so an item can't contain the separator.
+        const items = (Array.isArray(comp.options) ? comp.options : [])
+          .map((o) => str(o, 40)?.replace(/,/g, ' '))
+          .filter((o): o is string => !!o)
+          .slice(0, 12);
+        if (items.length < 1) continue;
+        out.id = uniqueId(str(comp.id) ?? label ?? 'checklist');
+        out.label = label ?? 'Today';
+        out.options = [...new Set(items)];
+        break;
+      }
       case 'choice': {
         const options = (Array.isArray(comp.options) ? comp.options : [])
           .map((o) => str(o, 40))
@@ -74,6 +90,9 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.id = uniqueId(str(comp.id) ?? label ?? 'result');
         out.label = label ?? 'Ask AI';
         out.prompt = prompt;
+        // Where the answer goes, and whether it runs by itself on save (checked once ids are known).
+        out.fills = str(comp.fills, 40) ? slug(str(comp.fills, 40)!) : undefined;
+        out.auto = comp.auto === true ? true : undefined;
         break;
       }
       case 'voice': {
@@ -95,17 +114,69 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.times = normalizeTimes(comp.times);
         break;
       }
+      case 'stat': {
+        // A number computed from saved entries; its field is checked once all ids are known.
+        const op = comp.op as SpecComponent['op'];
+        const range = comp.range as SpecComponent['range'];
+        out.id = uniqueId(str(comp.id) ?? label ?? 'stat');
+        out.label = label ?? 'Today';
+        out.field = str(comp.field, 40) ? slug(str(comp.field, 40)!) : undefined;
+        out.op = op && ['sum', 'avg', 'count', 'min', 'max', 'latest', 'streak'].includes(op) ? op : 'sum';
+        out.range = range && ['today', 'week', 'all'].includes(range) ? range : 'today';
+        out.unit = str(comp.unit, 16) || undefined;
+        break;
+      }
+      case 'chart': {
+        // Bars per day for the last N days.
+        const op = comp.op as SpecComponent['op'];
+        out.id = uniqueId(str(comp.id) ?? label ?? 'chart');
+        out.label = label ?? 'Last 7 days';
+        out.field = str(comp.field, 40) ? slug(str(comp.field, 40)!) : undefined;
+        out.op = op && ['sum', 'avg', 'count', 'max', 'min'].includes(op) ? op : 'sum';
+        out.days = Math.min(31, Math.max(7, Math.round(Number(comp.days) || 7)));
+        out.unit = str(comp.unit, 16) || undefined;
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
         out.label = label ?? (type === 'save' ? 'Save' : 'History');
+        if (type === 'history') {
+          if (comp.groupBy === 'day') out.groupBy = 'day';
+          out.total = str(comp.total, 40) ? slug(str(comp.total, 40)!) : undefined;
+        }
         break;
     }
     components.push(out);
   }
 
-  // A voice conversation collects input too, so an app can be voice-only.
-  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice')) {
+  // A stat must read a field that exists and gets saved (input, choice or AI result); a count may
+  // count entries without one. Anything else would show a number that can never change.
+  const savedIds = new Set(
+    components
+      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice')
+      .map((c) => c.id),
+  );
+  // An AI can only fill a field the user could also type into.
+  const fillable = new Set(components.filter((c) => c.type === 'input' || c.type === 'choice').map((c) => c.id));
+  for (let i = components.length - 1; i >= 0; i--) {
+    const c = components[i];
+    if (c.type === 'ai') {
+      if (c.fills && !fillable.has(c.fills)) c.fills = undefined;
+      continue;
+    }
+    if (c.type === 'history') {
+      if (c.total && !savedIds.has(c.total)) c.total = undefined;
+      continue;
+    }
+    if (c.type !== 'stat' && c.type !== 'chart') continue;
+    if (c.field && !savedIds.has(c.field)) c.field = undefined;
+    // A count or streak can work on entries alone; everything else needs a field to read.
+    if (!c.field && c.op !== 'count' && c.op !== 'streak') components.splice(i, 1);
+  }
+
+  // A voice conversation or a checklist collects input too, so an app can be built from those alone.
+  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist')) {
     throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   if (!components.some((c) => c.type === 'save')) components.push({ type: 'save', label: 'Save' });
@@ -146,8 +217,12 @@ export function normalizeTimes(raw: unknown): string[] {
 const RANK: Record<SpecComponent['type'], number> = {
   heading: 0,
   text: 0,
+  // Totals sit at the top, like a dashboard, above the form that feeds them.
+  stat: 0.5,
+  chart: 0.5,
   input: 1,
   choice: 1,
+  checklist: 1,
   ai: 2,
   voice: 2,
   reminder: 3,
