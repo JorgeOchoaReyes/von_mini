@@ -27,12 +27,14 @@ import {
   htmlPrompt,
   specPrompt,
 } from './prompts';
-import type { GenerateResult, InferenceMode, InferenceSource } from './types';
+import type { DeviceStatus, GenerateResult, InferenceMode, InferenceSource } from './types';
 
 export interface RouteContext {
   online: boolean;
   /** User toggle: never send anything to the cloud. */
   privateMode: boolean;
+  /** Whether Gemini Nano can run here right now. Unknown (undefined) keeps the default routing. */
+  deviceStatus?: DeviceStatus;
 }
 
 /** True when every request must stay on the device (offline, private mode, or an offline build). */
@@ -40,6 +42,10 @@ export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.p
 
 export function modeFor(task: 'build' | 'edit' | 'action', ctx: RouteContext): InferenceMode {
   if (local(ctx)) return 'only_on_device';
+  // No usable on-device model: go straight to the cloud. A PREFER_* mode would let the SDK fall
+  // back to an on-device path that can't run here, which stalls instead of reporting the real
+  // cloud error (seen on a phone without AICore: no request ever reached Firebase).
+  if (ctx.deviceStatus && ctx.deviceStatus !== 'available') return 'only_in_cloud';
   if (task !== 'build') return 'prefer_on_device';
   // Remote Config can move app design on-device (e.g. to cut cloud cost) without a release.
   return rcString('build_mode') === 'prefer_on_device' ? 'prefer_on_device' : 'prefer_in_cloud';
@@ -165,6 +171,24 @@ export function isCloudUnavailable(e: unknown): boolean {
   );
 }
 
+/**
+ * Turns the usual Firebase setup failures into something a person can act on. The original error
+ * is kept at the end, so nothing is hidden.
+ */
+export function explainCloudError(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  const hint = /android client application|API_KEY_ANDROID_APP_BLOCKED|blocked/i.test(msg)
+    ? 'Firebase blocked this app’s requests. Add this build’s SHA-1 fingerprint to the Android app in Firebase project settings (for EAS builds, `eas credentials` shows it), or loosen the API key’s Android restriction.'
+    : /API key not valid|API_KEY_INVALID/i.test(msg)
+      ? 'Firebase rejected the API key. Check google-services.json / the EXPO_PUBLIC_FIREBASE_* values for this build.'
+      : /SERVICE_DISABLED|has not been used|not been enabled|is disabled/i.test(msg)
+        ? 'Firebase AI Logic isn’t enabled for this project yet. Open AI Logic in the Firebase console and click Get started.'
+        : /app ?check/i.test(msg)
+          ? 'App Check rejected this app. Register its debug token in Firebase > App Check, or turn off enforcement.'
+          : null;
+  return new Error(hint ? `${hint} (${msg.slice(0, 200)})` : msg);
+}
+
 async function generateSpecProgressive(
   prompt: string,
   mode: InferenceMode,
@@ -188,7 +212,7 @@ async function generateSpecProgressive(
           : 'Gemini in the cloud is busy right now, and this device has no on-device model to fall back to. Try again in a minute.',
       );
     }
-    throw e;
+    throw explainCloudError(e);
   }
 }
 
