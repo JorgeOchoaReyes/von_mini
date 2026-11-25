@@ -8,6 +8,7 @@ import { stoppable, StoppedError } from '../../ai/stoppable';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { AddShared } from '../../share/AddShared';
+import { OfflineBadge } from '../../ui/OfflineBadge';
 import { ARCADE_IDS, STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
@@ -39,6 +40,7 @@ type Shelf = 'mine' | 'ready' | 'arcade';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
+  { label: 'Just chat', icon: 'chatbubbles-outline', prompt: 'A chat app where I can talk or type to an AI about anything' },
   { label: 'Arcade game', icon: 'game-controller-outline', prompt: 'A space shooter game where a cat ship fights fish invaders' },
   { label: 'Mood journal', icon: 'happy-outline', prompt: 'A journal that tags my mood' },
   { label: 'Habit tracker', icon: 'repeat', prompt: 'A habit tracker that reflects on my week' },
@@ -97,7 +99,10 @@ const AppTile = memo(function AppTile({
             {app.spec.description || app.request}
           </Text>
         </View>
-        <SourceBadge source={app.builtWith} />
+        <View style={styles.badges}>
+          <SourceBadge source={app.builtWith} />
+          <OfflineBadge spec={app.spec} html={!!app.html} />
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -386,6 +391,14 @@ export default function Home() {
               { value: 'arcade', label: `Arcade · ${arcade.length}`, icon: 'game-controller-outline' },
             ]}
           />
+          {shelf === 'arcade' && (
+            <View style={styles.row}>
+              <Icon name="airplane-outline" size={16} color={theme.success} />
+              <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>
+                Every game works offline: no AI, no internet. Scores stay on this phone.
+              </Text>
+            </View>
+          )}
           {shown.length === 0 ? (
             <EmptyState
               icon="sparkles-outline"
@@ -443,4 +456,5 @@ const styles = StyleSheet.create({
   },
   tileIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   tileEmoji: { fontSize: 26 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2), alignItems: 'center' },
 });

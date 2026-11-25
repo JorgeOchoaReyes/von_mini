@@ -29,6 +29,7 @@ import { APP_AI_MODES, AppAiModeProvider, type AppAiMode } from '../../ai/appMod
 import { appModeProblem, buildCustomHtml } from '../../ai/hybrid';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { ShareSheet } from '../../share/ShareSheet';
+import { OfflineBadge } from '../../ui/OfflineBadge';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
 import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
@@ -292,6 +293,7 @@ export default function AppScreen() {
             <View style={[styles.row, { flexWrap: 'wrap' }]}>
               <SourceBadge source={app.builtWith} />
               <Text style={[type.caption, { color: appTheme.subtle }]}>{app.spec.components.length} blocks</Text>
+              <OfflineBadge spec={app.spec} html={!!app.html} />
             </View>
           </View>
         </View>
