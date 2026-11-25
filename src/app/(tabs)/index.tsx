@@ -7,6 +7,7 @@ import { useAI } from '../../ai/AIContext';
 import { stoppable, StoppedError } from '../../ai/stoppable';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
+import { AddShared } from '../../share/AddShared';
 import { ARCADE_IDS, STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
@@ -204,6 +205,7 @@ export default function Home() {
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
   const deleteFromHome = useCallback((app: SavedApp) => confirmDeleteApp(app, () => void listApps().then(setApps)), []);
   const schemePref = useSchemePref();
+  const [adding, setAdding] = useState(false);
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
   const ready = apps.filter((a) => isStarter(a) && !ARCADE_IDS.has(a.id));
@@ -241,6 +243,7 @@ export default function Home() {
             <Text style={[type.title, { color: theme.text }]}>von mini</Text>
           </View>
           <View style={{ flex: 1 }} />
+          <IconButton icon="qr-code-outline" label="Add a shared app" theme={theme} color={theme.text} onPress={() => setAdding(true)} />
           {/* One tap cycles the look: follow the system, light (paper), dark (night comic). */}
           <IconButton
             icon={schemePref === 'system' ? 'contrast-outline' : schemePref === 'light' ? 'sunny-outline' : 'moon-outline'}
@@ -401,6 +404,7 @@ export default function Home() {
           )}
         </View>
       </ScrollView>
+      <AddShared visible={adding} onClose={() => setAdding(false)} theme={theme} />
     </>
   );
 }
