@@ -17,6 +17,7 @@ import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, u
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { UpdatesCard } from '../../ui/UpdatesCard';
 import { useSttSupport } from '../../voice/useVoice';
+import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -194,7 +195,7 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: space(4), paddingBottom: space(12), gap: space(4), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  page: { padding: space(4), paddingBottom: MIC_OVERHANG + space(8), gap: space(4), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space(3) },
   rowIcon: { width: 34, height: 34, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   status: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderWidth: stroke, borderRadius: radius.md },

@@ -29,6 +29,7 @@ import { haptics } from '../../ui/haptics';
 import { Halftone } from '../../ui/Halftone';
 import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
 import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
+import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 /** Which shelf of the app gallery is showing. */
 type Shelf = 'mine' | 'ready';
@@ -203,7 +204,7 @@ export default function Home() {
         style={{ backgroundColor: theme.bg }}
         contentContainerStyle={[
           styles.page,
-          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: space(8) },
+          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: MIC_OVERHANG + space(8) },
         ]}
         keyboardShouldPersistTaps="handled"
       >
