@@ -1,0 +1,52 @@
+# Files EAS Build/Update leave out of the upload. Same as .gitignore, except that the
+# google-services.json and .env the GitHub workflow writes from repository secrets ARE uploaded
+# (they are still git-ignored, so they are never committed).
+
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# Firebase project config (project-specific, keep out of the public repo)
+GoogleService-Info.plist
+
+# Gradle output from local native modules
+modules/*/android/build/
+
