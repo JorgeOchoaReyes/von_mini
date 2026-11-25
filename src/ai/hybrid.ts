@@ -359,7 +359,16 @@ async function generateSpecOnce(
       return { spec, source };
     } catch (e) {
       // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
-      if (attempt++ > 0) throw e;
+      if (attempt++ > 0) {
+        // Both streamed answers were broken (seen on very long requests): one last plain request,
+        // kept as usable as possible, before giving up.
+        try {
+          const r = await withDeadline(engine.generate(`${prompt}\n\nReturn valid JSON only, no comments, at most 12 components.`, opts), REQUEST_MS);
+          return { spec: sanitizeSpec(extractJson(r.text), { rescue: true }), source: r.source };
+        } catch {
+          throw e;
+        }
+      }
       onEvent({ type: 'retry' });
     }
   }

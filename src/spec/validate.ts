@@ -24,19 +24,66 @@ export function extractJson(text: string): unknown {
   try {
     return JSON.parse(json);
   } catch (e) {
-    const repaired = json.replace(/[“”]/g, '"').replace(/,\s*([}\]])/g, '$1');
+    const repaired = looseRepair(json);
     try {
       return JSON.parse(repaired);
     } catch {
       // Output cut off mid-way (seen in the cloud: "Unterminated string"): close what's open and
       // keep everything before the break. The validator drops the half-written last block.
       try {
-        return JSON.parse(closeTruncated(body.slice(start)));
+        return JSON.parse(closeTruncated(looseRepair(body.slice(start))));
       } catch {
         throw e;
       }
     }
   }
+}
+
+/**
+ * Fixes slips models make in long JSON, outside strings only: curly quotes, trailing commas,
+ * // and /* comments, unquoted or single-quoted keys.
+ */
+function looseRepair(text: string): string {
+  let out = '';
+  let inString = false;
+  let curly = false; // the open string started with a curly quote
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (curly && ch === '”') {
+        out += '"';
+        inString = curly = false;
+        continue;
+      }
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 1;
+      continue;
+    }
+    if (ch === '“' || ch === '”') {
+      out += '"';
+      inString = curly = true;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    out += ch;
+  }
+  return out
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/([{,]\s*)'([^'"\n]+)'\s*:/g, '$1"$2":')
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
 }
 
 /** Closes an unfinished JSON text: an open string, then open arrays and objects, in order. */
