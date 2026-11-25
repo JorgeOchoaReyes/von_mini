@@ -62,9 +62,9 @@ export const engine: AIEngine = {
     }
   },
 
-  async generate(prompt, { mode, system, json }) {
+  async generate(prompt, { mode, system, json, model }) {
     if (!NanoBridge) throw new Error(missing);
-    return NanoBridge.generate(prompt, rcString('cloud_model'), mode, system ?? null, !!json, getDeviceModel());
+    return NanoBridge.generate(prompt, model ?? rcString('cloud_model'), mode, system ?? null, !!json, getDeviceModel());
   },
 
   async *stream(prompt, options): AsyncIterable<GenerateChunk> {
@@ -88,7 +88,7 @@ export const engine: AIEngine = {
     try {
       // Not awaited: the promise resolves when the native stream is drained, which is signalled
       // by the final event we consume below.
-      NanoBridge.streamGenerate(prompt, rcString('cloud_model'), options.mode, options.system ?? null, !!options.json, getDeviceModel(), id).catch(
+      NanoBridge.streamGenerate(prompt, options.model ?? rcString('cloud_model'), options.mode, options.system ?? null, !!options.json, getDeviceModel(), id).catch(
         (e: unknown) => {
           failure = e instanceof Error ? e.message : String(e);
           finished = true;

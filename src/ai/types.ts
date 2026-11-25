@@ -15,6 +15,8 @@ export interface GenerateOptions {
   json?: boolean;
   /** JSON Schema used to constrain on-device output where supported (web). */
   schema?: object;
+  /** Cloud model for this request; defaults to Remote Config's `cloud_model`. */
+  model?: string;
 }
 
 export interface GenerateResult {

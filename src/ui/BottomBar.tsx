@@ -24,6 +24,9 @@ const TABS: Record<string, { label: string; icon: IconName; iconOn: IconName }> 
   settings: { label: 'Settings', icon: 'settings-outline', iconOn: 'settings' },
 };
 
+/** How far the raised mic rises above the bar. Tab screens pad their content by this much. */
+export const MIC_OVERHANG = 50;
+
 /** Finds an app whose name the user said ("open the mood journal" -> Mood Journal). */
 export function matchApp(said: string, apps: SavedApp[]): SavedApp | undefined {
   const s = said.toLowerCase();
@@ -87,9 +90,19 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
               onPress={() => go(route.key, focused)}
               style={styles.tab}
             >
-              <Icon name={focused ? meta.iconOn : meta.icon} size={24} color={focused ? theme.text : theme.subtle} />
-              <Text style={[type.button, { color: focused ? theme.text : theme.subtle, fontSize: 15, lineHeight: 17 }]}>
-                {meta.label}
+              <View style={styles.tabIcon}>
+                <Icon name={focused ? meta.iconOn : meta.icon} size={24} color={focused ? theme.text : theme.subtle} />
+              </View>
+              {/*
+                Centred by stretching across the tab, not by the text's measured width: on Android
+                that width can be measured before the Bangers font loads (and with letter spacing
+                and textTransform applied), which drew the labels off-centre under their icons.
+              */}
+              <Text
+                numberOfLines={1}
+                style={[type.button, styles.tabLabel, { color: focused ? theme.text : theme.subtle }]}
+              >
+                {meta.label.toUpperCase()}
               </Text>
             </Pressable>
           );
@@ -126,7 +139,7 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => (mic.stop(), setOpen(false))}>
         <Pressable style={styles.scrim} onPress={() => (mic.stop(), setOpen(false))}>
           <FadeUp style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: insets.bottom + 96 }]}>
-            <Text style={[type.overline, { color: theme.accent }]}>{listening ? 'Listening…' : 'Didn’t catch that'}</Text>
+            <Text style={[type.overline, { color: theme.accent }]}>{listening ? 'LISTENING…' : 'DIDN’T CATCH THAT'}</Text>
             <Text style={[type.title, { color: partial ? theme.text : theme.subtle }]}>
               {mic.error ?? (partial || (listening ? 'Say “open Mood Journal”, or describe a new app.' : 'Tap the mic and try again.'))}
             </Text>
@@ -152,6 +165,15 @@ const styles = StyleSheet.create({
   },
   pair: { flex: 2, flexDirection: 'row', alignItems: 'flex-end' },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 52 },
+  tabIcon: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  tabLabel: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: 0.6,
+    includeFontPadding: false,
+  },
   center: { flex: 1, alignItems: 'center' },
   // Raised above the bar: the button's top half sits over the content, ringed in the bar colour.
   micStage: { width: 88, height: 88, marginTop: -50, alignItems: 'center', justifyContent: 'center' },

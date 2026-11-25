@@ -117,6 +117,14 @@ export async function cancelRemindersForApp(appId: string): Promise<void> {
  */
 export async function notifyIfInBackground(content: { title: string; body: string; url: string }) {
   if (AppState.currentState === 'active') return;
+  await notify(content);
+}
+
+/**
+ * Shows a notification right away, in the foreground too (the handler shows a banner). Used for
+ * failures, which are easy to miss: a build can fail while the user is looking elsewhere on screen.
+ */
+export async function notify(content: { title: string; body: string; url: string }) {
   try {
     const perm = await Notifications.getPermissionsAsync();
     if (!perm.granted) return;

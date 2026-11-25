@@ -4,8 +4,9 @@ import { Animated, Image, Platform, Pressable, ScrollView, StyleSheet, Text, use
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
+import { stoppable, StoppedError } from '../../ai/stoppable';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
-import { ensureAlertPermission, notifyIfInBackground } from '../../alerts/notifications';
+import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
@@ -25,10 +26,12 @@ import {
   StepList,
   type IconName,
 } from '../../ui/components';
+import { confirmDeleteApp } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
 import { Halftone } from '../../ui/Halftone';
 import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
 import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
+import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 /** Which shelf of the app gallery is showing. */
 type Shelf = 'mine' | 'ready';
@@ -46,7 +49,16 @@ const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
 ];
 
 /** One app in the gallery. Memoized so typing in the prompt box never re-renders the grid. */
-const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(id: string): void }) {
+const AppTile = memo(function AppTile({
+  app,
+  onOpen,
+  onLongPress,
+}: {
+  app: SavedApp;
+  onOpen(id: string): void;
+  /** Long-press: delete (or reset a changed ready-made app). */
+  onLongPress(app: SavedApp): void;
+}) {
   const theme = useTheme(app.spec.accent);
   const color = ACCENT_COLORS[app.spec.accent][theme.scheme];
   const spring = usePressScale(0.965);
@@ -58,6 +70,11 @@ const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(i
         haptics.tap();
         onOpen(app.id);
       }}
+      onLongPress={() => {
+        haptics.medium();
+        onLongPress(app);
+      }}
+      accessibilityHint="Long-press to delete"
       {...spring.handlers}
     >
       <Animated.View
@@ -101,6 +118,8 @@ export default function Home() {
   const [retrying, setRetrying] = useState(false);
   const [building, setBuilding] = useState<string | null>(null);
   const builtRef = useRef(false);
+  /** Stops the build in flight (its late result is discarded). */
+  const stopBuild = useRef<(() => void) | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -141,8 +160,10 @@ export default function Home() {
     builtRef.current = false;
     // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
     void ensureAlertPermission().catch(() => false);
+    const run = stoppable(buildAppProgressive(value, ai, onEvent));
+    stopBuild.current = run.stop;
     try {
-      const { spec, source } = await buildAppProgressive(value, ai, onEvent);
+      const { spec, source } = await run.promise;
       const app: SavedApp = {
         id: newId(),
         request: value,
@@ -163,11 +184,15 @@ export default function Home() {
       });
       router.push({ pathname: '/app/[id]', params: { id: app.id } });
     } catch (e) {
+      // Stopped by the user: back to the prompt, which still holds what they typed.
+      if (e instanceof StoppedError) return;
       haptics.error();
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      void notifyIfInBackground({ title: 'Couldn’t build your app', body: message.slice(0, 140), url: '/' });
+      // Always notify on failure, even with the app open: the build may have been left running.
+      void notify({ title: 'Couldn’t build your app', body: message.slice(0, 180), url: '/' });
     } finally {
+      stopBuild.current = null;
       setBuilding(null);
       setSteps([]);
       setPeek(null);
@@ -176,6 +201,7 @@ export default function Home() {
   };
 
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
+  const deleteFromHome = useCallback((app: SavedApp) => confirmDeleteApp(app, () => void listApps().then(setApps)), []);
   const schemePref = useSchemePref();
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
@@ -203,7 +229,7 @@ export default function Home() {
         style={{ backgroundColor: theme.bg }}
         contentContainerStyle={[
           styles.page,
-          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: space(8) },
+          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: MIC_OVERHANG + space(8) },
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -251,6 +277,7 @@ export default function Home() {
               placeholder="A journal that tags my mood…"
               theme={theme}
               busy={!!building}
+              onStop={() => stopBuild.current?.()}
               minHeight={64}
               sendLabel="Build app"
               accessory={
@@ -295,6 +322,7 @@ export default function Home() {
                   Building “{building}”
                 </Text>
                 {retrying && <Text style={[type.caption, { color: theme.warning }]}>retrying…</Text>}
+                <Button label="Stop" icon="stop" size="sm" variant="secondary" theme={theme} onPress={() => stopBuild.current?.()} />
               </View>
 
               <View style={styles.buildBody}>
@@ -340,24 +368,6 @@ export default function Home() {
           </Card>
         )}
 
-        {mine.length === 0 && !building && (
-          <FadeUp delay={80}>
-            <Card theme={theme} tinted style={{ gap: space(3) }}>
-              <Text style={[type.label, { color: theme.text }]}>Private by default</Text>
-              {[
-                ['lock-closed-outline', 'Everything you type is processed on this device by Gemini Nano.'],
-                ['cloud-offline-outline', 'Apps you build keep working in airplane mode.'],
-                ['pricetag-outline', 'On-device inference costs nothing, so your apps are free to run.'],
-              ].map(([icon, text]) => (
-                <View key={text} style={styles.row}>
-                  <Icon name={icon as IconName} size={16} color={theme.text} />
-                  <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{text}</Text>
-                </View>
-              ))}
-            </Card>
-          </FadeUp>
-        )}
-
         {/* Two shelves: the apps you made, and the ones that ship with von mini. All stored on
             this device. */}
         <View style={{ gap: space(4) }}>
@@ -381,7 +391,7 @@ export default function Home() {
             <View style={styles.grid}>
               {shown.map((app, i) => (
                 <FadeUp key={`${shelf}:${app.id}`} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
-                  <AppTile app={app} onOpen={openApp} />
+                  <AppTile app={app} onOpen={openApp} onLongPress={deleteFromHome} />
                 </FadeUp>
               ))}
             </View>

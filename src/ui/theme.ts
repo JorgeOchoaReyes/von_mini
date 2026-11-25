@@ -187,9 +187,12 @@ export const type = {
   label: { fontSize: 14, lineHeight: 19, fontWeight: '600' },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
   /** Comic lettering for section labels and badges. */
-  overline: { fontSize: 15, lineHeight: 18, fontFamily: DISPLAY_FONT, letterSpacing: 1.2, textTransform: 'uppercase' },
+  // No textTransform on the display-font tokens: Android measures text before the transform (and
+  // sometimes before the font loads), which clipped labels like "CHECK FOR [UPDATES]". Callers pass
+  // already-uppercased strings instead.
+  overline: { fontSize: 15, lineHeight: 18, fontFamily: DISPLAY_FONT, letterSpacing: 1.2 },
   /** Comic lettering for buttons and tabs. */
-  button: { fontSize: 19, lineHeight: 22, fontFamily: DISPLAY_FONT, letterSpacing: 1, textTransform: 'uppercase' },
+  button: { fontSize: 19, lineHeight: 22, fontFamily: DISPLAY_FONT, letterSpacing: 1 },
   mono: { fontSize: 12, lineHeight: 17, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
 } satisfies Record<string, TextStyle>;
 

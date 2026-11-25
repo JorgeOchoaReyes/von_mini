@@ -157,7 +157,9 @@ jobs:
         id: artifact
         run: |
           url=$(jq -r '.[0].artifacts.buildUrl' build.json)
-          page="https://expo.dev/accounts/$(jq -r '.[0].project.ownerAccount.name' build.json)/projects/$(jq -r '.[0].project.slug' build.json)/builds/$(jq -r '.[0].id' build.json)"
+          # Field names follow eas-cli's BuildFragment: the project is `app`, the runtime is `runtime.version`.
+          page="https://expo.dev/accounts/$(jq -r '.[0].app.ownerAccount.name' build.json)/projects/$(jq -r '.[0].app.slug' build.json)/builds/$(jq -r '.[0].id' build.json)"
+          runtime=$(jq -r '.[0].runtime.version // .[0].fingerprint.hash // "unknown"' build.json)
           ext=$([ "$PROFILE" = "production" ] && echo aab || echo apk)
           # Tag builds keep one fixed file name, so ".../releases/latest/download/von-mini.apk" is
           # a permanent link to the newest APK.
@@ -166,14 +168,14 @@ jobs:
           {
             echo "file=$file"
             echo "page=$page"
-            echo "runtime=$(jq -r '.[0].runtimeVersion // "unknown"' build.json)"
+            echo "runtime=$runtime"
           } >> "$GITHUB_OUTPUT"
           {
             echo "### Android build ($PROFILE)"
             echo ""
             echo "- Install page (QR code): $page"
             echo "- Direct download: $url"
-            echo "- Runtime version: $(jq -r '.[0].runtimeVersion // "unknown"' build.json)"
+            echo "- Runtime version: $runtime"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4

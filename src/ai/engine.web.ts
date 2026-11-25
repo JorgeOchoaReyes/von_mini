@@ -23,9 +23,9 @@ function firebaseAI() {
 }
 
 const models = new Map<string, GenerativeModel>();
-function model({ mode, system, json, schema }: GenerateOptions) {
+function model({ mode, system, json, schema, model: modelName }: GenerateOptions) {
   // The cloud model comes from Remote Config, so it can be switched without shipping a build.
-  const cloudModel = rcString('cloud_model');
+  const cloudModel = modelName ?? rcString('cloud_model');
   const key = JSON.stringify([cloudModel, mode, system ?? '', !!json, schema ?? null]);
   let m = models.get(key);
   if (!m) {

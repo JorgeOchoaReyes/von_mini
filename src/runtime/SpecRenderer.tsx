@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useAI } from '../ai/AIContext';
+import { useAppAI } from '../ai/appMode';
 import { runAction } from '../ai/hybrid';
 import type { InferenceSource } from '../ai/types';
 import { componentKey } from '../spec/edit';
@@ -130,7 +130,7 @@ const HistoryList = memo(function HistoryList({
                 {expanded &&
                   rest.map((k) => (
                     <View key={k} style={{ gap: 2 }}>
-                      <Text style={[type.overline, { color: theme.subtle }]}>{labels[k] ?? k}</Text>
+                      <Text style={[type.overline, { color: theme.subtle }]}>{(labels[k] ?? k).toUpperCase()}</Text>
                       <RichText text={e.values[k]} theme={theme} />
                     </View>
                   ))}
@@ -166,7 +166,7 @@ export function SpecRenderer({
   onSelect?(key: string | null): void;
 }) {
   const theme = useTheme(spec.accent);
-  const ai = useAI();
+  const ai = useAppAI();
   const [values, setValues] = useState<Record<string, string>>({});
   const [sources, setSources] = useState<Record<string, InferenceSource>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -394,7 +394,7 @@ export function SpecRenderer({
             />
             {(loading || result) && (
               <View style={[styles.result, { backgroundColor: theme.accentSoft, borderLeftColor: theme.accent }]}>
-                <Text style={[type.overline, { color: theme.accent }]}>{c.label}</Text>
+                <Text style={[type.overline, { color: theme.accent }]}>{c.label?.toUpperCase()}</Text>
                 {loading ? (
                   <View style={styles.row}>
                     <ActivityIndicator size="small" color={theme.accent} />

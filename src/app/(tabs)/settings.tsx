@@ -15,8 +15,10 @@ import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../.
 import { ProgressBar } from '../../ui/motion';
 import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme, type SchemePref } from '../../ui/theme';
 import { useRemoteConfig } from '../../remote/remoteConfig';
+import { CloudCheck } from '../../ui/CloudCheck';
 import { UpdatesCard } from '../../ui/UpdatesCard';
 import { useSttSupport } from '../../voice/useVoice';
+import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -70,7 +72,7 @@ export default function Settings() {
         <Text style={[type.display, { color: theme.text }]}>Settings</Text>
 
         <Card theme={theme} style={{ gap: space(3) }}>
-          <Text style={[type.overline, { color: theme.text }]}>Appearance</Text>
+          <Text style={[type.overline, { color: theme.text }]}>APPEARANCE</Text>
           <Segmented<SchemePref>
             theme={theme}
             value={schemePref}
@@ -106,11 +108,18 @@ export default function Settings() {
 
         <Card theme={theme} style={{ gap: space(4) }}>
           <Text style={[type.headline, { color: theme.text }]}>How inference is routed</Text>
-          {[
-            ['phone-portrait-outline', 'Your apps’ AI runs on this device', 'Tagging a mood, rewriting a message, summarizing notes — all on Gemini Nano, offline and free.'],
-            ['git-compare-outline', 'Building a new app prefers the cloud', 'A bigger model designs the screen, then the app itself runs on-device.'],
-            ['cloud-offline-outline', 'Everything still works offline', 'If the cloud is unreachable, or private mode is on, building falls back to Gemini Nano.'],
-          ].map(([icon, title, body]) => (
+          {/* Describe what actually happens on this device, not the best case. */}
+          {(onDevice
+            ? [
+                ['phone-portrait-outline', 'Your apps’ AI runs on this device', 'Tagging a mood, rewriting a message, summarizing notes — all on Gemini Nano, offline and free.'],
+                ['git-compare-outline', 'Building a new app prefers the cloud', 'A bigger model designs the screen, then the app itself runs on-device.'],
+                ['cloud-offline-outline', 'Everything still works offline', 'If the cloud is unreachable, or private mode is on, building falls back to Gemini Nano.'],
+              ]
+            : [
+                ['cloud-outline', 'AI runs in the cloud on this device', 'This device has no Gemini Nano, so building apps and your apps’ AI features use Gemini through Firebase AI Logic.'],
+                ['phone-portrait-outline', 'On a phone with Gemini Nano', 'The same apps run their AI on-device, offline and free, and the cloud is only used to design new apps.'],
+              ]
+          ).map(([icon, title, body]) => (
             <Row key={title} icon={icon as IconName} title={title} body={body} theme={theme} />
           ))}
         </Card>
@@ -157,16 +166,36 @@ export default function Settings() {
           <Row
             icon="volume-high-outline"
             title="Replies are spoken by the device's own voice"
-            body="Speech is generated locally, a sentence at a time while Gemini Nano is still writing."
+            body="Speech is generated locally, a sentence at a time while the AI is still writing its reply."
             theme={theme}
           />
         </Card>
 
         <Card theme={theme} style={{ gap: space(3) }}>
           <Text style={[type.headline, { color: theme.text }]}>Your data</Text>
-          <Row icon="save-outline" title="Apps and entries stay on this device" body="Stored locally. Nothing is uploaded, and there is no account." theme={theme} />
-          <Row icon="eye-off-outline" title="Private mode blocks the cloud entirely" body="Turn it on to make every request on-device only." theme={theme} />
-          <Row icon="pricetag-outline" title="No paid services" body="On-device inference costs nothing, so the app has no usage limits." theme={theme} />
+          <Row
+            icon="save-outline"
+            title="Apps and entries are saved on this device"
+            body={
+              onDevice
+                ? 'Stored locally, with no account. AI runs on Gemini Nano, so what you type stays here.'
+                : 'Stored locally, with no account. AI requests (what you type into an AI feature) go to Gemini through Firebase.'
+            }
+            theme={theme}
+          />
+          <Row
+            icon="eye-off-outline"
+            title="Private mode blocks the cloud entirely"
+            body={
+              onDevice
+                ? 'Turn it on to make every request on-device only.'
+                : 'Every request then runs on-device only, so AI features need a device with Gemini Nano.'
+            }
+            theme={theme}
+          />
+          {onDevice && (
+            <Row icon="pricetag-outline" title="No paid services" body="On-device inference costs nothing, so the app has no usage limits." theme={theme} />
+          )}
         </Card>
 
         <Card theme={theme} style={{ gap: space(3) }}>
@@ -187,6 +216,8 @@ export default function Settings() {
           />
         </Card>
 
+        <CloudCheck theme={theme} />
+
         <UpdatesCard theme={theme} />
       </ScrollView>
     </>
@@ -194,7 +225,7 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: space(4), paddingBottom: space(12), gap: space(4), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  page: { padding: space(4), paddingBottom: MIC_OVERHANG + space(8), gap: space(4), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space(3) },
   rowIcon: { width: 34, height: 34, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   status: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderWidth: stroke, borderRadius: radius.md },

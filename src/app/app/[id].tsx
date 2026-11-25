@@ -14,7 +14,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -27,8 +26,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
-import { buildCustomHtml } from '../../ai/hybrid';
-import { cancelRemindersForApp } from '../../alerts/notifications';
+import { APP_AI_MODES, AppAiModeProvider, type AppAiMode } from '../../ai/appMode';
+import { appModeProblem, buildCustomHtml } from '../../ai/hybrid';
 import { firebaseConfigured } from '../../firebase/app';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { publishApp } from '../../share/share';
@@ -41,9 +40,11 @@ import { SpecRenderer } from '../../runtime/SpecRenderer';
 import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
-import { deleteApp, getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
+import { getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
 import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
+import { canDelete, confirmDeleteApp, isChangedStarter } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
+import { useKeyboardInset } from '../../ui/useKeyboardInset';
 import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
 
@@ -53,6 +54,7 @@ type Tab = 'preview' | 'chat' | 'history' | 'custom';
 const COMMIT_MS = 700;
 
 export default function AppScreen() {
+  const { ref: keyboardRef, inset: keyboardInset } = useKeyboardInset();
   const { id } = useLocalSearchParams<{ id: string }>();
   const ai = useAI();
   const theme = useTheme();
@@ -226,22 +228,21 @@ export default function AppScreen() {
     }
   };
 
+  /** Saves this app's AI location without touching its design or version history. */
+  const setAppMode = async (mode: AppAiMode) => {
+    const current = appRef.current;
+    if (!current || (current.aiMode ?? 'auto') === mode) return;
+    const latest = (await getApp(current.id)) ?? current;
+    const next = { ...latest, aiMode: mode };
+    await saveApp(next);
+    setApp((a) => (a ? { ...a, aiMode: mode } : a));
+    appRef.current = appRef.current ? { ...appRef.current, aiMode: mode } : null;
+  };
+
   const remove = () => {
     if (!app) return;
-    const go = async () => {
-      await cancelRemindersForApp(app.id);
-      await deleteApp(app.id);
-      router.back();
-    };
     setActionsOpen(false);
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Delete ${app.spec.name} and its saved data?`)) void go();
-    } else {
-      Alert.alert('Delete app?', `${app.spec.name} and its saved data will be removed from this device.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void go() },
-      ]);
-    }
+    confirmDeleteApp(app, () => router.back());
   };
 
   const editorIndex = useMemo(() => {
@@ -267,6 +268,20 @@ export default function AppScreen() {
   const canCustom = ai.online && !ai.privateMode && !ai.locked;
   const canShare = canCustom;
   const chatBusy = isBusy(app.id);
+
+  const appMode: AppAiMode = app.aiMode ?? 'auto';
+  const modeProblem = appModeProblem({ ...ai, appMode });
+  const modeNote =
+    modeProblem ??
+    (ai.privateMode || ai.locked
+      ? 'Private mode is on, so this app’s AI runs on this device.'
+      : appMode === 'device'
+        ? 'This app’s AI runs on this device with Gemini Nano: private and offline.'
+        : appMode === 'cloud'
+          ? 'This app’s AI runs on Gemini in the cloud: a bigger model, needs a connection.'
+          : ai.deviceStatus === 'available'
+            ? 'Auto: on this device with Gemini Nano, the cloud only if it can’t.'
+            : 'Auto: this device has no Gemini Nano, so the cloud.');
 
   const preview = (
     <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
@@ -326,18 +341,34 @@ export default function AppScreen() {
           </Text>
         </View>
 
+        {/* Where this app's own AI runs, like von mini's Private mode but per app. */}
+        <View style={{ gap: space(2) }}>
+          <Segmented<AppAiMode>
+            theme={appTheme}
+            value={appMode}
+            onChange={(m) => void setAppMode(m)}
+            options={APP_AI_MODES.map((o) => ({
+              ...o,
+              icon: o.value === 'device' ? 'phone-portrait-outline' : o.value === 'cloud' ? 'cloud-outline' : 'git-compare-outline',
+            }))}
+          />
+          <Text style={[type.caption, { color: modeProblem ? appTheme.danger : appTheme.subtle }]}>{modeNote}</Text>
+        </View>
+
         {/* Keyed by app id, not by spec: editing a label must not remount the whole preview. */}
-        <SpecRenderer
-          key={app.id}
-          appId={app.id}
-          spec={app.spec}
-          selectable
-          selectedKey={selected}
-          onSelect={(k) => {
-            setEditingApp(false);
-            setSelected(k);
-          }}
-        />
+        <AppAiModeProvider mode={app.aiMode}>
+          <SpecRenderer
+            key={app.id}
+            appId={app.id}
+            spec={app.spec}
+            selectable
+            selectedKey={selected}
+            onSelect={(k) => {
+              setEditingApp(false);
+              setSelected(k);
+            }}
+          />
+        </AppAiModeProvider>
 
         <View style={[styles.footer, { borderColor: appTheme.border }]}>
           <Text style={[type.caption, { color: appTheme.subtle, flex: 1 }]}>
@@ -392,8 +423,14 @@ export default function AppScreen() {
                 Link: {shared}
               </Text>
             )}
-            {app.builtWith !== 'starter' && (
-              <ActionRow icon="trash-outline" title="Delete this app" onPress={remove} theme={appTheme} danger />
+            {canDelete(app) && (
+              <ActionRow
+                icon={isChangedStarter(app) ? 'refresh' : 'trash-outline'}
+                title={isChangedStarter(app) ? 'Reset to the original' : 'Delete this app'}
+                onPress={remove}
+                theme={appTheme}
+                danger
+              />
             )}
             {error && <Text style={[type.caption, { color: appTheme.danger }]}>{error}</Text>}
           </Card>
@@ -451,7 +488,8 @@ export default function AppScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
+      {/* Lift everything above the keyboard (chat box, inspector, the app's own text fields). */}
+      <View ref={keyboardRef} style={{ flex: 1, backgroundColor: appTheme.bg, paddingBottom: keyboardInset }}>
         <View
           style={[
             styles.header,
@@ -482,6 +520,15 @@ export default function AppScreen() {
             filled={tab === 'history'}
             onPress={() => setTab('history')}
           />
+          {canDelete(app) && (
+            <IconButton
+              icon={isChangedStarter(app) ? 'refresh' : 'trash-outline'}
+              label={isChangedStarter(app) ? 'Reset to the original' : 'Delete this app'}
+              theme={appTheme}
+              color={appTheme.danger}
+              onPress={remove}
+            />
+          )}
         </View>
 
         {wide ? (
@@ -505,7 +552,11 @@ export default function AppScreen() {
             {tab === 'history' && (
               <HistoryPanel appId={app.id} current={app.spec} version={chatVersion} onRestored={onRestored} />
             )}
-            {tab === 'custom' && app.html && <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />}
+            {tab === 'custom' && app.html && (
+              <AppAiModeProvider mode={app.aiMode}>
+                <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
+              </AppAiModeProvider>
+            )}
           </View>
         )}
       </View>

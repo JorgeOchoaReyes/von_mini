@@ -1,7 +1,7 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import type { ComponentProps, ComponentRef, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -86,7 +86,12 @@ export function Button({
   ) : (
     <>
       {icon && <Icon name={icon} size={size === 'sm' ? 16 : 20} color={fg} />}
-      <Text style={[type.button, size === 'sm' && styles.buttonTextSm, { color: fg }]}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        style={[type.button, size === 'sm' && styles.buttonTextSm, styles.buttonLabel, { color: fg }]}
+      >
+        {label.toUpperCase()}
+      </Text>
     </>
   );
   const press = () => {
@@ -481,6 +486,7 @@ export function Composer({
   sendLabel = 'Send',
   autoFocus,
   accessory,
+  onStop,
 }: {
   value: string;
   onChange(v: string): void;
@@ -493,12 +499,23 @@ export function Composer({
   autoFocus?: boolean;
   /** Extra control shown next to the send button, e.g. a microphone. */
   accessory?: ReactNode;
+  /** When set, the send button turns into Stop while `busy`, and calls this. */
+  onStop?: () => void;
 }) {
   const can = !!value.trim() && !busy;
   const sendPress = usePressScale(0.88);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  // Android: if the keyboard is still composing a word when the parent clears the text (after
+  // sending), the keyboard writes it straight back. Clearing the native input as well fixes that.
+  useEffect(() => {
+    if (value === '') input.current?.clear();
+  }, [value]);
+  // While the AI is thinking or streaming, the send button becomes Stop (when the caller allows it).
+  const stoppableNow = !!busy && !!onStop;
   return (
     <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
       <TextInput
+        ref={input}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
@@ -519,13 +536,19 @@ export function Composer({
       {accessory}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={sendLabel}
-        onPress={onSubmit}
-        disabled={!can}
+        accessibilityLabel={stoppableNow ? 'Stop' : sendLabel}
+        onPress={stoppableNow ? onStop : onSubmit}
+        disabled={!can && !stoppableNow}
         {...sendPress.handlers}
-        style={[styles.sendWrap, { opacity: can ? 1 : 0.5 }]}
+        style={[styles.sendWrap, { opacity: can || stoppableNow ? 1 : 0.5 }]}
       >
-        {can && !busy ? (
+        {stoppableNow ? (
+          <PopIn>
+            <Animated.View style={[styles.send, sendPress.style, { backgroundColor: theme.text }]}>
+              <Icon name="stop" size={18} color={theme.bg} />
+            </Animated.View>
+          </PopIn>
+        ) : can && !busy ? (
           // Pops in the moment there is something to send.
           <PopIn>
             <Animated.View style={sendPress.style}>
@@ -680,6 +703,8 @@ const styles = StyleSheet.create({
   },
   buttonSm: { minHeight: 36, paddingHorizontal: space(3), borderRadius: radius.sm },
   buttonTextSm: { fontSize: 16, lineHeight: 19 },
+  // Room for the display font's wide glyphs; never wrap or clip a label onto a hidden line.
+  buttonLabel: { flexShrink: 1, textAlign: 'center', includeFontPadding: false },
   caption: {
     flexDirection: 'row',
     alignItems: 'center',

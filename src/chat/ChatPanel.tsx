@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,7 +17,7 @@ import { FadeUp } from '../ui/motion';
 import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
-import { chatSteps, isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
+import { chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
   { label: 'What does this app do?', icon: 'help-circle-outline' },
@@ -154,7 +152,8 @@ export function ChatPanel({
   const local = ai.privateMode || !ai.online;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // The app screen lifts its content above the keyboard (useKeyboardInset), so no avoiding view here.
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView
         ref={scroll}
         contentContainerStyle={styles.list}
@@ -221,14 +220,16 @@ export function ChatPanel({
                     {m.text.split('\n').map((line, i) => (
                       <View key={i} style={[styles.row, { alignItems: 'flex-start' }]}>
                         <Text style={[type.body, { color: theme.accent }]}>•</Text>
-                        <Text style={[type.body, { color: theme.text, flex: 1 }, m.undone && styles.struck]}>{line}</Text>
+                        <Text style={[type.body, { color: theme.text, flexShrink: 1 }, m.undone && styles.struck]}>{line}</Text>
                       </View>
                     ))}
                   </View>
                 ) : (
                   <View style={[styles.row, { alignItems: 'flex-start' }]}>
                     {isError && <Icon name="alert-circle-outline" size={16} color={theme.danger} />}
-                    <Text selectable style={[type.body, { color: isError ? theme.danger : theme.text, flex: 1 }]}>
+                    {/* flexShrink, not flex: 1. Inside a content-sized bubble, flex: 1 collapsed the text to
+                        no width on Android, leaving an unreadable sliver (seen with an error message). */}
+                    <Text selectable style={[type.body, { color: isError ? theme.danger : theme.text, flexShrink: 1 }]}>
                       {m.text}
                     </Text>
                   </View>
@@ -300,6 +301,11 @@ export function ChatPanel({
           placeholder="Ask or describe a change…"
           theme={theme}
           busy={busy}
+          // While it's thinking or streaming, the send button becomes Stop.
+          onStop={() => {
+            stopMessage(appId);
+            stopSpeaking();
+          }}
           accessory={
             <MicButton
               theme={theme}
@@ -310,7 +316,7 @@ export function ChatPanel({
           }
         />
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
