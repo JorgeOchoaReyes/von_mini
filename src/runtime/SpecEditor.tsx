@@ -71,7 +71,7 @@ function Field({
 }) {
   return (
     <View style={{ gap: space(1) }}>
-      <Text style={[type.overline, { color: theme.subtle }]}>{label}</Text>
+      <Text style={[type.overline, { color: theme.subtle }]}>{label.toUpperCase()}</Text>
       <TextInput
         defaultValue={value}
         onChangeText={onChange}
@@ -319,7 +319,7 @@ function AppFields({
         theme={theme}
       />
       <View style={{ gap: space(2) }}>
-        <Text style={[type.overline, { color: theme.subtle }]}>Colour</Text>
+        <Text style={[type.overline, { color: theme.subtle }]}>COLOUR</Text>
         <View style={styles.row}>
           {ACCENTS.map((a) => {
             const on = a === spec.accent;
@@ -343,7 +343,7 @@ function AppFields({
         </View>
       </View>
       <View style={{ gap: space(2) }}>
-        <Text style={[type.overline, { color: theme.subtle }]}>Add a block</Text>
+        <Text style={[type.overline, { color: theme.subtle }]}>ADD A BLOCK</Text>
         <View style={styles.row}>
           {ADDABLE.map((a) => (
             <Chip

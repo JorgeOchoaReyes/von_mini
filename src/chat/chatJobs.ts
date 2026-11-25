@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
-import { notifyIfInBackground } from '../alerts/notifications';
+import { notify, notifyIfInBackground } from '../alerts/notifications';
 import {
   appendMessage,
   getApp,
@@ -118,7 +118,9 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       await appendMessage(appId, { role: 'assistant', kind: 'answer', source: reply.source, text: reply.text });
     }
   } catch (e) {
-    await appendMessage(appId, { role: 'assistant', kind: 'error', text: e instanceof Error ? e.message : String(e) });
+    const text = e instanceof Error ? e.message : String(e);
+    await appendMessage(appId, { role: 'assistant', kind: 'error', text });
+    void notify({ title: 'Couldn’t change your app', body: text.slice(0, 180), url: `/app/${appId}` });
   } finally {
     busy.delete(appId);
     progress.delete(appId);

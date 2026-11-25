@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
-import { ensureAlertPermission, notifyIfInBackground } from '../../alerts/notifications';
+import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
@@ -167,7 +167,8 @@ export default function Home() {
       haptics.error();
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      void notifyIfInBackground({ title: 'Couldn’t build your app', body: message.slice(0, 140), url: '/' });
+      // Always notify on failure, even with the app open: the build may have been left running.
+      void notify({ title: 'Couldn’t build your app', body: message.slice(0, 180), url: '/' });
     } finally {
       setBuilding(null);
       setSteps([]);
@@ -339,36 +340,6 @@ export default function Home() {
             <Text style={[type.caption, { color: theme.danger, flex: 1 }]}>{error}</Text>
             <Button label="Settings" size="sm" variant="secondary" theme={theme} onPress={() => router.push('/settings')} />
           </Card>
-        )}
-
-        {mine.length === 0 && !building && (
-          <FadeUp delay={80}>
-            <Card theme={theme} tinted style={{ gap: space(3) }}>
-              {/* Only promise on-device AI where it actually runs: say what happens on this phone. */}
-              <Text style={[type.label, { color: theme.text }]}>
-                {ai.deviceStatus === 'available' ? 'Private by default' : 'How AI runs on this device'}
-              </Text>
-              {(ai.deviceStatus === 'available'
-                ? [
-                    ['lock-closed-outline', 'Everything you type is processed on this device by Gemini Nano.'],
-                    ['cloud-offline-outline', 'Apps you build keep working in airplane mode.'],
-                    ['pricetag-outline', 'On-device inference costs nothing, so your apps are free to run.'],
-                  ]
-                : [
-                    ai.deviceStatus === 'downloadable' || ai.deviceStatus === 'downloading'
-                      ? ['download-outline', 'Gemini Nano is still downloading. Until it’s ready, AI runs in the cloud through Firebase.']
-                      : ['cloud-outline', 'This device can’t run Gemini Nano, so AI runs in the cloud through Firebase.'],
-                    ['save-outline', 'Your apps and everything you save in them stay on this device.'],
-                    ['phone-portrait-outline', 'On a phone with Gemini Nano, the same apps run their AI on-device and offline.'],
-                  ]
-              ).map(([icon, text]) => (
-                <View key={text} style={styles.row}>
-                  <Icon name={icon as IconName} size={16} color={theme.text} />
-                  <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{text}</Text>
-                </View>
-              ))}
-            </Card>
-          </FadeUp>
         )}
 
         {/* Two shelves: the apps you made, and the ones that ship with von mini. All stored on

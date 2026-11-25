@@ -139,7 +139,7 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => (mic.stop(), setOpen(false))}>
         <Pressable style={styles.scrim} onPress={() => (mic.stop(), setOpen(false))}>
           <FadeUp style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: insets.bottom + 96 }]}>
-            <Text style={[type.overline, { color: theme.accent }]}>{listening ? 'Listening…' : 'Didn’t catch that'}</Text>
+            <Text style={[type.overline, { color: theme.accent }]}>{listening ? 'LISTENING…' : 'DIDN’T CATCH THAT'}</Text>
             <Text style={[type.title, { color: partial ? theme.text : theme.subtle }]}>
               {mic.error ?? (partial || (listening ? 'Say “open Mood Journal”, or describe a new app.' : 'Tap the mic and try again.'))}
             </Text>
@@ -172,7 +172,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 18,
     letterSpacing: 0.6,
-    textTransform: 'none',
     includeFontPadding: false,
   },
   center: { flex: 1, alignItems: 'center' },

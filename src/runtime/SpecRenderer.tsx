@@ -130,7 +130,7 @@ const HistoryList = memo(function HistoryList({
                 {expanded &&
                   rest.map((k) => (
                     <View key={k} style={{ gap: 2 }}>
-                      <Text style={[type.overline, { color: theme.subtle }]}>{labels[k] ?? k}</Text>
+                      <Text style={[type.overline, { color: theme.subtle }]}>{(labels[k] ?? k).toUpperCase()}</Text>
                       <RichText text={e.values[k]} theme={theme} />
                     </View>
                   ))}
@@ -394,7 +394,7 @@ export function SpecRenderer({
             />
             {(loading || result) && (
               <View style={[styles.result, { backgroundColor: theme.accentSoft, borderLeftColor: theme.accent }]}>
-                <Text style={[type.overline, { color: theme.accent }]}>{c.label}</Text>
+                <Text style={[type.overline, { color: theme.accent }]}>{c.label?.toUpperCase()}</Text>
                 {loading ? (
                   <View style={styles.row}>
                     <ActivityIndicator size="small" color={theme.accent} />

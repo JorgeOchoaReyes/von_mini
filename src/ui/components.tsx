@@ -86,7 +86,12 @@ export function Button({
   ) : (
     <>
       {icon && <Icon name={icon} size={size === 'sm' ? 16 : 20} color={fg} />}
-      <Text style={[type.button, size === 'sm' && styles.buttonTextSm, { color: fg }]}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        style={[type.button, size === 'sm' && styles.buttonTextSm, styles.buttonLabel, { color: fg }]}
+      >
+        {label.toUpperCase()}
+      </Text>
     </>
   );
   const press = () => {
@@ -680,6 +685,8 @@ const styles = StyleSheet.create({
   },
   buttonSm: { minHeight: 36, paddingHorizontal: space(3), borderRadius: radius.sm },
   buttonTextSm: { fontSize: 16, lineHeight: 19 },
+  // Room for the display font's wide glyphs; never wrap or clip a label onto a hidden line.
+  buttonLabel: { flexShrink: 1, textAlign: 'center', includeFontPadding: false },
   caption: {
     flexDirection: 'row',
     alignItems: 'center',
