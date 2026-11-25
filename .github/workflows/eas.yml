@@ -104,6 +104,9 @@ jobs:
     runs-on: ubuntu-latest
     # EAS builds in the cloud; this job only starts it, waits, and attaches the result to the run.
     timeout-minutes: 180
+    # Creating a GitHub Release (tag builds) needs write access to the repository's contents.
+    permissions:
+      contents: write
     env:
       PROFILE: ${{ inputs.profile || 'preview' }}
     steps:
@@ -156,14 +159,21 @@ jobs:
           url=$(jq -r '.[0].artifacts.buildUrl' build.json)
           page="https://expo.dev/accounts/$(jq -r '.[0].project.ownerAccount.name' build.json)/projects/$(jq -r '.[0].project.slug' build.json)/builds/$(jq -r '.[0].id' build.json)"
           ext=$([ "$PROFILE" = "production" ] && echo aab || echo apk)
-          curl -fsSL "$url" -o "von-mini-$PROFILE.$ext"
-          echo "file=von-mini-$PROFILE.$ext" >> "$GITHUB_OUTPUT"
+          # Tag builds keep one fixed file name, so ".../releases/latest/download/von-mini.apk" is
+          # a permanent link to the newest APK.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then file="von-mini.$ext"; else file="von-mini-$PROFILE.$ext"; fi
+          curl -fsSL "$url" -o "$file"
+          {
+            echo "file=$file"
+            echo "page=$page"
+            echo "runtime=$(jq -r '.[0].runtimeVersion // "unknown"' build.json)"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "### Android build ($PROFILE)"
             echo ""
             echo "- Install page (QR code): $page"
             echo "- Direct download: $url"
-            echo "- Runtime version: $(jq -r '.[0].runtimeVersion' build.json)"
+            echo "- Runtime version: $(jq -r '.[0].runtimeVersion // "unknown"' build.json)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
@@ -171,3 +181,23 @@ jobs:
           name: ${{ steps.artifact.outputs.file }}
           path: ${{ steps.artifact.outputs.file }}
           retention-days: 30
+
+      # A version tag (v1.2.0) publishes a GitHub Release with the APK attached, so every release
+      # has a download link. Notes list the PRs merged since the previous release.
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILE: ${{ steps.artifact.outputs.file }}
+          PAGE: ${{ steps.artifact.outputs.page }}
+          RUNTIME: ${{ steps.artifact.outputs.runtime }}
+        run: |
+          notes=$(printf '%s\n' \
+            "## Install on Android" \
+            "" \
+            "1. Download **$FILE** below (or scan the QR code on the [install page]($PAGE)) on your phone." \
+            "2. Open it and allow installing from this source when Android asks." \
+            "" \
+            "Later JavaScript-only fixes arrive over the air on the \`$PROFILE\` channel (runtime \`$RUNTIME\`): reopen the app, or use Settings > App updates." \
+            "")
+          gh release create "$GITHUB_REF_NAME" "$FILE" --title "von mini $GITHUB_REF_NAME" --notes "$notes" --generate-notes

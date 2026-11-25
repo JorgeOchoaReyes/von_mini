@@ -1,13 +1,31 @@
-# von mini
+<p align="center">
+  <img src="assets/logo.png" width="112" alt="von mini logo" />
+</p>
 
-**Build private AI apps in one sentence, on your phone, even offline.**
+<h1 align="center">von mini</h1>
 
-von mini is an app builder for Android and the web. You describe a small tool ("a journal that tags my mood", "rewrite my messages in a friendlier tone") and von mini builds a working app in seconds. The apps it builds run their AI **on your device with Gemini Nano**, keep their data **in your device's local storage**, and keep working **in airplane mode**.
+<p align="center">
+  <b>Build private AI apps in one sentence. They run on your phone, and keep working offline.</b>
+</p>
 
-It is built on **Firebase AI Logic hybrid inference**: the cloud (Gemini) is used when it adds quality, and the device (Gemini Nano) is used whenever privacy, cost, or connectivity matter.
+<p align="center">
+  <a href="https://github.com/JorgeOchoaReyes/von_mini/releases/latest/download/von-mini.apk"><b>⬇ Download the Android app (APK)</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/JorgeOchoaReyes/von_mini/releases">All releases</a>
+  &nbsp;·&nbsp;
+  <a href="SUBMISSION.md">#BuildHybridAI 2026 submission</a>
+</p>
 
-> Submission for **#BuildHybridAI 2026**. Project text, the demo video script, judge testing
-> instructions, and a rule-by-rule checklist live in [`SUBMISSION.md`](SUBMISSION.md).
+<p align="center">
+  <a href="https://github.com/JorgeOchoaReyes/von_mini/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/JorgeOchoaReyes/von_mini/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/JorgeOchoaReyes/von_mini/actions/workflows/eas.yml"><img alt="EAS" src="https://github.com/JorgeOchoaReyes/von_mini/actions/workflows/eas.yml/badge.svg" /></a>
+  <a href="https://github.com/JorgeOchoaReyes/von_mini/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/JorgeOchoaReyes/von_mini?label=release" /></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue" /></a>
+</p>
+
+Say or type what you need ("a calorie tracker that reminds me to log meals", "help me practice tough interview questions out loud"), and von mini builds a working app in seconds. The apps it builds run their AI **on your device with Gemini Nano**, keep everything **in your device's local storage**, and keep working **in airplane mode**.
+
+It's built on **Firebase AI Logic hybrid inference**: Gemini in the cloud when it adds quality, Gemini Nano on the device whenever privacy, cost or connectivity matter, and an automatic switch between them when one isn't available.
 
 | Build from one sentence | Edit any block | Every change is reversible |
 |---|---|---|
@@ -17,6 +35,22 @@ It is built on **Firebase AI Logic hybrid inference**: the cloud (Gemini) is use
 |---|---|---|
 | ![Edit and diff](docs/screenshots/06-edit-and-diff.png) | ![Home in dark mode](docs/screenshots/02-home-dark.png) | ![Desktop](docs/screenshots/03-home-desktop.png) |
 
+## What you can do
+
+| | |
+|---|---|
+| 🪄 **Build an app from a sentence** | Typed or spoken. Gemini designs it in the cloud, or Gemini Nano on the phone when you're offline, the cloud is busy, or private mode is on. |
+| 🎙️ **Talk to it** | The mic in the bottom bar works from anywhere: name an app to open it, or describe one to build it. Apps can hold spoken conversations (mock interviews, language practice) through speech-to-text → Gemini Nano → text-to-speech, all on the device. |
+| 🔔 **Reminders** | Apps can schedule daily notifications ("Log what you ate" at 8:00, 13:00 and 19:00). They're local notifications, so they work offline and nothing goes to a server. You also get a notification when a build finishes while you're in another app. |
+| ✏️ **Edit three ways** | Tap any block to change it, use a quick-edit chip, or describe the change. Every change gets a plain-words summary and a restorable version. |
+| 🔗 **Share** | Opt in to share an app's *design* (never your entries) as a link. Whoever opens it runs its AI on their own device. |
+| 📦 **Nine ready-made apps** | Interview Coach, Mood Journal, Habit Tracker and more, on their own shelf next to the apps you make. |
+| 🔒 **Local first** | Apps, entries, chats, versions and reminders live only on the device. Private mode keeps every AI request on the device too. |
+
+## Install it
+
+- **Android:** download [**von-mini.apk**](https://github.com/JorgeOchoaReyes/von_mini/releases/latest/download/von-mini.apk) from the latest release, open it, and allow installing from that source when Android asks. On a phone with Gemini Nano (recent Pixel or Galaxy S, for example) on-device AI downloads automatically on Wi-Fi; on other phones AI runs in the cloud. Updates to the app's JavaScript arrive over the air; check them in Settings > App updates.
+- **Web:** run it locally (see [Setup](#setup)). Use desktop Chrome with built-in AI for on-device Gemini Nano.
 ## Why
 
 Most "AI app" tools send everything you type to a server, charge per request, and stop working without a connection. That rules them out for the things people most want help with: journals, health notes, private messages, money.
@@ -250,7 +284,7 @@ one will never receive JavaScript it can't run.
 | [`ci.yml`](.github/workflows/ci.yml) | every pull request and push to `master` | typecheck, lint, web build (no secrets) |
 | [`eas.yml`](.github/workflows/eas.yml) | push to `master` | OTA update to the `preview` channel |
 | | **Actions → EAS → Run workflow** | OTA update, APK build, or both, for `preview` or `production` |
-| | push a tag like `v1.0.0` | APK build |
+| | push a tag like `v1.0.0` | APK build **and a GitHub Release** with `von-mini.apk` attached; the README's download link always points at the newest one |
 
 An APK build waits for EAS, then attaches the `.apk` to the workflow run and links its install
 page (with a QR code) in the run summary. Secrets live only in GitHub (set them with
