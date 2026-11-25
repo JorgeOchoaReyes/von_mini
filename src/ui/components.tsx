@@ -19,7 +19,7 @@ import type { DeviceStatus, InferenceSource } from '../ai/types';
 import type { ProgressStep } from '../ai/hybrid';
 import { haptics } from './haptics';
 import { FadeUp, motion, PopIn, Pulse, Shimmer, TypingDots, usePressScale, useReduceMotion } from './motion';
-import { radius, space, type, useTheme, type Theme } from './theme';
+import { stroke, radius, space, type, useTheme, type Theme } from './theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -75,28 +75,24 @@ export function Button({
   style?: StyleProp<ViewStyle>;
 }) {
   const off = disabled || loading;
-  const fg =
-    variant === 'primary' ? theme.onAccent : variant === 'danger' ? theme.danger : variant === 'secondary' ? theme.text : theme.accent;
-  const bg = variant === 'primary' ? theme.accent : variant === 'secondary' ? theme.surfaceAlt : 'transparent';
+  // Comic buttons: flat fill, ink outline and a hard shadow; pressing sinks the button into its
+  // shadow. Ghost buttons are plain lettering.
+  const ghost = variant === 'ghost';
+  const fill =
+    variant === 'primary' ? theme.accent : variant === 'danger' ? theme.danger : variant === 'secondary' ? theme.surface : 'transparent';
+  const fg = variant === 'primary' ? theme.onAccent : variant === 'danger' ? '#FFFFFF' : ghost ? theme.text : theme.text;
   const inner = loading ? (
     <ActivityIndicator color={fg} />
   ) : (
     <>
-      {icon && <Icon name={icon} size={size === 'sm' ? 16 : 18} color={fg} />}
-      <Text style={[size === 'sm' ? type.label : styles.buttonText, { color: fg }]}>{label}</Text>
+      {icon && <Icon name={icon} size={size === 'sm' ? 16 : 20} color={fg} />}
+      <Text style={[type.button, size === 'sm' && styles.buttonTextSm, { color: fg }]}>{label}</Text>
     </>
   );
   const press = () => {
     haptics.light();
     onPress();
   };
-  const spring = usePressScale(size === 'sm' ? 0.95 : 0.97);
-  const body =
-    variant === 'primary' ? (
-      <Gradient theme={theme} style={[styles.button, size === 'sm' && styles.buttonSm, style]}>
-        {inner}
-      </Gradient>
-    ) : null;
 
   return (
     <Pressable
@@ -104,25 +100,24 @@ export function Button({
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       onPress={press}
       disabled={off}
-      {...spring.handlers}
     >
-      {({ pressed }) => (
-        <Animated.View
-          style={[
-            spring.style,
-            body
-              ? { opacity: off ? 0.45 : pressed ? 0.92 : 1 }
-              : [
-                  styles.button,
-                  size === 'sm' && styles.buttonSm,
-                  { backgroundColor: bg, opacity: off ? 0.45 : pressed ? 0.9 : 1 },
-                  style,
-                ],
-          ]}
-        >
-          {body ?? inner}
-        </Animated.View>
-      )}
+      {({ pressed }) => {
+        const down = pressed && !off && !ghost;
+        return (
+          <View
+            style={[
+              styles.button,
+              size === 'sm' && styles.buttonSm,
+              !ghost && { borderWidth: stroke, borderColor: theme.border, boxShadow: down ? 'none' : theme.shadowSm },
+              { backgroundColor: fill, opacity: off ? 0.5 : 1 },
+              down && { transform: [{ translateX: 3 }, { translateY: 3 }] },
+              style,
+            ]}
+          >
+            {inner}
+          </View>
+        );
+      }}
     </Pressable>
   );
 }
@@ -190,7 +185,7 @@ export function Card({
       style={[
         styles.card,
         tinted
-          ? { backgroundColor: theme.accentSoft, borderColor: 'transparent' }
+          ? { backgroundColor: theme.accentSoft, borderColor: theme.border }
           : { backgroundColor: theme.surface, borderColor: theme.border },
         !flat && !tinted && { boxShadow: theme.shadow },
         style,
@@ -234,13 +229,13 @@ export function Chip({
           spring.style,
           {
             backgroundColor: selected ? theme.accent : theme.surface,
-            borderColor: selected ? theme.accent : theme.border,
+            borderColor: theme.border,
             opacity: disabled ? 0.45 : 1,
           },
         ]}
       >
-        {icon && <Icon name={icon} size={14} color={selected ? theme.onAccent : theme.accent} />}
-        <Text style={[type.caption, { color: selected ? theme.onAccent : theme.text, fontWeight: '500' }]}>{label}</Text>
+        {icon && <Icon name={icon} size={14} color={selected ? theme.onAccent : theme.text} />}
+        <Text style={[type.caption, { color: selected ? theme.onAccent : theme.text, fontWeight: '700' }]}>{label}</Text>
       </Animated.View>
     </Pressable>
   );
@@ -271,7 +266,7 @@ export function Segmented<T extends string>({
   const segW = width > 0 ? (width - GAP * 2 - GAP * (options.length - 1)) / options.length : 0;
   return (
     <View
-      style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}
+      style={[styles.segmented, { backgroundColor: theme.surface, borderWidth: stroke, borderColor: theme.border, boxShadow: theme.shadowSm }]}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       {segW > 0 && (
@@ -281,8 +276,9 @@ export function Segmented<T extends string>({
             styles.segmentPill,
             {
               width: segW,
-              backgroundColor: theme.surface,
-              boxShadow: theme.shadowSm,
+              backgroundColor: theme.accent,
+              borderWidth: 2,
+              borderColor: theme.border,
               transform: [{ translateX: Animated.multiply(x, segW + GAP) }],
             },
           ]}
@@ -299,11 +295,11 @@ export function Segmented<T extends string>({
               if (!on) haptics.tap();
               onChange(o.value);
             }}
-            style={[styles.segment, on && segW === 0 && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
+            style={[styles.segment, on && segW === 0 && { backgroundColor: theme.accent }]}
           >
-            {o.icon && <Icon name={o.icon} size={16} color={on ? theme.accent : theme.muted} />}
-            <Text style={[type.label, { color: on ? theme.text : theme.muted }]}>{o.label}</Text>
-            {o.dot && <View style={[styles.dot, { backgroundColor: theme.accent }]} />}
+            {o.icon && <Icon name={o.icon} size={16} color={on ? theme.onAccent : theme.muted} />}
+            <Text style={[type.label, { color: on ? theme.onAccent : theme.muted, fontWeight: '800' }]}>{o.label}</Text>
+            {o.dot && <View style={[styles.dot, { backgroundColor: theme.danger }]} />}
           </Pressable>
         );
       })}
@@ -552,6 +548,59 @@ export function Composer({
   );
 }
 
+/**
+ * A comic caption box: the rectangular yellow narration box. Used for the narrator's notes and
+ * hints (how something is built, what a screen does), never for dialogue.
+ */
+export function Caption({ theme, icon, children }: { theme: Theme; icon?: IconName; children: ReactNode }) {
+  return (
+    <View style={[styles.caption, { backgroundColor: CAPTION_YELLOW, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
+      {icon && <Icon name={icon} size={15} color="#111111" />}
+      <Text style={[type.caption, { color: '#111111', flex: 1, fontWeight: '600' }]}>{children}</Text>
+    </View>
+  );
+}
+const CAPTION_YELLOW = '#FFE98A';
+
+/**
+ * A speech balloon: rounded, ink-outlined, with a tail aimed at the speaker (left for the AI,
+ * right for you), following comic lettering convention.
+ */
+export function SpeechBubble({
+  theme,
+  side,
+  fill,
+  children,
+  style,
+}: {
+  theme: Theme;
+  side: 'left' | 'right';
+  fill: string;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.bubbleWrap, side === 'right' ? styles.bubbleRight : styles.bubbleLeft, style]}>
+      <View style={[styles.bubble, { backgroundColor: fill, borderColor: theme.border, boxShadow: theme.shadowSm }]}>{children}</View>
+      {/* The tail: an outlined triangle, then a fill triangle on top that hides the balloon edge. */}
+      <View
+        style={[
+          styles.tail,
+          side === 'right' ? styles.tailRight : styles.tailLeft,
+          side === 'right' ? { borderLeftColor: theme.border } : { borderRightColor: theme.border },
+        ]}
+      />
+      <View
+        style={[
+          styles.tailFill,
+          side === 'right' ? styles.tailFillRight : styles.tailFillLeft,
+          side === 'right' ? { borderLeftColor: fill } : { borderRightColor: fill },
+        ]}
+      />
+    </View>
+  );
+}
+
 export function EmptyState({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: Theme }) {
   return (
     <View style={[styles.empty, { borderColor: theme.border }]}>
@@ -630,14 +679,34 @@ const styles = StyleSheet.create({
     gap: space(2),
   },
   buttonSm: { minHeight: 36, paddingHorizontal: space(3), borderRadius: radius.sm },
-  buttonText: { fontSize: 16, fontWeight: '600' },
+  buttonTextSm: { fontSize: 16, lineHeight: 19 },
+  caption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(2),
+    borderWidth: stroke,
+    borderRadius: 2,
+    paddingHorizontal: space(3),
+    paddingVertical: space(2),
+  },
+  bubbleWrap: { maxWidth: '86%', position: 'relative' },
+  bubbleLeft: { alignSelf: 'flex-start', marginLeft: 10 },
+  bubbleRight: { alignSelf: 'flex-end', marginRight: 10 },
+  bubble: { borderWidth: stroke, borderRadius: 22, paddingHorizontal: space(4), paddingVertical: space(3) },
+  // Tail triangles sit at the balloon's lower corner, pointing out toward the speaker.
+  tail: { position: 'absolute', bottom: 10, width: 0, height: 0, borderTopWidth: 9, borderBottomWidth: 9, borderTopColor: 'transparent', borderBottomColor: 'transparent' },
+  tailLeft: { left: -14, borderRightWidth: 15 },
+  tailRight: { right: -14, borderLeftWidth: 15 },
+  tailFill: { position: 'absolute', bottom: 13, width: 0, height: 0, borderTopWidth: 6, borderBottomWidth: 6, borderTopColor: 'transparent', borderBottomColor: 'transparent' },
+  tailFillLeft: { left: -8, borderRightWidth: 11 },
+  tailFillRight: { right: -8, borderLeftWidth: 11 },
   iconButton: { width: 36, height: 36, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  card: { borderRadius: radius.lg, borderWidth: 1, padding: space(4) },
+  card: { borderRadius: radius.lg, borderWidth: stroke, padding: space(4) },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space(1),
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.pill,
     paddingHorizontal: space(3),
     paddingVertical: space(2),
@@ -660,7 +729,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke,
     paddingHorizontal: space(2),
     paddingVertical: 2,
   },
@@ -670,7 +739,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space(2),
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke,
     paddingHorizontal: space(3),
     paddingVertical: space(2),
     alignSelf: 'flex-start',
@@ -682,7 +751,7 @@ const styles = StyleSheet.create({
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.xl,
     paddingLeft: space(4),
     paddingRight: space(2),
@@ -702,7 +771,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space(1),
     padding: space(5),
-    borderWidth: 1,
+    borderWidth: stroke,
     borderStyle: 'dashed',
     borderRadius: radius.lg,
   },

@@ -13,7 +13,7 @@ import { fillTemplate } from '../spec/validate';
 import { addEntry, deleteEntry, listEntries, type Entry } from '../storage/store';
 import { Button, Card, Chip, EmptyState, Icon, IconButton, SourceBadge, relativeTime } from '../ui/components';
 import { FadeUp } from '../ui/motion';
-import { radius, space, type, useTheme, type Theme } from '../ui/theme';
+import { stroke, radius, space, type, useTheme, type Theme } from '../ui/theme';
 
 /** Groups consecutive form fields so they render in one card, like a real form. */
 function sections(components: SpecComponent[]) {
@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', gap: space(2), alignItems: 'flex-start' },
   bulletDot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },
   selectable: {
-    borderWidth: 1,
+    borderWidth: stroke,
     borderStyle: 'dashed',
     borderColor: 'transparent',
     borderRadius: radius.md,
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,

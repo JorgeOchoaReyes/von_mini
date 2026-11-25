@@ -38,7 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'app.vonmini',
     googleServicesFile,
     adaptiveIcon: {
-      backgroundColor: '#6B4EFF',
+      backgroundColor: '#FFD21F',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',
@@ -68,15 +68,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         image: './assets/splash-icon.png',
         imageWidth: 160,
         resizeMode: 'contain',
-        backgroundColor: '#F6F5FA',
-        dark: { image: './assets/splash-icon.png', backgroundColor: '#0D0C12' },
+        backgroundColor: '#FBF5E2',
+        dark: { image: './assets/splash-icon.png', backgroundColor: '#0E1430' },
       },
     ],
     // Local notifications: app reminders and "your app is ready". Only local ones are used, so
     // iOS doesn't need the push entitlement.
     [
       'expo-notifications',
-      { icon: './assets/notification-icon.png', color: '#6B4EFF', enableRemoteNotifications: false },
+      { icon: './assets/notification-icon.png', color: '#E8322C', enableRemoteNotifications: false },
     ],
   ],
   experiments: { typedRoutes: true },

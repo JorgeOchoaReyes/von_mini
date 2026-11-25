@@ -31,7 +31,7 @@ import { ACCENTS, type Accent, type AppSpec, type ComponentType } from '../spec/
 import { Button, Card, Chip, Icon, IconButton, type IconName } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { FadeUp } from '../ui/motion';
-import { ACCENT_COLORS, alpha, radius, space, type, useTheme } from '../ui/theme';
+import { stroke, ACCENT_COLORS, alpha, radius, space, type, useTheme } from '../ui/theme';
 
 const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'input', label: 'Text field', icon: 'create-outline' },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2), flexWrap: 'wrap' },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(2) },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  check: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 20, height: 20, borderRadius: 6, borderWidth: stroke, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 32, height: 32, borderRadius: radius.pill, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderRadius: radius.md },
 });

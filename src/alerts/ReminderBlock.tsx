@@ -12,7 +12,7 @@ import { kvGet, kvSet } from '../storage/store';
 import { Icon } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { PopIn } from '../ui/motion';
-import { radius, space, type, type Theme } from '../ui/theme';
+import { stroke, radius, space, type, type Theme } from '../ui/theme';
 import { alertsSupported, cancelReminders, scheduleDailyReminders } from './notifications';
 
 /** "19:30" -> "7:30 PM" in the user's locale. */
@@ -130,7 +130,7 @@ export function ReminderBlock({
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(3) },
+  card: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(3) },
   header: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   badge: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   times: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },

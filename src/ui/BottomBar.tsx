@@ -14,10 +14,10 @@ import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native
 import { STARTERS } from '../spec/starters';
 import { listApps, type SavedApp } from '../storage/store';
 import { useListener, useSttSupport } from '../voice/useVoice';
-import { Gradient, Icon, type IconName } from './components';
+import { Icon, type IconName } from './components';
 import { haptics } from './haptics';
 import { FadeUp, Ripples, usePressScale } from './motion';
-import { radius, space, type, useTheme } from './theme';
+import { stroke, radius, space, type, useTheme } from './theme';
 
 const TABS: Record<string, { label: string; icon: IconName; iconOn: IconName }> = {
   index: { label: 'Home', icon: 'home-outline', iconOn: 'home' },
@@ -87,8 +87,8 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
               onPress={() => go(route.key, focused)}
               style={styles.tab}
             >
-              <Icon name={focused ? meta.iconOn : meta.icon} size={24} color={focused ? theme.accent : theme.subtle} />
-              <Text style={[type.caption, { color: focused ? theme.accent : theme.subtle, fontWeight: focused ? '700' : '500', fontSize: 12 }]}>
+              <Icon name={focused ? meta.iconOn : meta.icon} size={24} color={focused ? theme.text : theme.subtle} />
+              <Text style={[type.button, { color: focused ? theme.text : theme.subtle, fontSize: 15, lineHeight: 17 }]}>
                 {meta.label}
               </Text>
             </Pressable>
@@ -99,7 +99,7 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
               {tab}
               <View style={styles.center}>
                 <View style={styles.micStage}>
-                  <Ripples size={64} color={theme.accent} active={listening} />
+                  <Ripples size={84} color={theme.accent} active={listening} />
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={listening ? 'Stop listening' : 'Say what you want: open an app or build a new one'}
@@ -108,9 +108,9 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
                     {...micPress.handlers}
                   >
                     <Animated.View style={[micPress.style, { opacity: canTalk ? 1 : 0.5 }]}>
-                      <Gradient theme={theme} style={[styles.mic, { borderColor: theme.surface }]}>
-                        <Icon name={listening ? 'stop' : 'mic'} size={28} color={theme.onAccent} />
-                      </Gradient>
+                      <View style={[styles.mic, { backgroundColor: listening ? theme.danger : theme.accent, borderColor: theme.border, boxShadow: theme.shadow }]}>
+                        <Icon name={listening ? 'stop' : 'mic'} size={36} color={listening ? '#FFFFFF' : theme.onAccent} />
+                      </View>
                     </Animated.View>
                   </Pressable>
                 </View>
@@ -144,15 +144,25 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: stroke,
     paddingTop: space(2),
+    // Let the raised mic overflow the top of the bar.
+    overflow: 'visible',
     paddingHorizontal: space(4),
   },
   pair: { flex: 2, flexDirection: 'row', alignItems: 'flex-end' },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 52 },
   center: { flex: 1, alignItems: 'center' },
-  micStage: { width: 64, height: 64, marginTop: -28, alignItems: 'center', justifyContent: 'center' },
-  mic: { width: 64, height: 64, borderRadius: 32, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
+  // Raised above the bar: the button's top half sits over the content, ringed in the bar colour.
+  micStage: { width: 88, height: 88, marginTop: -50, alignItems: 'center', justifyContent: 'center' },
+  mic: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10,8,20,0.35)', paddingHorizontal: space(4) },
-  sheet: { borderWidth: 1, borderRadius: radius.xl, padding: space(5), gap: space(2) },
+  sheet: { borderWidth: stroke, borderRadius: radius.xl, padding: space(5), gap: space(2) },
 });

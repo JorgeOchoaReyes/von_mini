@@ -45,12 +45,21 @@ It's built on **Firebase AI Logic hybrid inference**: Gemini in the cloud when i
 | ✏️ **Edit three ways** | Tap any block to change it, use a quick-edit chip, or describe the change. Every change gets a plain-words summary and a restorable version. |
 | 🔗 **Share** | Opt in to share an app's *design* (never your entries) as a link. Whoever opens it runs its AI on their own device. |
 | 📦 **Nine ready-made apps** | Interview Coach, Mood Journal, Habit Tracker and more, on their own shelf next to the apps you make. |
+| 💥 **A comic-book look** | Ink outlines, flat pop colours on newsprint, Ben-Day halftone dots, speech balloons for chat, caption boxes for hints, Bangers lettering. Light (paper) and dark ("night comic") themes; pick System, Light or Dark in Settings. |
 | 🔒 **Local first** | Apps, entries, chats, versions and reminders live only on the device. Private mode keeps every AI request on the device too. |
 
 ## Install it
 
 - **Android:** download [**von-mini.apk**](https://github.com/JorgeOchoaReyes/von_mini/releases/latest/download/von-mini.apk) from the latest release, open it, and allow installing from that source when Android asks. On a phone with Gemini Nano (recent Pixel or Galaxy S, for example) on-device AI downloads automatically on Wi-Fi; on other phones AI runs in the cloud. Updates to the app's JavaScript arrive over the air; check them in Settings > App updates.
 - **Web:** run it locally (see [Setup](#setup)). Use desktop Chrome with built-in AI for on-device Gemini Nano.
+### If something doesn't work
+
+| You see | What it means | What to do |
+|---|---|---|
+| Settings says the phone **can't run Gemini Nano** | On-device AI needs a phone with Android's AICore (recent Pixel or Galaxy flagships, for example). An app can't install Nano on other phones. | Nothing: AI runs in the cloud and every feature still works. |
+| Settings says Nano **isn't downloaded yet** | Your phone supports it; the model (a few GB) comes from AICore. | It downloads automatically on Wi-Fi, or tap **Download Gemini Nano**. |
+| "This model is currently experiencing **high demand**" | Gemini in the cloud is overloaded. On a Nano phone, von mini switches to the device automatically. | Try again in a minute. The project owner can switch the cloud model in Remote Config (`cloud_model`). |
+
 ## Why
 
 Most "AI app" tools send everything you type to a server, charge per request, and stop working without a connection. That rules them out for the things people most want help with: journals, health notes, private messages, money.

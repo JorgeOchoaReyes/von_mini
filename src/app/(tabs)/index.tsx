@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Image, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
@@ -11,11 +11,11 @@ import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
 import {
   Button,
+  Caption,
   Card,
   Chip,
   Composer,
   EmptyState,
-  Gradient,
   Icon,
   ModePill,
   Segmented,
@@ -25,8 +25,9 @@ import {
   type IconName,
 } from '../../ui/components';
 import { haptics } from '../../ui/haptics';
+import { Halftone } from '../../ui/Halftone';
 import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
-import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
+import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
 
 /** Which shelf of the app gallery is showing. */
 type Shelf = 'mine' | 'ready';
@@ -206,10 +207,8 @@ export default function Home() {
       >
         <FadeUp style={styles.brandRow} distance={6}>
           <View style={styles.brand}>
-            <Gradient theme={theme} style={styles.logo}>
-              <Text style={styles.logoText}>v</Text>
-            </Gradient>
-            <Text style={[type.headline, { color: theme.text }]}>von mini</Text>
+            <Image source={require('../../../assets/logo.png')} style={styles.logo} accessibilityIgnoresInvertColors />
+            <Text style={[type.title, { color: theme.text }]}>von mini</Text>
           </View>
           <View style={{ flex: 1 }} />
           <ModePill
@@ -224,8 +223,10 @@ export default function Home() {
         {/* Prompt-first hero: the whole product starts here. */}
         <FadeUp delay={40}>
           <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow }]}>
-            {/* The soft wash drifts slowly, so the screen feels alive while you think. */}
-            <Drift style={[styles.heroWash, { backgroundColor: theme.accentSoft }]} range={22} duration={11000} />
+            {/* Ben-Day dots in the panel corner, drifting slightly: comic shading, kept off the text. */}
+            <Drift style={styles.heroDots} range={6} duration={12000}>
+              <Halftone color={theme.accentAlt} cols={11} rows={8} spacing={15} maxDot={10} from="top-right" />
+            </Drift>
             <View style={{ gap: space(2) }}>
               <Text style={[type.display, { color: theme.text }]}>What do you want to build?</Text>
               <Text style={[type.body, { color: theme.muted }]}>
@@ -265,14 +266,12 @@ export default function Home() {
                 />
               ))}
             </ScrollView>
-            <View style={styles.row}>
-              <Icon name={onDevice ? 'phone-portrait-outline' : 'git-compare-outline'} size={14} color={theme.subtle} />
-              <Text style={[type.caption, { color: theme.subtle, flex: 1 }]}>
-                {onDevice
-                  ? 'Built on-device with Gemini Nano — works in airplane mode.'
-                  : 'Gemini designs it, with Gemini Nano as the offline fallback.'}
-              </Text>
-            </View>
+            {/* A comic caption box: the narrator's note on how this gets built. */}
+            <Caption theme={theme} icon={onDevice ? 'phone-portrait-outline' : 'git-compare-outline'}>
+              {onDevice
+                ? 'Built on-device with Gemini Nano. Works in airplane mode.'
+                : 'Gemini designs it, with Gemini Nano as the offline fallback.'}
+            </Caption>
           </View>
         </FadeUp>
 
@@ -387,38 +386,30 @@ const styles = StyleSheet.create({
   page: { paddingHorizontal: space(4), gap: space(6), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   brand: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  logo: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: '#fff', fontWeight: '800', fontSize: 17, marginTop: -2 },
+  logo: { width: 40, height: 40, borderRadius: radius.sm },
   hero: {
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.xl,
     padding: space(5),
     gap: space(4),
     overflow: 'hidden',
   },
-  heroWash: {
-    position: 'absolute',
-    top: -120,
-    right: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    opacity: 0.9,
-  },
+  // Sized to the dot grid (11 x 8 at 15 px) so the panel's clipping doesn't hide it.
+  heroDots: { position: 'absolute', top: space(2), right: space(1), width: 11 * 15 + 8, height: 8 * 15 },
   ideas: { gap: space(2), paddingRight: space(4) },
   // A vertical ScrollView's content container is a column by default, so wrapping needs the row
   // direction spelled out — otherwise every chip lands on its own line.
   ideasWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingRight: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   buildBody: { flexDirection: 'row', gap: space(4), flexWrap: 'wrap' },
-  peek: { minWidth: 168, flexGrow: 1, flexBasis: 168, borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(1) },
+  peek: { minWidth: 168, flexGrow: 1, flexBasis: 168, borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(1) },
   peekEmoji: { fontSize: 28 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space(3) },
   tileWrap: { flexBasis: '47%', flexGrow: 1, minWidth: 240 },
   tile: {
     flex: 1,
     minHeight: 168,
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.lg,
     padding: space(4),
     gap: space(3),
