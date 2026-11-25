@@ -13,6 +13,9 @@ import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
 import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
 import { ProgressBar } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+import { useRemoteConfig } from '../remote/remoteConfig';
+import { UpdatesCard } from '../ui/UpdatesCard';
+import { useSttSupport } from '../voice/useVoice';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -32,6 +35,8 @@ export default function Settings() {
   const ai = useAI();
   const theme = useTheme();
   const onDevice = ai.deviceStatus === 'available';
+  const stt = useSttSupport();
+  const rc = useRemoteConfig();
 
   return (
     <>
@@ -99,11 +104,53 @@ export default function Settings() {
         </Card>
 
         <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.headline, { color: theme.text }]}>Voice</Text>
+          <Row
+            icon="mic-outline"
+            title={
+              !stt ? 'Checking speech recognition…' : !stt.available ? 'Speech recognition is not available here' : stt.onDevice ? 'Speech recognition runs on this device' : 'Speech recognition needs a connection here'
+            }
+            body={
+              stt?.onDevice
+                ? 'What you say is turned into text locally, so voice chats work offline.'
+                : 'Voice chats still work: type your side when offline, and replies are spoken by the device.'
+            }
+            theme={theme}
+          />
+          <Row
+            icon="volume-high-outline"
+            title="Replies are spoken by the device's own voice"
+            body="Speech is generated locally, a sentence at a time while Gemini Nano is still writing."
+            theme={theme}
+          />
+        </Card>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
           <Text style={[type.headline, { color: theme.text }]}>Your data</Text>
           <Row icon="save-outline" title="Apps and entries stay on this device" body="Stored locally. Nothing is uploaded, and there is no account." theme={theme} />
           <Row icon="eye-off-outline" title="Private mode blocks the cloud entirely" body="Turn it on to make every request on-device only." theme={theme} />
           <Row icon="pricetag-outline" title="No paid services" body="On-device inference costs nothing, so the app has no usage limits." theme={theme} />
         </Card>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.headline, { color: theme.text }]}>Remote Config</Text>
+          <Row
+            icon="options-outline"
+            title={
+              rc.status === 'remote'
+                ? 'Live settings from Firebase'
+                : rc.status === 'cached'
+                  ? 'Last settings fetched from Firebase'
+                  : 'Built-in defaults'
+            }
+            body={`Cloud model ${rc.string('cloud_model')} · new apps designed ${
+              rc.string('build_mode') === 'prefer_on_device' ? 'on-device first' : 'in the cloud first'
+            } · voice input ${rc.bool('voice_input') ? 'on' : 'off'} · sharing ${rc.bool('sharing') ? 'on' : 'off'}.`}
+            theme={theme}
+          />
+        </Card>
+
+        <UpdatesCard theme={theme} />
 
         <Button label="Done" theme={theme} variant="secondary" onPress={() => router.back()} />
       </ScrollView>

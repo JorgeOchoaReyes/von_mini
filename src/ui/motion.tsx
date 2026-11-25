@@ -23,13 +23,17 @@ export const motion = {
   slow: 420,
   /** Standard ease-out curve used by modern design systems. */
   ease: Easing.bezier(0.2, 0.8, 0.2, 1),
+  /** Snappy, slightly bouncy spring for things the user touches. */
+  press: { stiffness: 520, damping: 26, mass: 0.7 },
+  /** Softer spring for things that arrive on screen. */
+  enter: { stiffness: 220, damping: 22, mass: 0.9 },
 } as const;
 
 /** A stable animated value, created once. */
 const useValue = (initial: number) => useState(() => new Animated.Value(initial))[0];
 
 /** Reads the OS "reduce motion" preference without pulling in a dependency. */
-function useReduceMotion(): boolean {
+export function useReduceMotion(): boolean {
   return useMemo(() => {
     // react-native-web maps this to the CSS media query; native reports false.
     const reduce = (globalThis as { matchMedia?: (q: string) => { matches: boolean } }).matchMedia?.(
@@ -39,7 +43,10 @@ function useReduceMotion(): boolean {
   }, []);
 }
 
-/** Fades and lifts its children in on mount. */
+/**
+ * Fades its children in while they spring up into place (with a hint of scale), so content
+ * settles rather than slides. Pass increasing `delay`s for a staggered list.
+ */
 export function FadeUp({
   children,
   delay = 0,
@@ -52,19 +59,206 @@ export function FadeUp({
   style?: StyleProp<ViewStyle>;
 }) {
   const reduce = useReduceMotion();
-  const t = useValue(reduce ? 1 : 0);
+  const fade = useValue(reduce ? 1 : 0);
+  const rise = useValue(reduce ? 1 : 0);
   useEffect(() => {
     if (reduce) {
-      t.setValue(1);
+      fade.setValue(1);
+      rise.setValue(1);
       return;
     }
-    Animated.timing(t, { toValue: 1, duration: motion.base, delay, easing: motion.ease, useNativeDriver: true }).start();
-  }, [t, delay, reduce]);
+    const anim = Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: motion.base, delay, easing: motion.ease, useNativeDriver: true }),
+      Animated.sequence([Animated.delay(delay), Animated.spring(rise, { toValue: 1, ...motion.enter, useNativeDriver: true })]),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [fade, rise, delay, reduce]);
   return (
     <Animated.View
       style={[
         style,
-        { opacity: t, transform: [{ translateY: t.interpolate({ inputRange: [0, 1], outputRange: [distance, 0] }) }] },
+        {
+          opacity: fade,
+          transform: [
+            { translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [distance, 0] }) },
+            { scale: rise.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/**
+ * Spring press feedback. Spread `handlers` on a Pressable and put `style` on the Animated.View
+ * inside it: the content dips when pressed and springs back with a little overshoot on release.
+ */
+export function usePressScale(to = 0.96) {
+  const reduce = useReduceMotion();
+  const v = useValue(1);
+  const go = (toValue: number) =>
+    reduce ? v.setValue(1) : Animated.spring(v, { toValue, ...motion.press, useNativeDriver: true }).start();
+  return {
+    style: { transform: [{ scale: v }] },
+    handlers: { onPressIn: () => go(to), onPressOut: () => go(1) },
+  };
+}
+
+/** Pops its children in from small, with a springy overshoot. Re-pops when `trigger` changes. */
+export function PopIn({ children, trigger, delay = 0 }: { children: ReactNode; trigger?: unknown; delay?: number }) {
+  const reduce = useReduceMotion();
+  const v = useValue(reduce ? 1 : 0);
+  useEffect(() => {
+    if (reduce) {
+      v.setValue(1);
+      return;
+    }
+    v.setValue(0);
+    const anim = Animated.sequence([
+      Animated.delay(delay),
+      Animated.spring(v, { toValue: 1, stiffness: 420, damping: 14, mass: 0.8, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [v, trigger, delay, reduce]);
+  return (
+    <Animated.View
+      style={{
+        opacity: v.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }),
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A value that loops 0→1 forever (linear), for continuous ambient motion. */
+function useLoop(duration: number, active = true, delay = 0) {
+  const reduce = useReduceMotion();
+  const v = useValue(0);
+  useEffect(() => {
+    if (reduce || !active) {
+      v.setValue(0);
+      return;
+    }
+    v.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v, duration, active, delay, reduce]);
+  return v;
+}
+
+/**
+ * Concentric rings that expand and fade from behind a round control: the "I'm listening" signal.
+ * Render it as a sibling *behind* the button, centred on it.
+ */
+export function Ripples({ size, color, active }: { size: number; color: string; active: boolean }) {
+  const a = useLoop(1800, active, 0);
+  const b = useLoop(1800, active, 600);
+  const c = useLoop(1800, active, 1200);
+  if (!active) return null;
+  const ring = (v: Animated.Value) => ({
+    position: 'absolute' as const,
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    backgroundColor: color,
+    opacity: v.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.32, 0] }),
+    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+  });
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+      <Animated.View style={ring(a)} />
+      <Animated.View style={ring(b)} />
+      <Animated.View style={ring(c)} />
+    </View>
+  );
+}
+
+/** A live-looking audio waveform: bars bouncing at different rates while the AI speaks. */
+export function Waveform({ color, active, bars = 5, height = 22 }: { color: string; active: boolean; bars?: number; height?: number }) {
+  const reduce = useReduceMotion();
+  const [vals] = useState(() => Array.from({ length: bars }, () => new Animated.Value(0.3)));
+  useEffect(() => {
+    if (reduce || !active) {
+      vals.forEach((v) => v.setValue(0.3));
+      return;
+    }
+    const loops = vals.map((v, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(v, { toValue: 1, duration: 260 + ((i * 97) % 180), easing: motion.ease, useNativeDriver: true }),
+          Animated.timing(v, { toValue: 0.25 + ((i * 37) % 30) / 100, duration: 300 + ((i * 71) % 200), easing: motion.ease, useNativeDriver: true }),
+        ]),
+      ),
+    );
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [vals, active, reduce]);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, height }}>
+      {vals.map((v, i) => (
+        <Animated.View
+          key={i}
+          style={{ width: 4, height, borderRadius: 2, backgroundColor: color, transform: [{ scaleY: v }] }}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** Slow breathing scale, for "thinking" states. Wraps its children. */
+export function Breathe({ children, active, style }: { children: ReactNode; active: boolean; style?: StyleProp<ViewStyle> }) {
+  const reduce = useReduceMotion();
+  const v = useValue(0);
+  useEffect(() => {
+    if (reduce || !active) {
+      Animated.spring(v, { toValue: 0, ...motion.press, useNativeDriver: true }).start();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v, active, reduce]);
+  return (
+    <Animated.View style={[style, { transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.07] }) }] }]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** Very slow drifting motion for decorative shapes, so a screen feels alive without distracting. */
+export function Drift({ children, style, range = 18, duration = 9000 }: { children?: ReactNode; style?: StyleProp<ViewStyle>; range?: number; duration?: number }) {
+  const v = useLoop(duration);
+  const wave = v.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, 1, 0, -1, 0] });
+  const wave2 = v.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [1, 0, -1, 0, 1] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        style,
+        {
+          transform: [
+            { translateX: Animated.multiply(wave, range) },
+            { translateY: Animated.multiply(wave2, range * 0.6) },
+            { scale: wave2.interpolate({ inputRange: [-1, 1], outputRange: [0.96, 1.04] }) },
+          ],
+        },
       ]}
     >
       {children}

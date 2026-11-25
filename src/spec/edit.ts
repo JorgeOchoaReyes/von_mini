@@ -53,15 +53,16 @@ export function setLabel(spec: AppSpec, index: number, label: string): AppSpec {
 export function setText(spec: AppSpec, index: number, text: string): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || (c.type !== 'heading' && c.type !== 'text')) return spec;
-  c.text = text.trim().slice(0, 400) || c.text;
+  if (!c || (c.type !== 'heading' && c.type !== 'text' && c.type !== 'voice')) return spec;
+  // A voice chat's opening line may be cleared (the user then speaks first).
+  c.text = c.type === 'voice' ? text.trim().slice(0, 240) || undefined : text.trim().slice(0, 400) || c.text;
   return next;
 }
 
 export function setPrompt(spec: AppSpec, index: number, prompt: string): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || c.type !== 'ai') return spec;
+  if (!c || (c.type !== 'ai' && c.type !== 'voice')) return spec;
   c.prompt = prompt.trim().slice(0, 600) || c.prompt;
   return next;
 }
@@ -128,6 +129,15 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
         id: uniqueId(next, 'new_action'),
         label: 'Ask AI',
         prompt: 'Help me with this: {new_field}',
+      });
+      break;
+    case 'voice':
+      next.components.push({
+        type,
+        id: uniqueId(next, 'conversation'),
+        label: 'Talk it through',
+        prompt: 'You are a warm, curious coach. Help the user think out loud about what they typed.',
+        text: 'Hi! What would you like to talk through?',
       });
       break;
     case 'heading':
@@ -235,6 +245,9 @@ export function quickEdits(spec: AppSpec): QuickEdit[] {
         ),
       }),
     });
+  }
+  if (!has('voice') && spec.components.length < 12) {
+    out.push({ label: 'Add a voice chat', apply: (s) => addComponent(s, 'voice') });
   }
   const partner = ACCENTS.find((a) => a !== spec.accent);
   if (partner) out.push({ label: 'Change the colour', apply: (s) => setAccent(s, partner) });

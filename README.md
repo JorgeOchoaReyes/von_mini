@@ -44,6 +44,19 @@ Each response reports its `inferenceSource`, and the UI shows it with a 📱 On-
 - **Web (Chrome):** [`src/ai/engine.web.ts`](src/ai/engine.web.ts) uses the Firebase JS SDK (`firebase/ai`) with `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`. On-device requests run on Chrome's built-in Gemini Nano.
 - **App Check** protects every request: the debug provider on Android (debug tokens are accepted for the hackathon), and reCAPTCHA Enterprise or a debug token on web.
 
+### Other Firebase products
+
+| Product | What it does in von mini | Where |
+|---|---|---|
+| **Remote Config** | Tunes the product from the console without a release: the cloud model (`cloud_model`), whether new apps are designed `prefer_in_cloud` or `prefer_on_device` (`build_mode`), extra app-design rules (`spec_rules_extra`), and kill switches for voice input (`voice_input`) and sharing (`sharing`). Bundled defaults mean it behaves the same offline or before the first fetch; Settings shows whether live values are active. | Web: `firebase/remote-config`. Android: the native SDK in `modules/nano-bridge` (the JS SDK needs IndexedDB). [`src/remote/`](src/remote) |
+| **Authentication** | Anonymous sign-in, only when someone shares an app, so a shared design has an owner who can update or remove it. No account, no email. | [`src/firebase/services.ts`](src/firebase/services.ts) |
+| **Cloud Firestore** | Holds shared app designs (`shared/{id}`), and nothing else: entries, chats and custom HTML never leave the device. Security rules let anyone open a design by its link but nobody list them, and only the owner can change or delete one; shape and size are validated. | [`firestore.rules`](firestore.rules), [`src/share/share.ts`](src/share/share.ts) |
+
+**Sharing an app** (⋯ → *Share this app*) publishes its design and opens the share sheet. Whoever
+opens the link sees what's inside and can **Add to my apps**; the copy's AI then runs on *their*
+device. Links are `https://<your web host>/s/<id>` on the web (set `EXPO_PUBLIC_SHARE_BASE_URL`
+to your hosted URL so links made on phones open in any browser) or `vonmini://s/<id>` on a phone.
+
 ### Why apps are JSON, not code
 
 Gemini Nano is small, so writing working HTML/JS is unreliable for it, but it is good at **structured output**. So von mini asks the model for an **app spec**: a short JSON description of a screen built from prebuilt blocks (inputs, choices, AI buttons, save, history). See [`src/spec/types.ts`](src/spec/types.ts). The runtime renders specs natively ([`src/runtime/SpecRenderer.tsx`](src/runtime/SpecRenderer.tsx)), and every spec is validated and repaired before it is rendered ([`src/spec/validate.ts`](src/spec/validate.ts)). This makes offline, on-device app building dependable.
@@ -54,9 +67,46 @@ When online, **"Make it custom ✨"** asks Gemini in the cloud for a fully custo
 await vonmini.ai('Summarize: ...')     // runs PREFER_ON_DEVICE through Firebase AI Logic
 await vonmini.store.set('key', value)  // device-local storage
 await vonmini.store.get('key')
+await vonmini.listen()                 // speech-to-text, on-device where supported
+await vonmini.speak('Hello')           // text-to-speech with the device's own voice
+await vonmini.converse(persona, turns) // one spoken AI turn: Nano replies, spoken as it streams
 ```
 
 So even cloud-written apps keep their AI and their data on the device.
+
+## Voice: talk to your apps
+
+Every app can be used by voice, and you can build and edit apps by voice. It is a **cascade** of
+three on-device steps, so it keeps working in airplane mode:
+
+1. **Speech-to-text.** The platform recognizer, asked to stay on the device: Android's
+   `SpeechRecognizer` with `requiresOnDeviceRecognition` (through `expo-speech-recognition`), and
+   Chrome's Web Speech API with `processLocally` where the browser supports it
+   ([`src/voice/stt.ts`](src/voice/stt.ts), [`src/voice/stt.web.ts`](src/voice/stt.web.ts)).
+2. **Gemini Nano** writes the reply through Firebase AI Logic (`PREFER_ON_DEVICE`, or
+   `ONLY_ON_DEVICE` offline / in private mode), **streamed**
+   ([`src/voice/cascade.ts`](src/voice/cascade.ts)).
+3. **Text-to-speech** with the device's own voices (`expo-speech`; on the web a local voice is
+   chosen explicitly). Each sentence is spoken **as soon as it is complete**, while Nano is still
+   writing the rest, so a slow on-device model still answers quickly
+   ([`src/voice/tts.ts`](src/voice/tts.ts)).
+
+Where it shows up:
+
+- **A `voice` block** in app specs: a spoken conversation with a role the app defines (e.g. *"a
+  tough interviewer for a {role} job"*). Tap to talk, the AI answers out loud, hands-free mode
+  listens again after each reply, and you can always type instead. The transcript is saved like
+  any other field. Ask for *"an app to help me practice tough interview questions"* and you get
+  one; **Interview Coach** ships ready-made.
+- **A mic on every text field** of a generated app, for dictation.
+- **Building and editing by voice:** the mic in the home prompt builds the app as soon as you stop
+  talking, and a spoken message in the Edit chat gets a spoken reply.
+- **Custom HTML apps** get `vonmini.listen / speak / converse`. The sandboxed iframe can't reach
+  the microphone itself, so the host runs speech on its behalf.
+
+If on-device recognition isn't available (older phones, or a browser without it), recognition uses
+the platform's default recognizer when online, and offline the conversation falls back to typing;
+replies are still spoken.
 
 ## Editing an app
 
@@ -137,6 +187,12 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 4. **Run on Android:** `npm run android` builds a development build with the native bridge. Expo Go cannot load it.
    - On first launch, the App Check debug token is printed to logcat (`DebugAppCheckProvider`). Add it in the Firebase console under App Check > Manage debug tokens.
 
+**Sharing and Remote Config:** in the Firebase console, enable **Authentication > Anonymous**,
+create a **Cloud Firestore** database, and deploy the rules: `npx firebase-tools deploy --only
+firestore:rules`. Remote Config needs no setup; add any of the parameters listed above to
+override their defaults. To develop against local emulators instead, run `npx firebase-tools
+emulators:start --only auth,firestore` and set `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST=127.0.0.1`.
+
 **Offline mode:** set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` to force every AI call to run on-device (`ONLY_ON_DEVICE`). Private mode is locked on and cloud-only features are disabled. This mode needs no App Check or cloud setup — it is the fastest way to try the whole product, including building and editing apps, without a Firebase project.
 
 **On-device model:** Settings lets you choose which Gemini Nano build the runtime loads — **Gemini Nano 4** (`nano-v4-full`), **Gemini Nano 4 Fast** (`nano-v4-fast`), or the older stable build — and reports which one actually loaded. See [`src/ai/deviceModel.ts`](src/ai/deviceModel.ts).
@@ -144,6 +200,48 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 **Dev-only mock engine:** `EXPO_PUBLIC_MOCK_ENGINE=true` in `.env.local` runs the UI against a local canned engine that never touches the network, for developing the build/edit flows on a machine with no Gemini Nano. It is off by default and cannot run in a release build.
 
 Useful scripts: `npm run lint`, `npm run typecheck`, `npm run export:web`, `npx expo-doctor`.
+
+## Android builds (APK) and over-the-air updates
+
+Builds run in the cloud on **EAS Build**, so no local Android SDK is needed, and JavaScript
+changes ship to installed apps through **EAS Update** without a reinstall. Profiles live in
+[`eas.json`](eas.json):
+
+| Profile | Output | Use it for | Update channel |
+|---|---|---|---|
+| `development` | APK with the dev client | day-to-day development (`npx expo start`) | `development` |
+| `preview` | **installable APK** | testers, judges, the demo phone | `preview` |
+| `production` | Play Store app bundle (AAB) | publishing; the version code auto-increments | `production` |
+
+**One-time setup**
+
+1. Sign in: `npx eas-cli@latest login`
+2. Link the project: `npx eas-cli@latest init`, then paste the project ID it prints into
+   `EAS_PROJECT_ID` in [`app.config.ts`](app.config.ts) and commit it (it is not a secret). OTA
+   updates are switched on once it is set.
+3. Give EAS the Firebase config, which is git-ignored, as EAS environment variables. Do this for
+   each environment you build (`development`, `preview`, `production`):
+   - `npx eas-cli@latest env:create --environment preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret`
+   - `npx eas-cli@latest env:push --environment preview --path .env.local` (the `EXPO_PUBLIC_*` values)
+
+**Build an APK:** `npm run build:apk`. EAS prints a link and a QR code; open it on the phone to
+install. `npm run build:dev` makes a development build and `npm run build:release` a Play Store
+bundle.
+
+The Android app uses App Check's **debug provider** (debug tokens are accepted for this contest),
+so each phone prints its own token to logcat on first launch (`DebugAppCheckProvider`). Add it in
+the Firebase console under App Check > Manage debug tokens. On-device features (Gemini Nano,
+voice) work before that; cloud calls need the token.
+
+**Ship an update without a new APK:** after a JavaScript-only change, run
+`npm run update:preview -- --message "What changed"`. Phones running the `preview` APK download
+it on the next launch and apply it on the launch after, or straight away from
+**Settings > App updates**. Use `npm run update:production` for Play Store builds.
+
+The runtime version uses Expo's **fingerprint** policy, so any native change (the Kotlin bridge in
+`modules/nano-bridge`, a new native library, a config plugin) produces a new runtime. Updates are
+only delivered to builds with a matching runtime, so after a native change, make a new APK; an old
+one will never receive JavaScript it can't run.
 
 ## Testing it
 

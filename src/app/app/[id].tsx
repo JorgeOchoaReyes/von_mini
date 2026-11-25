@@ -18,6 +18,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -27,6 +28,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
 import { buildCustomHtml } from '../../ai/hybrid';
+import { firebaseConfigured } from '../../firebase/app';
+import { useRemoteConfig } from '../../remote/remoteConfig';
+import { publishApp } from '../../share/share';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
 import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
@@ -37,7 +41,7 @@ import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
 import { deleteApp, getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
-import { Button, Card, Chip, Icon, IconButton, ModePill, SourceBadge, type IconName } from '../../ui/components';
+import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
 import { haptics } from '../../ui/haptics';
 import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
@@ -61,6 +65,9 @@ export default function AppScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [editingApp, setEditingApp] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState<string | null>(null);
+  const rc = useRemoteConfig();
   const [lastChange, setLastChange] = useState<{ changes: string[]; prev: AppSpec } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +191,40 @@ export default function AppScreen() {
     }
   };
 
+  /**
+   * Publishes this app's design (never its entries) so others can add a copy, then opens the
+   * system share sheet. Pending inspector edits are saved first so the link has the latest design.
+   */
+  const shareApp = async () => {
+    if (!appRef.current) return;
+    setSharing(true);
+    setError(null);
+    try {
+      await flush();
+      const current = (await getApp(appRef.current.id)) ?? appRef.current;
+      const { id: shareId, url } = await publishApp(current);
+      if (current.shareId !== shareId) {
+        const next = { ...current, shareId };
+        await saveApp(next);
+        setApp(next);
+      }
+      setShared(url);
+      haptics.success();
+      const message = `${current.spec.emoji} ${current.spec.name}, made with von mini. Its AI runs on your device: ${url}`;
+      if (Platform.OS === 'web') {
+        const nav = navigator as Navigator & { share?: (d: { title: string; text: string; url: string }) => Promise<void> };
+        if (nav.share) await nav.share({ title: current.spec.name, text: message, url }).catch(() => undefined);
+        else await nav.clipboard?.writeText(url).catch(() => undefined);
+      } else {
+        await Share.share({ message });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const remove = () => {
     if (!app) return;
     const go = async () => {
@@ -222,6 +263,7 @@ export default function AppScreen() {
   }
 
   const canCustom = ai.online && !ai.privateMode && !ai.locked;
+  const canShare = canCustom;
   const chatBusy = isBusy(app.id);
 
   const preview = (
@@ -326,6 +368,28 @@ export default function AppScreen() {
               disabled={!canCustom}
               loading={busy}
             />
+            {rc.bool('sharing') && (
+              <ActionRow
+                icon="share-social-outline"
+                title={app.shareId ? 'Share again (same link, latest design)' : 'Share this app'}
+                body={
+                  !firebaseConfigured
+                    ? 'Sharing needs a Firebase project (see README).'
+                    : canShare
+                      ? 'Publishes the design only, never your entries. Whoever opens the link runs its AI on their own device.'
+                      : 'Publishing needs the cloud. Go online and turn off private mode.'
+                }
+                onPress={shareApp}
+                theme={appTheme}
+                disabled={!canShare || !firebaseConfigured}
+                loading={sharing}
+              />
+            )}
+            {shared && (
+              <Text selectable style={[type.caption, { color: appTheme.muted }]}>
+                Link: {shared}
+              </Text>
+            )}
             {app.builtWith !== 'starter' && (
               <ActionRow icon="trash-outline" title="Delete this app" onPress={remove} theme={appTheme} danger />
             )}
@@ -508,29 +572,7 @@ function Segmented_({
     { value: 'chat', label: 'Chat', icon: 'chatbubble-ellipses-outline', dot: chatDot },
     { value: 'history', label: 'History', icon: 'time-outline' },
   ];
-  return (
-    <View style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            onPress={() => {
-              if (!on) haptics.tap();
-              onChange(o.value);
-            }}
-            style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
-          >
-            <Icon name={o.icon} size={15} color={on ? theme.accent : theme.muted} />
-            <Text style={[type.label, { color: on ? theme.text : theme.muted }]}>{o.label}</Text>
-            {o.dot && <View style={[styles.dot, { backgroundColor: theme.accent }]} />}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  return <Segmented theme={theme} value={value} onChange={onChange} options={options} />;
 }
 
 /** The stacked switcher used on phones. */
@@ -555,27 +597,7 @@ function Tabs({
   ];
   return (
     <FadeUp distance={4}>
-      <View style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}>
-        {options.map((o) => {
-          const on = o.value === value;
-          return (
-            <Pressable
-              key={o.value}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              onPress={() => {
-                if (!on) haptics.tap();
-                onChange(o.value);
-              }}
-              style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
-            >
-              <Icon name={o.icon} size={15} color={on ? theme.accent : theme.muted} />
-              <Text style={[type.caption, { color: on ? theme.text : theme.muted, fontWeight: '600' }]}>{o.label}</Text>
-              {o.dot && <View style={[styles.dot, { backgroundColor: theme.accent }]} />}
-            </Pressable>
-          );
-        })}
-      </View>
+      <Segmented theme={theme} value={value} onChange={onChange} options={options} />
     </FadeUp>
   );
 }

@@ -5,6 +5,8 @@ import { useAI } from '../ai/AIContext';
 import { runAction } from '../ai/hybrid';
 import type { InferenceSource } from '../ai/types';
 import { componentKey } from '../spec/edit';
+import { MicButton } from '../voice/MicButton';
+import { VoiceChat } from '../voice/VoiceChat';
 import type { AppSpec, SpecComponent } from '../spec/types';
 import { fillTemplate } from '../spec/validate';
 import { addEntry, deleteEntry, listEntries, type Entry } from '../storage/store';
@@ -170,6 +172,8 @@ export function SpecRenderer({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [entries, setEntries] = useState<Entry[]>([]);
   const [justSaved, setJustSaved] = useState(false);
+  /** Bumped on save so voice chats start a fresh conversation for the next entry. */
+  const [saveCount, setSaveCount] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -190,7 +194,8 @@ export function SpecRenderer({
     [spec.components],
   );
   const fieldIds = useMemo(
-    () => spec.components.filter((c) => c.type === 'input' || c.type === 'choice').map((c) => c.id!),
+    // A voice chat's transcript is saved like any typed field.
+    () => spec.components.filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice').map((c) => c.id!),
     [spec.components],
   );
   const hasInput = fieldIds.some((id) => values[id]?.trim());
@@ -220,6 +225,7 @@ export function SpecRenderer({
     setValues({});
     setSources({});
     setJustSaved(true);
+    setSaveCount((n) => n + 1);
   }, [appId, values]);
 
   /**
@@ -323,20 +329,31 @@ export function SpecRenderer({
             ))}
           </View>
         ) : (
-          <TextInput
-            value={values[c.id!] ?? ''}
-            onChangeText={(v) => set(c.id!, v)}
-            placeholder={c.placeholder}
-            placeholderTextColor={theme.subtle}
-            multiline={c.multiline}
-            accessibilityLabel={c.label}
-            style={[
-              styles.input,
-              type.body,
-              { backgroundColor: theme.surfaceAlt, color: theme.text },
-              c.multiline && { minHeight: 120, textAlignVertical: 'top' },
-            ]}
-          />
+          <View style={styles.inputWrap}>
+            <TextInput
+              value={values[c.id!] ?? ''}
+              onChangeText={(v) => set(c.id!, v)}
+              placeholder={c.placeholder}
+              placeholderTextColor={theme.subtle}
+              multiline={c.multiline}
+              accessibilityLabel={c.label}
+              style={[
+                styles.input,
+                type.body,
+                { backgroundColor: theme.surfaceAlt, color: theme.text, paddingRight: space(12) },
+                c.multiline && { minHeight: 120, textAlignVertical: 'top' },
+              ]}
+            />
+            {/* Dictate instead of typing: speech-to-text, on-device where the platform allows. */}
+            <View style={styles.inputMic}>
+              <MicButton
+                theme={theme}
+                size={34}
+                label={`Dictate ${c.label}`}
+                onFinal={(t) => set(c.id!, [values[c.id!]?.trim(), t].filter(Boolean).join(' '))}
+              />
+            </View>
+          </View>
         )}
       </View>
     );
@@ -397,6 +414,12 @@ export function SpecRenderer({
               </View>
             ) : null}
           </View>
+        );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
+      case 'voice': {
+        const node = (
+          <VoiceChat key={`${c.id}:${saveCount}`} c={c} values={values} theme={theme} onTranscript={(t) => set(c.id!, t)} />
         );
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
@@ -463,6 +486,8 @@ export function SpecRenderer({
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(3) },
+  inputWrap: { position: 'relative' },
+  inputMic: { position: 'absolute', right: space(2), top: space(2) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   fieldLabel: { flexDirection: 'row', alignItems: 'center', gap: space(2), minHeight: 24 },
   result: { borderRadius: radius.md, borderLeftWidth: 3, padding: space(4), gap: space(2) },

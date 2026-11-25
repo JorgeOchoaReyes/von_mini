@@ -1,11 +1,18 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { useEffect } from 'react';
+
 import { AIProvider } from '../ai/AIContext';
+import { loadRemoteConfig } from '../remote/remoteConfig';
 import { useTheme } from '../ui/theme';
 
 export default function RootLayout() {
   const theme = useTheme();
+  // Activate Remote Config values once per launch; bundled defaults apply until (or unless) it does.
+  useEffect(() => {
+    void loadRemoteConfig();
+  }, []);
   return (
     <AIProvider>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
@@ -17,11 +24,13 @@ export default function RootLayout() {
           headerBackButtonDisplayMode: 'minimal',
           headerShadowVisible: false,
           contentStyle: { backgroundColor: theme.bg },
+          // Native screen transitions: pushes slide in from the side, settings rises as a sheet.
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen name="index" options={{ title: 'von mini' }} />
         <Stack.Screen name="app/[id]" options={{ title: '' }} />
-        <Stack.Screen name="settings" options={{ title: 'AI settings', presentation: 'modal' }} />
+        <Stack.Screen name="settings" options={{ title: 'AI settings', presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
     </AIProvider>
   );

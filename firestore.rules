@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// von mini stores nothing in Firestore except app designs a user chose to share.
+// Entries, chats and custom HTML never leave the device.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // shared/{shareId}: one shared app design (see src/share/share.ts).
+    match /shared/{shareId} {
+      // Anyone with the link can open it, but nobody can list or search the collection.
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if isValidDesign()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+
+      // Only the (anonymous) owner can update or remove it, and ownership can't be handed off.
+      allow update: if isValidDesign()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isValidDesign() {
+      let d = request.resource.data;
+      return request.auth != null
+        && d.keys().hasOnly(['spec', 'request', 'ownerUid', 'createdAt', 'updatedAt', 'v'])
+        && d.updatedAt == request.time
+        && d.v == 1
+        && d.request is string && d.request.size() <= 500
+        && d.spec is map
+        && d.spec.keys().hasOnly(['name', 'emoji', 'accent', 'description', 'components'])
+        && d.spec.name is string && d.spec.name.size() <= 40
+        && d.spec.components is list && d.spec.components.size() <= 12;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

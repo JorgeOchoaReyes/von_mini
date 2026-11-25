@@ -1,7 +1,7 @@
 // Native (Android / iOS) engine. Web uses engine.web.ts instead (Metro picks it by extension).
 import NanoBridge from '../../modules/nano-bridge';
 
-import { cloudModel } from '../config';
+import { rcString } from '../remote/remoteConfig';
 import { getDeviceModel } from './deviceModel';
 import type { AIEngine, DeviceStatus, GenerateChunk } from './types';
 
@@ -26,7 +26,7 @@ export const engine: AIEngine = {
   async status() {
     if (!NanoBridge) return 'unsupported';
     try {
-      return (await NanoBridge.getStatus(cloudModel, getDeviceModel())) as DeviceStatus;
+      return (await NanoBridge.getStatus(rcString('cloud_model'), getDeviceModel())) as DeviceStatus;
     } catch {
       return 'unavailable';
     }
@@ -36,7 +36,7 @@ export const engine: AIEngine = {
   async modelName() {
     if (!NanoBridge) return '';
     try {
-      return await NanoBridge.getModelName(cloudModel, getDeviceModel());
+      return await NanoBridge.getModelName(rcString('cloud_model'), getDeviceModel());
     } catch {
       return '';
     }
@@ -46,7 +46,7 @@ export const engine: AIEngine = {
     if (!NanoBridge) return 'unsupported';
     const sub = NanoBridge.addListener('onDownloadProgress', (e) => onProgress?.(e.downloaded, e.total));
     try {
-      return (await NanoBridge.download(cloudModel, getDeviceModel())) as DeviceStatus;
+      return (await NanoBridge.download(rcString('cloud_model'), getDeviceModel())) as DeviceStatus;
     } finally {
       sub.remove();
     }
@@ -56,7 +56,7 @@ export const engine: AIEngine = {
   async warmUp() {
     if (!NanoBridge) return false;
     try {
-      return await NanoBridge.warmUp(cloudModel, getDeviceModel());
+      return await NanoBridge.warmUp(rcString('cloud_model'), getDeviceModel());
     } catch {
       return false;
     }
@@ -64,7 +64,7 @@ export const engine: AIEngine = {
 
   async generate(prompt, { mode, system, json }) {
     if (!NanoBridge) throw new Error(missing);
-    return NanoBridge.generate(prompt, cloudModel, mode, system ?? null, !!json, getDeviceModel());
+    return NanoBridge.generate(prompt, rcString('cloud_model'), mode, system ?? null, !!json, getDeviceModel());
   },
 
   async *stream(prompt, options): AsyncIterable<GenerateChunk> {
@@ -88,7 +88,7 @@ export const engine: AIEngine = {
     try {
       // Not awaited: the promise resolves when the native stream is drained, which is signalled
       // by the final event we consume below.
-      NanoBridge.streamGenerate(prompt, cloudModel, options.mode, options.system ?? null, !!options.json, getDeviceModel(), id).catch(
+      NanoBridge.streamGenerate(prompt, rcString('cloud_model'), options.mode, options.system ?? null, !!options.json, getDeviceModel(), id).catch(
         (e: unknown) => {
           failure = e instanceof Error ? e.message : String(e);
           finished = true;

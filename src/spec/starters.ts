@@ -3,6 +3,44 @@ import type { SavedApp } from '../storage/store';
 /** Bundled apps: usable offline immediately, even before the user builds anything. */
 export const STARTERS: SavedApp[] = [
   {
+    id: 'starter-interview',
+    request: 'Help me practice answering tough interview questions out loud',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Interview Coach',
+      emoji: '🎙️',
+      accent: 'blue',
+      description: 'Rehearse hard questions out loud and get honest feedback.',
+      components: [
+        { type: 'input', id: 'role', label: 'What role are you interviewing for?', placeholder: 'Product manager at a startup' },
+        {
+          type: 'choice',
+          id: 'style',
+          label: 'How tough should it be?',
+          options: ['Friendly', 'Realistic', 'Grill me'],
+        },
+        {
+          type: 'voice',
+          id: 'practice',
+          label: 'Mock interview',
+          prompt:
+            'You are an experienced interviewer for a {role} position. Your style is: {style}. Ask one tough, specific interview question at a time. After each answer, give one sentence of honest feedback, then ask the next question.',
+          text: 'Thanks for coming in. Let’s start with a hard one: tell me about a time you failed, and what you did about it.',
+        },
+        {
+          type: 'ai',
+          id: 'review',
+          label: 'Review my answers',
+          prompt: 'Here is a mock interview transcript: {practice}. In at most 5 lines starting with "- ", list what the candidate did well and what to improve.',
+        },
+        { type: 'save', label: 'Save session' },
+        { type: 'history', label: 'Past sessions' },
+      ],
+    },
+  },
+  {
     id: 'starter-mood',
     request: 'A journal that tags my mood',
     builtWith: 'starter',

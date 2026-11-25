@@ -1,8 +1,10 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Switch,
@@ -16,7 +18,7 @@ import {
 import type { DeviceStatus, InferenceSource } from '../ai/types';
 import type { ProgressStep } from '../ai/hybrid';
 import { haptics } from './haptics';
-import { FadeUp, Pulse, Shimmer, TypingDots } from './motion';
+import { FadeUp, motion, PopIn, Pulse, Shimmer, TypingDots, usePressScale, useReduceMotion } from './motion';
 import { radius, space, type, useTheme, type Theme } from './theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -88,6 +90,7 @@ export function Button({
     haptics.light();
     onPress();
   };
+  const spring = usePressScale(size === 'sm' ? 0.95 : 0.97);
   const body =
     variant === 'primary' ? (
       <Gradient theme={theme} style={[styles.button, size === 'sm' && styles.buttonSm, style]}>
@@ -101,17 +104,25 @@ export function Button({
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       onPress={press}
       disabled={off}
-      style={({ pressed }) => [
-        body ? { opacity: off ? 0.45 : pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] } : null,
-        !body && [
-          styles.button,
-          size === 'sm' && styles.buttonSm,
-          { backgroundColor: bg, opacity: off ? 0.45 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
-          style,
-        ],
-      ]}
+      {...spring.handlers}
     >
-      {body ?? inner}
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            spring.style,
+            body
+              ? { opacity: off ? 0.45 : pressed ? 0.92 : 1 }
+              : [
+                  styles.button,
+                  size === 'sm' && styles.buttonSm,
+                  { backgroundColor: bg, opacity: off ? 0.45 : pressed ? 0.9 : 1 },
+                  style,
+                ],
+          ]}
+        >
+          {body ?? inner}
+        </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -133,6 +144,7 @@ export function IconButton({
   disabled?: boolean;
   color?: string;
 }) {
+  const spring = usePressScale(0.86);
   return (
     <Pressable
       accessibilityRole="button"
@@ -143,12 +155,19 @@ export function IconButton({
       }}
       disabled={disabled}
       hitSlop={6}
-      style={({ pressed }) => [
-        styles.iconButton,
-        { backgroundColor: filled ? theme.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.7 : 1 },
-      ]}
+      {...spring.handlers}
     >
-      <Icon name={icon} size={20} color={filled ? theme.onAccent : (color ?? theme.muted)} />
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.iconButton,
+            spring.style,
+            { backgroundColor: filled ? theme.accent : pressed ? theme.surfaceAlt : 'transparent', opacity: disabled ? 0.4 : 1 },
+          ]}
+        >
+          <Icon name={icon} size={20} color={filled ? theme.onAccent : (color ?? theme.muted)} />
+        </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -197,6 +216,7 @@ export function Chip({
   icon?: IconName;
   disabled?: boolean;
 }) {
+  const spring = usePressScale(0.93);
   return (
     <Pressable
       accessibilityRole="button"
@@ -206,18 +226,22 @@ export function Chip({
         onPress();
       }}
       disabled={disabled}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: selected ? theme.accent : theme.surface,
-          borderColor: selected ? theme.accent : theme.border,
-          opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
-        },
-      ]}
+      {...spring.handlers}
     >
-      {icon && <Icon name={icon} size={14} color={selected ? theme.onAccent : theme.accent} />}
-      <Text style={[type.caption, { color: selected ? theme.onAccent : theme.text, fontWeight: '500' }]}>{label}</Text>
+      <Animated.View
+        style={[
+          styles.chip,
+          spring.style,
+          {
+            backgroundColor: selected ? theme.accent : theme.surface,
+            borderColor: selected ? theme.accent : theme.border,
+            opacity: disabled ? 0.45 : 1,
+          },
+        ]}
+      >
+        {icon && <Icon name={icon} size={14} color={selected ? theme.onAccent : theme.accent} />}
+        <Text style={[type.caption, { color: selected ? theme.onAccent : theme.text, fontWeight: '500' }]}>{label}</Text>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -233,8 +257,37 @@ export function Segmented<T extends string>({
   onChange(v: T): void;
   theme: Theme;
 }) {
+  // A single raised pill slides between segments on a spring instead of each segment toggling
+  // its own background, so switching tabs reads as one continuous motion.
+  const reduce = useReduceMotion();
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const [width, setWidth] = useState(0);
+  const [x] = useState(() => new Animated.Value(index));
+  useEffect(() => {
+    if (reduce) x.setValue(index);
+    else Animated.spring(x, { toValue: index, ...motion.press, useNativeDriver: true }).start();
+  }, [index, x, reduce]);
+  const GAP = 3;
+  const segW = width > 0 ? (width - GAP * 2 - GAP * (options.length - 1)) / options.length : 0;
   return (
-    <View style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}>
+    <View
+      style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {segW > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.segmentPill,
+            {
+              width: segW,
+              backgroundColor: theme.surface,
+              boxShadow: theme.shadowSm,
+              transform: [{ translateX: Animated.multiply(x, segW + GAP) }],
+            },
+          ]}
+        />
+      )}
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -246,7 +299,7 @@ export function Segmented<T extends string>({
               if (!on) haptics.tap();
               onChange(o.value);
             }}
-            style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
+            style={[styles.segment, on && segW === 0 && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
           >
             {o.icon && <Icon name={o.icon} size={16} color={on ? theme.accent : theme.muted} />}
             <Text style={[type.label, { color: on ? theme.text : theme.muted }]}>{o.label}</Text>
@@ -431,6 +484,7 @@ export function Composer({
   minHeight = 48,
   sendLabel = 'Send',
   autoFocus,
+  accessory,
 }: {
   value: string;
   onChange(v: string): void;
@@ -441,8 +495,11 @@ export function Composer({
   minHeight?: number;
   sendLabel?: string;
   autoFocus?: boolean;
+  /** Extra control shown next to the send button, e.g. a microphone. */
+  accessory?: ReactNode;
 }) {
   const can = !!value.trim() && !busy;
+  const sendPress = usePressScale(0.88);
   return (
     <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
       <TextInput
@@ -463,20 +520,24 @@ export function Composer({
         }}
         style={[styles.composerInput, type.body, { color: theme.text, minHeight }]}
       />
+      {accessory}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={sendLabel}
         onPress={onSubmit}
         disabled={!can}
-        style={({ pressed }) => [
-          styles.sendWrap,
-          { opacity: can ? (pressed ? 0.85 : 1) : 0.5, transform: [{ scale: pressed && can ? 0.94 : 1 }] },
-        ]}
+        {...sendPress.handlers}
+        style={[styles.sendWrap, { opacity: can ? 1 : 0.5 }]}
       >
         {can && !busy ? (
-          <Gradient theme={theme} style={styles.send}>
-            <Icon name="arrow-up" size={20} color={theme.onAccent} />
-          </Gradient>
+          // Pops in the moment there is something to send.
+          <PopIn>
+            <Animated.View style={sendPress.style}>
+              <Gradient theme={theme} style={styles.send}>
+                <Icon name="arrow-up" size={20} color={theme.onAccent} />
+              </Gradient>
+            </Animated.View>
+          </PopIn>
         ) : (
           <View style={[styles.send, { backgroundColor: theme.surfaceAlt }]}>
             {busy ? (
@@ -512,7 +573,9 @@ export function StepList({ steps, theme }: { steps: ProgressStep[]; theme: Theme
         <FadeUp key={s.id} delay={i * 60} distance={6}>
           <View style={styles.rowCenter}>
             {s.state === 'done' ? (
-              <Icon name="checkmark-circle" size={16} color={theme.success} />
+              <PopIn>
+                <Icon name="checkmark-circle" size={16} color={theme.success} />
+              </PopIn>
             ) : (
               <Pulse color={theme.accent} size={8} />
             )}
@@ -579,7 +642,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space(3),
     paddingVertical: space(2),
   },
-  segmented: { flexDirection: 'row', borderRadius: radius.md, padding: 3, gap: 3 },
+  segmented: { flexDirection: 'row', borderRadius: radius.md, padding: 3, gap: 3, position: 'relative' },
+  segmentPill: { position: 'absolute', top: 3, bottom: 3, left: 3, borderRadius: radius.sm },
   segment: {
     flex: 1,
     flexDirection: 'row',

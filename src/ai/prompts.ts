@@ -11,6 +11,7 @@ Component types:
 - input {id,label,placeholder,multiline}: user types text
 - choice {id,label,options:[2-6 strings]}: user picks one
 - ai {id,label,prompt}: a button; prompt is an instruction for a small AI that reads the inputs, written with {input_id} placeholders
+- voice {id,label,prompt,text}: a spoken conversation with the AI (the user talks, the AI talks back out loud). prompt says who the AI plays and its goal, and may use {input_id}; text is the AI's short opening line
 - save {label}: saves inputs and AI results
 - history {label}: lists saved entries
 Rules: 3-9 components. ids are lowercase_snake. Every ai prompt uses at least one {input_id} and asks for a short answer.
@@ -20,6 +21,7 @@ Make it feel like a polished app:
 - emoji and accent fit the topic. Order: inputs/choices, then ai buttons, then save, then history.
 - input labels: short and human, often a question ("How did you sleep?"). placeholders: a concrete example.
 - ai labels: a verb, 1-3 words ("Tag my mood"). Use 1-2 ai buttons, each doing something clearly different.
+- Use a voice block when the user wants to practice, rehearse, role-play or talk something through (interviews, languages, tough conversations). Its prompt gives a clear role, e.g. "You are a tough but fair interviewer for a {role} job. Ask one hard question at a time and give brief feedback on each answer."
 - ai prompts ask for at most 3 sentences or at most 5 lines starting with "- ".
 - Prefer a choice over an input when there are a few fixed options.`;
 
@@ -47,6 +49,11 @@ Hard rules:
 - Structure: a .vm-hero with the app name and one-line purpose, the main form in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a list of .vm-card, an empty state with .vm-empty.
 - Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails. Must work at 360px wide.
 - For AI features call: await vonmini.ai(promptString) -> string. It runs on a small on-device model, so ask for short outputs and keep prompts simple.
+- Voice (all on the device, so it works offline):
+  await vonmini.listen() -> string: listens to the user once and returns what they said ('' if nothing).
+  await vonmini.speak(text): says text out loud; await vonmini.stopSpeaking().
+  await vonmini.converse(persona, history) -> string: history is [{role:'user'|'assistant', text}] ending with the user's turn; the AI replies in the role described by persona and the reply is spoken aloud as it is written.
+  For practice/rehearsal/role-play apps, build a voice conversation: a big round mic button that calls listen() then converse(), a transcript of turns as chat bubbles, a "hands-free" toggle that listens again after each reply, a stop button, and a text box to type instead of speaking. Show the state (Listening / Thinking / Speaking).
 - For persistence call: await vonmini.store.get(key) -> any|null and await vonmini.store.set(key, value).
 - Never use localStorage, cookies or alert().`;
 

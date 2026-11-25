@@ -14,6 +14,7 @@ import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
+import { rcString } from '../remote/remoteConfig';
 import { engine } from './engineSelect';
 import {
   ACTION_SYSTEM,
@@ -34,15 +35,24 @@ export interface RouteContext {
   privateMode: boolean;
 }
 
-const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
+/** True when every request must stay on the device (offline, private mode, or an offline build). */
+export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
 
 export function modeFor(task: 'build' | 'edit' | 'action', ctx: RouteContext): InferenceMode {
   if (local(ctx)) return 'only_on_device';
-  return task === 'build' ? 'prefer_in_cloud' : 'prefer_on_device';
+  if (task !== 'build') return 'prefer_on_device';
+  // Remote Config can move app design on-device (e.g. to cut cloud cost) without a release.
+  return rcString('build_mode') === 'prefer_on_device' ? 'prefer_on_device' : 'prefer_in_cloud';
+}
+
+/** The app-designer prompt, plus any extra rules set in Remote Config. */
+function specSystem() {
+  const extra = rcString('spec_rules_extra').trim();
+  return extra ? `${SPEC_SYSTEM}\nAdditional rules:\n${extra}` : SPEC_SYSTEM;
 }
 
 async function generateSpec(prompt: string, mode: InferenceMode) {
-  const opts = { mode, system: SPEC_SYSTEM, json: true, schema: appSpecJsonSchema };
+  const opts = { mode, system: specSystem(), json: true, schema: appSpecJsonSchema };
   let result = await engine.generate(prompt, opts);
   try {
     return { spec: sanitizeSpec(extractJson(result.text)), source: result.source };
@@ -112,7 +122,7 @@ async function generateSpecProgressive(
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
   const labels = STEP_LABELS[task];
-  const opts = { mode, system: SPEC_SYSTEM, json: true, schema: appSpecJsonSchema };
+  const opts = { mode, system: specSystem(), json: true, schema: appSpecJsonSchema };
   let attempt = 0;
 
   for (;;) {

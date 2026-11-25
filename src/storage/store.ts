@@ -15,6 +15,8 @@ export interface SavedApp {
   /** Custom HTML version written by Gemini in the cloud (optional). */
   html?: string;
   builtWith: InferenceSource | 'starter';
+  /** Firestore id of this app's shared design, once the user has shared it. */
+  shareId?: string;
   createdAt: number;
   updatedAt: number;
 }

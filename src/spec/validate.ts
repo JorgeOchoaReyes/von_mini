@@ -76,6 +76,16 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.prompt = prompt;
         break;
       }
+      case 'voice': {
+        // A spoken conversation: speech-to-text -> Gemini Nano -> text-to-speech.
+        const prompt = str(comp.prompt, 600);
+        if (!prompt) continue;
+        out.id = uniqueId(str(comp.id) ?? label ?? 'conversation');
+        out.label = label ?? 'Talk it through';
+        out.prompt = prompt;
+        out.text = str(comp.text, 240);
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
@@ -85,7 +95,8 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     components.push(out);
   }
 
-  if (!components.some((c) => c.type === 'input' || c.type === 'choice')) {
+  // A voice conversation collects input too, so an app can be voice-only.
+  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice')) {
     throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   if (!components.some((c) => c.type === 'save')) components.push({ type: 'save', label: 'Save' });
@@ -101,7 +112,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   };
 }
 
-const RANK: Record<SpecComponent['type'], number> = { heading: 0, text: 0, input: 1, choice: 1, ai: 2, save: 3, history: 4 };
+const RANK: Record<SpecComponent['type'], number> = { heading: 0, text: 0, input: 1, choice: 1, ai: 2, voice: 2, save: 3, history: 4 };
 
 /**
  * Enforces a predictable, good-looking layout whatever order the model used:

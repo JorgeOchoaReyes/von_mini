@@ -36,6 +36,7 @@ const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'input', label: 'Text field', icon: 'create-outline' },
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
+  { type: 'voice', label: 'Voice chat', icon: 'mic-outline' },
   { type: 'heading', label: 'Heading', icon: 'text-outline' },
   { type: 'text', label: 'Paragraph', icon: 'reorder-four-outline' },
 ];
@@ -198,6 +199,28 @@ function BlockFields({
             multiline
             onChange={(v) => emit(setPrompt(spec, index, v), `Changed what “${title}” asks the AI.`)}
             hint="Use {field_id} to insert what the user typed."
+            theme={theme}
+          />
+        </>
+      )}
+
+      {c.type === 'voice' && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the voice chat to “${v}”.`)} theme={theme} />
+          <Field
+            label="Who the AI plays"
+            value={c.prompt ?? ''}
+            multiline
+            onChange={(v) => emit(setPrompt(spec, index, v), `Changed who the AI plays in “${title}”.`)}
+            hint="Its role and goal, e.g. a tough interviewer. Use {field_id} to insert what the user typed."
+            theme={theme}
+          />
+          <Field
+            label="Opening line"
+            value={c.text ?? ''}
+            multiline
+            onChange={(v) => emit(setText(spec, index, v), `Changed how “${title}” opens.`)}
+            hint="What the AI says first. Leave empty to let the user speak first."
             theme={theme}
           />
         </>
