@@ -443,7 +443,9 @@ export async function chatAboutApp(
   let changes = edit(turn);
   // The model sent the app back unchanged while saying it changed something (or said nothing):
   // the edit was lost on the way. Ask once more, pointing that out, before giving up.
-  if (turn.app && !changes.length && (!turn.reply || CLAIMS_CHANGE.test(turn.reply))) {
+  // Also when it says it changed the app but sent no app at all ("I've extended the chart").
+  const lost = turn.app ? !changes.length && (!turn.reply || CLAIMS_CHANGE.test(turn.reply)) : SAYS_DONE.test(turn.reply);
+  if (lost) {
     const again = `${prompt}\n\nYour last answer returned the app unchanged. If the user asked for any change, return the full app with that change applied (use "code" for what the blocks can't do). If they didn't ask for a change, set "app" to null and just reply.`;
     try {
       turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(again, m, onEvent));
@@ -459,6 +461,9 @@ export async function chatAboutApp(
   const reply = turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : noChange;
   return { kind: 'answer', source: turn.source, text: reply };
 }
+
+/** A reply in which the model says it has already made a change. */
+const SAYS_DONE = /\b(i('ve| have)|i)\s+(just\s+)?(added|changed|updated|removed|renamed|made|turned|replaced|switched|extended|set|increased|decreased|moved)\b|\b(is|are) now\b|\bnow (has|shows|uses|rolls|includes)\b/i;
 
 /** A reply that says the app was changed. */
 const CLAIMS_CHANGE = /\b(added|add(ing)?|changed|updated|removed|renamed|made|turned|replaced|switched|set|now (has|shows|uses|rolls|is))\b/i;

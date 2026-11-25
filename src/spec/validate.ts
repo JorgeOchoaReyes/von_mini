@@ -28,9 +28,56 @@ export function extractJson(text: string): unknown {
     try {
       return JSON.parse(repaired);
     } catch {
-      throw e;
+      // Output cut off mid-way (seen in the cloud: "Unterminated string"): close what's open and
+      // keep everything before the break. The validator drops the half-written last block.
+      try {
+        return JSON.parse(closeTruncated(body.slice(start)));
+      } catch {
+        throw e;
+      }
     }
   }
+}
+
+/** Closes an unfinished JSON text: an open string, then open arrays and objects, in order. */
+export function closeTruncated(text: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let lastSafe = 0; // end of the last complete value inside a container
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      lastSafe = i + 1;
+      if (!stack.length) return text.slice(0, i + 1);
+    } else if (ch === ',') lastSafe = i;
+  }
+  // Cut back to the last complete element, so no half-written key or value is left dangling.
+  let cut = text.slice(0, lastSafe).replace(/,\s*$/, '');
+  // Re-count what's still open in the kept part.
+  const open: string[] = [];
+  inString = false;
+  escaped = false;
+  for (const ch of cut) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') open.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') open.pop();
+  }
+  if (inString) cut += '"';
+  return cut + open.reverse().join('');
 }
 
 /** Lowercased letters only, so "Yes/No", "yes_no" and "YesNo" all read "yesno". */
