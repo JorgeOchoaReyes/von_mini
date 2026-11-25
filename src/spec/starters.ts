@@ -1,6 +1,164 @@
 import type { SavedApp } from '../storage/store';
 
 /** Bundled apps: usable offline immediately, even before the user builds anything. */
+/** Ready-to-play arcade games: original games in classic arcade styles. */
+export const ARCADE: SavedApp[] = [
+  {
+    id: 'starter-game',
+    request: 'Arcade: Block Drop',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Block Drop',
+      emoji: '🧱',
+      accent: 'violet',
+      description: 'Stack falling blocks, clear rows, level up.',
+      components: [
+        { type: 'game', id: 'drop', label: 'Block Drop', game: 'blocks', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'drop', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-dash',
+    request: 'Arcade: Lane Dash',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Lane Dash',
+      emoji: '🏃',
+      accent: 'amber',
+      description: 'Dodge across three lanes as it speeds up.',
+      components: [
+        { type: 'game', id: 'dash', label: 'Lane Dash', game: 'runner', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'dash', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-snake',
+    request: 'Arcade: Apple Snake',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Apple Snake',
+      emoji: '🐍',
+      accent: 'green',
+      description: 'Eat apples, grow longer, don’t bite yourself.',
+      components: [
+        { type: 'game', id: 'snake', label: 'Apple Snake', game: 'snake', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'snake', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-hop',
+    request: 'Arcade: Sky Hop',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Sky Hop',
+      emoji: '🐤',
+      accent: 'blue',
+      description: 'Tap to fly through the gaps.',
+      components: [
+        { type: 'game', id: 'hop', label: 'Sky Hop', game: 'flyer', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'hop', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-bricks',
+    request: 'Arcade: Brick Bash',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Brick Bash',
+      emoji: '🏓',
+      accent: 'rose',
+      description: 'Bounce the ball and break every brick.',
+      components: [
+        { type: 'game', id: 'bash', label: 'Brick Bash', game: 'bricks', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'bash', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-stars',
+    request: 'Arcade: Star Patrol',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Star Patrol',
+      emoji: '🚀',
+      accent: 'violet',
+      description: 'Slide your ship and stop the invaders.',
+      components: [
+        { type: 'game', id: 'patrol', label: 'Star Patrol', game: 'shooter', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'patrol', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-catch',
+    request: 'Arcade: Fruit Fall',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Fruit Fall',
+      emoji: '🧺',
+      accent: 'teal',
+      description: 'Catch the fruit, dodge the bombs.',
+      components: [
+        { type: 'game', id: 'fall', label: 'Fruit Fall', game: 'catch', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'fall', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+  {
+    id: 'arcade-bop',
+    request: 'Arcade: Hamster Bop',
+    builtWith: 'starter',
+    createdAt: 0,
+    updatedAt: 0,
+    spec: {
+      name: 'Hamster Bop',
+      emoji: '🐹',
+      accent: 'amber',
+      description: 'Bop them as they pop up, fast.',
+      components: [
+        { type: 'game', id: 'bop', label: 'Hamster Bop', game: 'whack', speed: 'normal' },
+        { type: 'stat', id: 'best', label: 'Best', field: 'bop', op: 'max', range: 'all' },
+        { type: 'stat', id: 'played', label: 'Played today', op: 'count', range: 'today' },
+        { type: 'history', label: 'Scores', groupBy: 'day' },
+      ],
+    },
+  },
+];
+
+export const ARCADE_IDS = new Set(ARCADE.map((a) => a.id));
+
 export const STARTERS: SavedApp[] = [
   {
     id: 'starter-interview',
@@ -212,4 +370,5 @@ export const STARTERS: SavedApp[] = [
       ],
     },
   },
+  ...ARCADE,
 ];

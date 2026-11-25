@@ -8,6 +8,7 @@ import { componentKey } from '../spec/edit';
 import { MicButton } from '../voice/MicButton';
 import { VoiceChat } from '../voice/VoiceChat';
 import { ReminderBlock } from '../alerts/ReminderBlock';
+import { GameCard } from '../games/GameCard';
 import type { AppSpec, SpecComponent } from '../spec/types';
 import {
   CHECK_SEP,
@@ -266,14 +267,20 @@ export function SpecRenderer({
 
   const layout = useMemo(() => sections(spec.components), [spec.components]);
   const labels = useMemo(
-    () => Object.fromEntries(spec.components.filter((c) => c.id).map((c) => [c.id!, c.label ?? c.id!])),
+    // A game's entries hold its score, so they read "Score" rather than the button's label.
+    () =>
+      Object.fromEntries(
+        spec.components
+          .filter((c) => c.id)
+          .flatMap((c) => (c.type === 'game' ? [[c.id!, 'Score'], [`${c.id}_by`, 'Player']] : [[c.id!, c.label ?? c.id!]])),
+      ),
     [spec.components],
   );
   const fieldIds = useMemo(
     // A voice chat's transcript and a checklist's ticks are saved like any typed field.
     () =>
       spec.components
-        .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist')
+        .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game')
         .map((c) => c.id!),
     [spec.components],
   );
@@ -615,6 +622,20 @@ export function SpecRenderer({
             fill={fill}
             theme={theme}
             onTranscript={(t) => set(c.id!, t)}
+          />
+        );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
+      case 'game': {
+        const node = (
+          <GameCard
+            key={c.id}
+            c={c}
+            theme={theme}
+            entries={entries}
+            onFinish={async (score, by) => {
+              setEntries(await addEntry(appId, { [c.id!]: String(score), ...(by ? { [`${c.id}_by`]: by } : {}) }));
+            }}
           />
         );
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;

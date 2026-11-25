@@ -7,7 +7,7 @@ import { useAI } from '../../ai/AIContext';
 import { stoppable, StoppedError } from '../../ai/stoppable';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
-import { STARTERS } from '../../spec/starters';
+import { ARCADE_IDS, STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
 import {
@@ -34,10 +34,11 @@ import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, 
 import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 /** Which shelf of the app gallery is showing. */
-type Shelf = 'mine' | 'ready';
+type Shelf = 'mine' | 'ready' | 'arcade';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
+  { label: 'Arcade game', icon: 'game-controller-outline', prompt: 'A space shooter game where a cat ship fights fish invaders' },
   { label: 'Mood journal', icon: 'happy-outline', prompt: 'A journal that tags my mood' },
   { label: 'Habit tracker', icon: 'repeat', prompt: 'A habit tracker that reflects on my week' },
   { label: 'Expense notes', icon: 'wallet-outline', prompt: 'An expense logger that categorizes what I buy' },
@@ -205,11 +206,12 @@ export default function Home() {
   const schemePref = useSchemePref();
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
-  const ready = apps.filter(isStarter);
+  const ready = apps.filter((a) => isStarter(a) && !ARCADE_IDS.has(a.id));
+  const arcade = apps.filter((a) => ARCADE_IDS.has(a.id));
   // Show your own apps once you have some; until then, the ready-made shelf.
   const [shelfChoice, setShelfChoice] = useState<Shelf | null>(null);
   const shelf: Shelf = shelfChoice ?? (mine.length ? 'mine' : 'ready');
-  const shown = shelf === 'mine' ? mine : ready;
+  const shown = shelf === 'mine' ? mine : shelf === 'arcade' ? arcade : ready;
 
   // The bottom bar's voice button sends what was said here to build it (params.at keeps a repeat
   // of the same request from being ignored).
@@ -376,8 +378,9 @@ export default function Home() {
             value={shelf}
             onChange={setShelfChoice}
             options={[
-              { value: 'mine', label: `My apps${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
-              { value: 'ready', label: `Ready-made · ${ready.length}`, icon: 'cube-outline' },
+              { value: 'mine', label: `Mine${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
+              { value: 'ready', label: `Ready · ${ready.length}`, icon: 'cube-outline' },
+              { value: 'arcade', label: `Arcade · ${arcade.length}`, icon: 'game-controller-outline' },
             ]}
           />
           {shown.length === 0 ? (

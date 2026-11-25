@@ -15,6 +15,54 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /shooter|invader|space|alien/i,
+    json: `{"name":"Fish Patrol","emoji":"🐱","accent":"violet","description":"Steer your ship and stop the invaders.","components":[
+      {"type":"game","id":"patrol","label":"Fish Patrol","game":"shooter","player":"🐱","item":"🐟"},
+      {"type":"stat","id":"best","label":"Best","field":"patrol","op":"max","range":"all"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /brick|breakout|paddle/i,
+    json: `{"name":"Brick Bash","emoji":"🏓","accent":"rose","description":"Bounce the ball and break every brick.","components":[
+      {"type":"game","id":"bash","label":"Brick Bash","game":"bricks"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /catch|basket|collect/i,
+    json: `{"name":"Fruit Fall","emoji":"🧺","accent":"teal","description":"Catch the fruit, dodge the bombs.","components":[
+      {"type":"game","id":"fall","label":"Fruit Fall","game":"catch"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /whack|mole|bop|reflex/i,
+    json: `{"name":"Hamster Bop","emoji":"🐹","accent":"amber","description":"Bop them as they pop up.","components":[
+      {"type":"game","id":"bop","label":"Hamster Bop","game":"whack"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /tetris|falling block|blocks? game|stack/i,
+    json: `{"name":"Block Drop","emoji":"🧱","accent":"violet","description":"Stack falling blocks and clear rows.","components":[
+      {"type":"game","id":"drop","label":"Block Drop","game":"blocks","speed":"normal"},
+      {"type":"stat","id":"best","label":"Best","field":"drop","op":"max","range":"all"},
+      {"type":"history","label":"Scores","groupBy":"day"}]}`,
+  },
+  {
+    match: /snake|worm/i,
+    json: `{"name":"Apple Snake","emoji":"🐍","accent":"green","description":"Eat apples, grow longer, don’t bite yourself.","components":[
+      {"type":"game","id":"snake","label":"Apple Snake","game":"snake","item":"🍎"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /flappy|fly|bird|tap game/i,
+    json: `{"name":"Sky Hop","emoji":"🐤","accent":"blue","description":"Tap to fly through the gaps.","components":[
+      {"type":"game","id":"hop","label":"Sky Hop","game":"flyer","player":"🐤"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /\bgames?\b|subway|runner|dodge|arcade/i,
+    json: `{"name":"Cat Dash","emoji":"🐱","accent":"teal","description":"Dodge the dogs and beat your best run.","components":[
+      {"type":"game","id":"dash","label":"Cat Dash","game":"runner","player":"🐱","item":"🐶","text":"Swipe left and right to dodge the dogs."},
+      {"type":"stat","id":"best","label":"Best run","field":"dash","op":"max","range":"all"},
+      {"type":"history","label":"Scores","groupBy":"day"}]}`,
+  },
+  {
     match: /calorie|food|meal|diet|nutrition|ate\b/i,
     json: `{"name":"Bite Log","emoji":"🍽️","accent":"amber","description":"Log meals and watch your daily calories.","components":[
       {"type":"stat","id":"kcal_today","label":"Today","field":"calories","op":"sum","range":"today","unit":"kcal"},
@@ -161,6 +209,28 @@ function editSpec(currentJson: string, change: string): string {
       if (i >= 0) spec.components.splice(i, 1);
     }
   }
+  // v2 blocks, so the mock can demonstrate them through chat too.
+  const firstNumber = () => spec.components.find((x) => x.type === 'input' && x.kind === 'number');
+  if (/total|sum|stat|how much|count/.test(c) && !spec.components.some((x) => x.type === 'stat')) {
+    const num = firstNumber();
+    spec.components.unshift(
+      num
+        ? { type: 'stat', id: 'total_today', label: 'Today', field: num.id, op: 'sum', range: 'today', unit: num.unit }
+        : { type: 'stat', id: 'entries_today', label: 'Entries today', op: 'count', range: 'today' },
+    );
+  }
+  if (/chart|graph/.test(c) && !spec.components.some((x) => x.type === 'chart')) {
+    const num = firstNumber();
+    spec.components.unshift(num ? { type: 'chart', id: 'per_day', label: 'Per day', field: num.id, op: 'sum', days: 7 } : { type: 'chart', id: 'per_day', label: 'Entries per day', op: 'count', days: 7 });
+  }
+  if (/checklist|routine|to-?do/.test(c) && !spec.components.some((x) => x.type === 'checklist')) {
+    addField('__tmp', '');
+    const i = spec.components.findIndex((x) => x.id === '__tmp');
+    spec.components[i] = { type: 'checklist', id: 'routine', label: 'Today', options: ['Stretch', 'Water', 'Read'] };
+  }
+  if (/streak/.test(c) && !spec.components.some((x) => x.op === 'streak')) {
+    spec.components.unshift({ type: 'stat', id: 'streak', label: 'Streak', op: 'streak' });
+  }
   if (/rename|call it/.test(c)) {
     const m = change.match(/["“']([^"”']{2,30})["”']/);
     if (m) (spec as unknown as { name: string }).name = m[1];
@@ -177,6 +247,12 @@ const MOCK_INTERVIEW = [
   'Nice use of a concrete example. Last one: what would your first ninety days here look like?',
 ];
 
+/** Tests read this to check how many model requests an action made. */
+const countCall = () => {
+  const g = globalThis as { __mockCalls?: number };
+  g.__mockCalls = (g.__mockCalls ?? 0) + 1;
+};
+
 export const mockEngine: AIEngine = {
   runtime: 'none',
   streaming: true,
@@ -191,6 +267,7 @@ export const mockEngine: AIEngine = {
   },
 
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
+    countCall();
     await sleep(options.json ? 220 : 180);
     // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
@@ -198,6 +275,7 @@ export const mockEngine: AIEngine = {
   },
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
+    countCall();
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
@@ -211,7 +289,22 @@ export const mockEngine: AIEngine = {
   },
 };
 
+/** A chat turn in the single-request format: {"reply", "app"}. */
+function chatTurn(prompt: string): string {
+  const json = prompt.slice('App JSON:'.length, prompt.indexOf('\n\n')).trim();
+  const message = prompt.slice(prompt.lastIndexOf('User:') + 5).trim();
+  if (/internet|website|photo|picture|camera|weather|stock/i.test(message)) {
+    return JSON.stringify({ reply: 'Apps here can’t reach the internet or take photos. You could add a field to type it in, and an AI button to make sense of it.', app: null });
+  }
+  if (/\?$/.test(message) && !/^(can|could|would) you\b/i.test(message)) {
+    return JSON.stringify({ reply: 'This app saves what you type on your phone and uses a small AI to help with it. You could ask me to “add a daily total” to see your numbers add up.', app: null });
+  }
+  const app = editSpec(json, message);
+  return `{"reply":"Done, I updated the app.","app":${app}}`;
+}
+
 function respond(prompt: string, options: GenerateOptions): string {
+  if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
   if (options.system?.includes('talking out loud')) {
     const turns = (prompt.match(/^User:/gm) ?? []).length;

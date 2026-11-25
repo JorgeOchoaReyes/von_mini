@@ -15,6 +15,7 @@ export const COMPONENT_TYPES = [
   'reminder',
   'save',
   'history',
+  'game',
 ] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
@@ -48,6 +49,11 @@ export interface SpecComponent {
   groupBy?: 'day';
   /** For history: a field whose numbers are totalled per day, shown on each day's header. */
   total?: string;
+  /** game: which built-in game, how fast, and the emoji for the player and the things around it. */
+  game?: 'blocks' | 'runner' | 'snake' | 'flyer' | 'bricks' | 'shooter' | 'catch' | 'whack';
+  speed?: 'slow' | 'normal' | 'fast';
+  player?: string;
+  item?: string;
   /** For chart: how many days to show (7-31). */
   days?: number;
   /** For stat / chart: the field (input, choice, checklist or ai id) whose saved values it reads. */
@@ -105,6 +111,10 @@ export const appSpecJsonSchema = {
           days: { type: 'number' },
           groupBy: { type: 'string', enum: ['day'] },
           total: { type: 'string' },
+          game: { type: 'string', enum: ['blocks', 'runner', 'snake', 'flyer', 'bricks', 'shooter', 'catch', 'whack'] },
+          speed: { type: 'string', enum: ['slow', 'normal', 'fast'] },
+          player: { type: 'string' },
+          item: { type: 'string' },
         },
         required: ['type'],
       },

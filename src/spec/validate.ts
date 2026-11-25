@@ -52,6 +52,28 @@ const RANGE_ALIASES: Record<string, SpecComponent['range']> = {
   all: 'all', alltime: 'all', ever: 'all', total: 'all', overall: 'all',
 };
 
+// Game names models (and people) use, mapped to the built-in games. Well-known game titles map
+// to the original game of the same style.
+const GAME_ALIASES: Record<string, SpecComponent['game']> = {
+  blocks: 'blocks', block: 'blocks', fallingblocks: 'blocks', tetris: 'blocks', puzzle: 'blocks', stack: 'blocks', stacker: 'blocks', tiles: 'blocks',
+  runner: 'runner', lanerunner: 'runner', endlessrunner: 'runner', run: 'runner', dodge: 'runner', dodger: 'runner', subwaysurfers: 'runner', subway: 'runner', racer: 'runner', racing: 'runner', lanes: 'runner',
+  snake: 'snake', worm: 'snake',
+  flyer: 'flyer', flappy: 'flyer', flappybird: 'flyer', fly: 'flyer', bird: 'flyer', jump: 'flyer', jumper: 'flyer',
+  bricks: 'bricks', brickbreaker: 'bricks', breakout: 'bricks', arkanoid: 'bricks', paddle: 'bricks', pong: 'bricks', ball: 'bricks',
+  shooter: 'shooter', spaceshooter: 'shooter', spaceinvaders: 'shooter', invaders: 'shooter', galaga: 'shooter', asteroids: 'shooter', shmup: 'shooter', space: 'shooter', aliens: 'shooter',
+  catch: 'catch', catcher: 'catch', basket: 'catch', collect: 'catch', fruit: 'catch', falling: 'catch',
+  whack: 'whack', whackamole: 'whack', mole: 'whack', tap: 'whack', tapper: 'whack', reflex: 'whack', reaction: 'whack', popup: 'whack',
+};
+const SPEED_ALIASES: Record<string, SpecComponent['speed']> = {
+  slow: 'slow', easy: 'slow', relaxed: 'slow', chill: 'slow', normal: 'normal', medium: 'normal', fast: 'fast', hard: 'fast', quick: 'fast', insane: 'fast',
+};
+/** A short emoji-ish token for a game sprite: at most 2 user-perceived characters. */
+const sprite = (v: unknown) => {
+  const t = typeof v === 'string' ? v.trim() : '';
+  if (!t || /[a-z0-9]{2,}/i.test(t)) return undefined;
+  return [...t].slice(0, 4).join('');
+};
+
 /** A list from an array, or from one string written as "a, b, c" or one per line. */
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/\s*[,\n;]\s*/) : []);
 
@@ -176,6 +198,19 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.unit = str(comp.unit, 16) || undefined;
         break;
       }
+      case 'game': {
+        // A built-in arcade game; each finished run saves its score as an entry.
+        const game = GAME_ALIASES[word(comp.game ?? comp.kind ?? comp.style)];
+        if (!game) continue;
+        out.id = uniqueId(str(comp.id) ?? label ?? 'game');
+        out.label = label ?? 'Play';
+        out.game = game;
+        out.speed = SPEED_ALIASES[word(comp.speed ?? comp.difficulty)] ?? 'normal';
+        out.player = sprite(comp.player);
+        out.item = sprite(comp.item);
+        out.text = str(comp.text, 120);
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
@@ -193,7 +228,8 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   // At most 12 blocks in all (sharing enforces the same limit), counting the save and history
   // blocks added below. Drop static text first, then the last of the other blocks. This runs before
   // references are checked, so nothing can point at a block that was dropped.
-  const reserve = (components.some((c) => c.type === 'save') ? 0 : 1) + (components.some((c) => c.type === 'history') ? 0 : 1);
+  const needsSave = components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist');
+  const reserve = (!needsSave || components.some((c) => c.type === 'save') ? 0 : 1) + (components.some((c) => c.type === 'history') ? 0 : 1);
   while (components.length + reserve > MAX_COMPONENTS) {
     let drop = components.map((c) => c.type).lastIndexOf('text');
     if (drop === -1) drop = components.map((c) => c.type).lastIndexOf('heading');
@@ -236,7 +272,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   // count entries without one. Anything else would show a number that can never change.
   const savedIds = new Set(
     components
-      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice')
+      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game')
       .map((c) => c.id),
   );
   // An AI can only fill a field the user could also type into.
@@ -262,10 +298,17 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   repairPrompts();
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
-  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist')) {
+  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game')) {
     throw new Error('The generated app has no inputs. Try describing it differently.');
   }
-  if (!components.some((c) => c.type === 'save')) components.push({ type: 'save', label: 'Save' });
+  // A game saves its own scores, so a games-only app needs no save button.
+  const fillable2 = components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist');
+  if (fillable2 && !components.some((c) => c.type === 'save')) components.push({ type: 'save', label: 'Save' });
+  // ...and a save button with nothing to fill in could never be pressed.
+  if (!fillable2) {
+    const at = components.findIndex((c) => c.type === 'save');
+    if (at >= 0) components.splice(at, 1);
+  }
   if (!components.some((c) => c.type === 'history')) components.push({ type: 'history', label: 'History' });
 
   const accent = ACCENTS.includes(r.accent as never) ? (r.accent as AppSpec['accent']) : 'violet';
@@ -304,6 +347,8 @@ const RANK: Record<SpecComponent['type'], number> = {
   heading: 0,
   text: 0,
   // Totals sit at the top, like a dashboard, above the form that feeds them.
+  // A game is the point of its app, so it leads.
+  game: 0.4,
   stat: 0.5,
   chart: 0.5,
   input: 1,

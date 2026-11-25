@@ -138,6 +138,27 @@ export function setAiFill(spec: AppSpec, index: number, patch: { fills?: string;
   return next;
 }
 
+/** Changes a game block's game, speed or emoji. */
+export function setGame(
+  spec: AppSpec,
+  index: number,
+  patch: { game?: SpecComponent['game']; speed?: SpecComponent['speed']; player?: string; item?: string },
+): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'game') return spec;
+  if (patch.game) {
+    c.game = patch.game;
+    // Each game has its own default characters; keep custom ones only for the same game.
+    c.player = undefined;
+    c.item = undefined;
+  }
+  if (patch.speed) c.speed = patch.speed;
+  if (patch.player !== undefined) c.player = [...patch.player.trim()].slice(0, 4).join('') || undefined;
+  if (patch.item !== undefined) c.item = [...patch.item.trim()].slice(0, 4).join('') || undefined;
+  return next;
+}
+
 /** Groups history by day, optionally totalling a field on each day. */
 export function setHistoryDays(spec: AppSpec, index: number, patch: { byDay?: boolean; total?: string }): AppSpec {
   const next = clone(spec);
@@ -228,6 +249,9 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
       );
       break;
     }
+    case 'game':
+      next.components.push({ type, id: uniqueId(next, 'game'), label: 'Lane Dash', game: 'runner', speed: 'normal' });
+      break;
     case 'heading':
       next.components.push({ type, text: 'New heading' });
       break;

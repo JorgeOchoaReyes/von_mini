@@ -95,36 +95,27 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
     const reply = await turn.promise;
 
     if (reply.kind === 'edit') {
-      if (!reply.changes.length) {
-        await appendMessage(appId, {
-          role: 'assistant',
-          kind: 'answer',
-          source: reply.source,
-          text: "I couldn't find anything to change for that. Try naming the field or button, e.g. “add a field for sleep hours”.",
-        });
-      } else {
-        // The app may have changed while the model was working (another edit, a restore). Saving
-        // now would silently overwrite that, so only apply the edit to the spec it was made for.
-        const latest = await getApp(appId);
-        if (!latest) throw new Error('This app no longer exists.');
-        if (JSON.stringify(latest.spec) !== JSON.stringify(app.spec)) {
-          throw new Error('The app changed while I was working on this, so I left it as it is. Ask again to apply the change.');
-        }
-        await saveApp({ ...latest, spec: reply.spec, builtWith: reply.source });
-        await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source, app.spec);
-        void notifyIfInBackground({
-          title: `${reply.spec.emoji} ${reply.spec.name} updated`,
-          body: reply.changes[0] ?? 'Your change is done. Tap to see it.',
-          url: `/app/${appId}`,
-        });
-        await appendMessage(appId, {
-          role: 'assistant',
-          kind: 'edit',
-          source: reply.source,
-          text: reply.changes.join('\n'),
-          prevSpec: app.spec,
-        });
+      // The app may have changed while the model was working (another edit, a restore). Saving
+      // now would silently overwrite that, so only apply the edit to the spec it was made for.
+      const latest = await getApp(appId);
+      if (!latest) throw new Error('This app no longer exists.');
+      if (JSON.stringify(latest.spec) !== JSON.stringify(app.spec)) {
+        throw new Error('The app changed while I was working on this, so I left it as it is. Ask again to apply the change.');
       }
+      await saveApp({ ...latest, spec: reply.spec, builtWith: reply.source });
+      await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source, app.spec);
+      void notifyIfInBackground({
+        title: `${reply.spec.emoji} ${reply.spec.name} updated`,
+        body: reply.changes[0] ?? 'Your change is done. Tap to see it.',
+        url: `/app/${appId}`,
+      });
+      await appendMessage(appId, {
+        role: 'assistant',
+        kind: 'edit',
+        source: reply.source,
+        text: reply.changes.join('\n'),
+        prevSpec: app.spec,
+      });
     } else {
       await appendMessage(appId, { role: 'assistant', kind: 'answer', source: reply.source, text: reply.text });
     }
