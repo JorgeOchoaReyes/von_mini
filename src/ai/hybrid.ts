@@ -162,6 +162,20 @@ async function* withTimeouts<T>(source: AsyncIterable<T>, firstMs: number, idleM
   }
 }
 
+/** How long a single non-streamed request may take before we stop waiting for it. */
+export const REQUEST_MS = 60_000;
+
+/** Rejects with StalledError if `p` hasn't settled within `ms`, so nothing can spin forever. */
+export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new StalledError()), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 /** Cloud failures worth retrying on the device: the model is busy, over quota, or unreachable. */
 export function isCloudUnavailable(e: unknown): boolean {
   if (e instanceof StalledError) return true;
@@ -231,17 +245,27 @@ async function generateSpecOnce(
     let text = '';
     let source: InferenceSource = 'on_device';
     let sawFirstToken = false;
-    const stream = engine.stream(attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`, opts);
-    for await (const chunk of withTimeouts(stream, FIRST_CHUNK_MS, IDLE_MS)) {
-      text = chunk.text;
-      source = chunk.source;
-      if (!sawFirstToken) {
-        sawFirstToken = true;
-        onEvent({ type: 'step', step: { id: 'read', label: labels[0], state: 'done' } });
-        onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'active' } });
+    const p = attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`;
+    try {
+      for await (const chunk of withTimeouts(engine.stream(p, opts), FIRST_CHUNK_MS, IDLE_MS)) {
+        text = chunk.text;
+        source = chunk.source;
+        if (!sawFirstToken) {
+          sawFirstToken = true;
+          onEvent({ type: 'step', step: { id: 'read', label: labels[0], state: 'done' } });
+          onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'active' } });
+        }
+        onEvent({ type: 'partial', text });
+        onEvent({ type: 'peek', peek: peekSpec(text) });
       }
-      onEvent({ type: 'partial', text });
-      onEvent({ type: 'peek', peek: peekSpec(text) });
+    } catch (e) {
+      // A stream that never starts may be a streaming problem rather than a model problem (seen on
+      // an Android phone: no chunk and no error). Ask once more without streaming before failing.
+      if (!(e instanceof StalledError) || sawFirstToken) throw e;
+      onEvent({ type: 'retry' });
+      const r = await withDeadline(engine.generate(p, opts), REQUEST_MS);
+      text = r.text;
+      source = r.source;
     }
     try {
       const spec = sanitizeSpec(extractJson(text));
@@ -325,7 +349,11 @@ export async function chatAboutApp(
 }
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {
-  return engine.generate(prompt, { mode: modeFor('action', ctx), system: ACTION_SYSTEM });
+  return withDeadline(engine.generate(prompt, { mode: modeFor('action', ctx), system: ACTION_SYSTEM }), REQUEST_MS).catch(
+    (e: unknown) => {
+      throw e instanceof StalledError ? new Error('The AI didn’t answer within a minute. Try again.') : explainCloudError(e);
+    },
+  );
 }
 
 export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {

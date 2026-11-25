@@ -15,6 +15,7 @@ import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../.
 import { ProgressBar } from '../../ui/motion';
 import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme, type SchemePref } from '../../ui/theme';
 import { useRemoteConfig } from '../../remote/remoteConfig';
+import { CloudCheck } from '../../ui/CloudCheck';
 import { UpdatesCard } from '../../ui/UpdatesCard';
 import { useSttSupport } from '../../voice/useVoice';
 import { MIC_OVERHANG } from '../../ui/BottomBar';
@@ -214,6 +215,8 @@ export default function Settings() {
             theme={theme}
           />
         </Card>
+
+        <CloudCheck theme={theme} />
 
         <UpdatesCard theme={theme} />
       </ScrollView>
