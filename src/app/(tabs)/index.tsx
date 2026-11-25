@@ -1,20 +1,19 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Image, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
 import { stoppable, StoppedError } from '../../ai/stoppable';
-import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
+import { buildAppProgressive, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { AddShared } from '../../share/AddShared';
-import { OfflineBadge } from '../../ui/OfflineBadge';
+import { AppTile } from '../../ui/AppTile';
 import { ARCADE_IDS, STARTERS } from '../../spec/starters';
 import { MicButton } from '../../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
 import {
   Button,
-  Caption,
   Card,
   Chip,
   Composer,
@@ -23,7 +22,6 @@ import {
   IconButton,
   ModePill,
   Segmented,
-  SourceBadge,
   SpecSkeleton,
   StepList,
   type IconName,
@@ -31,16 +29,15 @@ import {
 import { confirmDeleteApp } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
 import { Halftone } from '../../ui/Halftone';
-import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
-import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
+import { Drift, FadeUp, Pulse } from '../../ui/motion';
+import { stroke, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
 import { MIC_OVERHANG } from '../../ui/BottomBar';
 
 /** Which shelf of the app gallery is showing. */
-type Shelf = 'mine' | 'ready' | 'arcade';
+type Shelf = 'mine' | 'ready';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
-  { label: 'Just chat', icon: 'chatbubbles-outline', prompt: 'A chat app where I can talk or type to an AI about anything' },
   { label: 'Arcade game', icon: 'game-controller-outline', prompt: 'A space shooter game where a cat ship fights fish invaders' },
   { label: 'Mood journal', icon: 'happy-outline', prompt: 'A journal that tags my mood' },
   { label: 'Habit tracker', icon: 'repeat', prompt: 'A habit tracker that reflects on my week' },
@@ -51,62 +48,6 @@ const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Recipe scaler', icon: 'restaurant-outline', prompt: 'Scale a recipe and get ideas from my fridge' },
   { label: 'Workout log', icon: 'barbell-outline', prompt: 'A workout log that suggests what to train next' },
 ];
-
-/** One app in the gallery. Memoized so typing in the prompt box never re-renders the grid. */
-const AppTile = memo(function AppTile({
-  app,
-  onOpen,
-  onLongPress,
-}: {
-  app: SavedApp;
-  onOpen(id: string): void;
-  /** Long-press: delete (or reset a changed ready-made app). */
-  onLongPress(app: SavedApp): void;
-}) {
-  const theme = useTheme(app.spec.accent);
-  const color = (ACCENT_COLORS[app.spec.accent] ?? ACCENT_COLORS.violet)[theme.scheme];
-  const spring = usePressScale(0.965);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${app.spec.name}`}
-      onPress={() => {
-        haptics.tap();
-        onOpen(app.id);
-      }}
-      onLongPress={() => {
-        haptics.medium();
-        onLongPress(app);
-      }}
-      accessibilityHint="Long-press to delete"
-      {...spring.handlers}
-    >
-      <Animated.View
-        style={[
-          styles.tile,
-          spring.style,
-          { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow },
-        ]}
-      >
-        <View style={[styles.tileIcon, { backgroundColor: alpha(color, theme.scheme === 'dark' ? 0.22 : 0.12) }]}>
-          <Text style={styles.tileEmoji}>{app.spec.emoji}</Text>
-        </View>
-        <View style={{ gap: 3, flex: 1 }}>
-          <Text style={[type.label, { color: theme.text }]} numberOfLines={1}>
-            {app.spec.name}
-          </Text>
-          <Text style={[type.caption, { color: theme.muted }]} numberOfLines={2}>
-            {app.spec.description || app.request}
-          </Text>
-        </View>
-        <View style={styles.badges}>
-          <SourceBadge source={app.builtWith} />
-          <OfflineBadge spec={app.spec} html={!!app.html} />
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-});
 
 export default function Home() {
   const theme = useTheme();
@@ -134,7 +75,6 @@ export default function Home() {
     }, []),
   );
 
-  const onDevice = modeFor('build', ai) === 'only_on_device';
 
   const onEvent = useCallback((e: BuildEvent) => {
     if (e.type === 'step') {
@@ -214,11 +154,10 @@ export default function Home() {
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
   const ready = apps.filter((a) => isStarter(a) && !ARCADE_IDS.has(a.id));
-  const arcade = apps.filter((a) => ARCADE_IDS.has(a.id));
   // Show your own apps once you have some; until then, the ready-made shelf.
   const [shelfChoice, setShelfChoice] = useState<Shelf | null>(null);
   const shelf: Shelf = shelfChoice ?? (mine.length ? 'mine' : 'ready');
-  const shown = shelf === 'mine' ? mine : shelf === 'arcade' ? arcade : ready;
+  const shown = shelf === 'mine' ? mine : ready;
 
   // The bottom bar's voice button sends what was said here to build it (params.at keeps a repeat
   // of the same request from being ignored).
@@ -276,8 +215,7 @@ export default function Home() {
             <View style={{ gap: space(2) }}>
               <Text style={[type.display, { color: theme.text }]}>What do you want to build?</Text>
               <Text style={[type.body, { color: theme.muted }]}>
-                Describe a small app in a sentence. It’s ready in seconds, its AI runs on your device, and your data stays
-                here.
+                Describe it in a sentence. Ready in seconds, and your data stays on this phone.
               </Text>
             </View>
             <Composer
@@ -313,12 +251,6 @@ export default function Home() {
                 />
               ))}
             </ScrollView>
-            {/* A comic caption box: the narrator's note on how this gets built. */}
-            <Caption theme={theme} icon={onDevice ? 'phone-portrait-outline' : 'git-compare-outline'}>
-              {onDevice
-                ? 'Built on-device with Gemini Nano. Works in airplane mode.'
-                : 'Gemini designs it, with Gemini Nano as the offline fallback.'}
-            </Caption>
           </View>
         </FadeUp>
 
@@ -386,19 +318,10 @@ export default function Home() {
             value={shelf}
             onChange={setShelfChoice}
             options={[
-              { value: 'mine', label: `Mine${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
-              { value: 'ready', label: `Ready · ${ready.length}`, icon: 'cube-outline' },
-              { value: 'arcade', label: `Arcade · ${arcade.length}`, icon: 'game-controller-outline' },
+              { value: 'mine', label: `My apps${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
+              { value: 'ready', label: `Ready-made · ${ready.length}`, icon: 'cube-outline' },
             ]}
           />
-          {shelf === 'arcade' && (
-            <View style={styles.row}>
-              <Icon name="airplane-outline" size={16} color={theme.success} />
-              <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>
-                Every game works offline: no AI, no internet. Scores stay on this phone.
-              </Text>
-            </View>
-          )}
           {shown.length === 0 ? (
             <EmptyState
               icon="sparkles-outline"
@@ -446,15 +369,4 @@ const styles = StyleSheet.create({
   peekEmoji: { fontSize: 28 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space(3) },
   tileWrap: { flexBasis: '47%', flexGrow: 1, minWidth: 240 },
-  tile: {
-    flex: 1,
-    minHeight: 168,
-    borderWidth: stroke,
-    borderRadius: radius.lg,
-    padding: space(4),
-    gap: space(3),
-  },
-  tileIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  tileEmoji: { fontSize: 26 },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2), alignItems: 'center' },
 });

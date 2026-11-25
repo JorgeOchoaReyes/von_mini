@@ -9,6 +9,8 @@
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 
+import { getVoiceSettings } from './voiceSettings';
+
 let muted = false;
 /** Mutes all speech output (the transcript still updates). */
 export function setMuted(v: boolean) {
@@ -27,10 +29,14 @@ function localWebVoice(): string | undefined {
   return (voices.find((v) => /en-US/i.test(v.lang)) ?? voices[0])?.voiceURI;
 }
 
-/** Speaks one utterance and resolves when it has finished (or was stopped / failed). */
-export function speak(text: string): Promise<void> {
+/**
+ * Speaks one utterance and resolves when it has finished (or was stopped / failed). Uses the
+ * voice, speed and pitch chosen in Settings; `force` speaks even when muted (a Settings preview).
+ */
+export function speak(text: string, force = false): Promise<void> {
   const clean = forSpeech(text);
-  if (!clean || muted) return Promise.resolve();
+  if (!clean || (muted && !force)) return Promise.resolve();
+  const { voice, rate, pitch } = getVoiceSettings();
   return new Promise((resolve) => {
     let settled = false;
     const finish = () => {
@@ -41,16 +47,57 @@ export function speak(text: string): Promise<void> {
     };
     // Some engines (e.g. a browser with no installed voice) never report the end of an
     // utterance. Never let that freeze a conversation: give up after a generous estimate.
-    const guard = setTimeout(finish, 2500 + clean.split(/\s+/).length * 550);
+    const guard = setTimeout(finish, 2500 + (clean.split(/\s+/).length * 550) / rate);
     Speech.speak(clean, {
-      language: 'en-US',
-      voice: localWebVoice(),
-      rate: 1.02,
+      language: voice ? undefined : 'en-US',
+      voice: voice ?? localWebVoice(),
+      rate,
+      pitch,
       onDone: finish,
       onStopped: finish,
       onError: finish,
     });
   });
+}
+
+/** The device's installed voices, best first: offline ones before ones that need the internet. */
+export async function listVoices(): Promise<{ id: string; label: string; language: string; offline: boolean; enhanced: boolean }[]> {
+  let voices: Speech.Voice[] = [];
+  try {
+    voices = await Speech.getAvailableVoicesAsync();
+  } catch {
+    return [];
+  }
+  const lang = (Intl.DateTimeFormat().resolvedOptions().locale || 'en').slice(0, 2).toLowerCase();
+  const seen = new Set<string>();
+  const out = voices
+    .filter((v) => {
+      const l = (v.language || '').toLowerCase();
+      return (l.startsWith('en') || l.startsWith(lang)) && !seen.has(v.identifier) && seen.add(v.identifier);
+    })
+    .map((v) => {
+      // Android names voices like "en-us-x-tpf-local"; web and iOS give readable names.
+      const network = /network|online/i.test(v.identifier + v.name);
+      const local = (v as Speech.Voice & { localService?: boolean }).localService;
+      const offline = Platform.OS === 'web' ? local !== false && !/google|online|natural/i.test(v.name) : !network;
+      return { id: v.identifier, label: v.name, language: v.language, offline, enhanced: v.quality === Speech.VoiceQuality.Enhanced };
+    });
+  // Give cryptic Android names a friendly label: "English (US) 3".
+  const counts: Record<string, number> = {};
+  for (const v of out) {
+    if (/^[a-z]{2,3}-[a-z]{2}-x-/i.test(v.label)) {
+      const key = v.language;
+      counts[key] = (counts[key] ?? 0) + 1;
+      let region = v.language;
+      try {
+        region = new Intl.DisplayNames(['en'], { type: 'language' }).of(v.language.replace('_', '-')) ?? v.language;
+      } catch {
+        // Older engines without Intl.DisplayNames keep the code.
+      }
+      v.label = `${region} ${counts[key]}`;
+    }
+  }
+  return out.sort((a, b) => Number(b.offline) - Number(a.offline) || Number(b.enhanced) - Number(a.enhanced) || a.label.localeCompare(b.label));
 }
 
 export function stopSpeaking() {

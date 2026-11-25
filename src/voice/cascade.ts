@@ -22,8 +22,12 @@ const WINDOW = 8;
 export const VOICE_RULES =
   'You are talking out loud with the user. Reply in 1-3 short spoken sentences. Plain words only: no lists, no markdown, no emoji. Ask at most one question at a time.';
 
-export function voiceSystem(persona: string) {
-  return `${persona.trim()}\n\n${VOICE_RULES}`;
+/** For typed chat: still brief, but lists and short paragraphs are fine since it's read, not heard. */
+export const TEXT_RULES =
+  'Reply helpfully and concisely. Use short paragraphs, or lines starting with "- " for lists. No headings, no tables. If you are unsure, say so.';
+
+export function voiceSystem(persona: string, rules = VOICE_RULES) {
+  return `${persona.trim()}\n\n${rules}`;
 }
 
 export function conversationPrompt(history: Turn[]) {
@@ -41,6 +45,8 @@ export interface ReplyOptions {
   onText?(text: string): void;
   /** Lets the caller cut the reply short (e.g. the user taps the mic to interrupt). */
   signal?: { aborted: boolean };
+  /** How to reply; defaults to the spoken rules. */
+  rules?: string;
 }
 
 /**
@@ -56,7 +62,7 @@ export async function voiceReply(history: Turn[], o: ReplyOptions): Promise<{ te
   try {
     for await (const chunk of engine.stream(conversationPrompt(history), {
       mode: modeFor('action', o.ctx),
-      system: voiceSystem(o.persona),
+      system: voiceSystem(o.persona, o.rules),
     })) {
       if (o.signal?.aborted) break;
       text = chunk.text;

@@ -161,31 +161,6 @@ export const ARCADE_IDS = new Set(ARCADE.map((a) => a.id));
 
 export const STARTERS: SavedApp[] = [
   {
-    id: 'starter-chat',
-    request: 'Just chat with AI, by typing or out loud',
-    builtWith: 'starter',
-    createdAt: 0,
-    updatedAt: 0,
-    spec: {
-      name: 'Chat',
-      emoji: '💬',
-      accent: 'blue',
-      description: 'Ask anything. Type, or talk out loud.',
-      components: [
-        {
-          type: 'voice',
-          id: 'chat',
-          label: 'Chat',
-          prompt:
-            'You are a friendly, helpful assistant. Answer questions, help brainstorm, and explain things simply. Keep each reply short; if the user wants more, they will ask.',
-          text: 'Hi! What’s on your mind? Type below, or tap the mic and talk.',
-        },
-        { type: 'save', label: 'Save this chat' },
-        { type: 'history', label: 'Saved chats', groupBy: 'day' },
-      ],
-    },
-  },
-  {
     id: 'starter-interview',
     request: 'Help me practice answering tough interview questions out loud',
     builtWith: 'starter',
