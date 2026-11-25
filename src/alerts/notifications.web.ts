@@ -29,3 +29,10 @@ export async function notify(): Promise<void> {}
 export function initAlerts(): () => void {
   return () => undefined;
 }
+
+/** Reminders only exist in the Android app; on the web the switch just records the choice. */
+export async function setRemindersEnabled(on: boolean): Promise<boolean> {
+  const { setAlertPrefs } = await import('./alertPrefs');
+  setAlertPrefs({ reminders: on });
+  return true;
+}

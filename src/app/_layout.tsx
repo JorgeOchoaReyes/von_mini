@@ -46,6 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="app/[id]" options={{ title: '' }} />
         <Stack.Screen name="s/[id]" options={{ title: 'Shared app' }} />
+        <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
       </Stack>
     </AIProvider>
   );

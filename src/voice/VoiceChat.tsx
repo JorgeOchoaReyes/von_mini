@@ -305,7 +305,7 @@ export function VoiceChat({
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder="Or type your answer…"
+          placeholder="Or type a message…"
           placeholderTextColor={theme.subtle}
           onSubmitEditing={sendTyped}
           accessibilityLabel="Type your answer"

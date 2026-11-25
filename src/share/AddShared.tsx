@@ -1,0 +1,72 @@
+/**
+ * "Add a shared app": paste a share link, a code, or the whole message someone sent, and open the
+ * app's preview to add a copy. Works offline, since the code carries the whole design.
+ */
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Button, IconButton } from '../ui/components';
+import { haptics } from '../ui/haptics';
+import { radius, space, stroke, type, type Theme } from '../ui/theme';
+import { decodeApp, findCode } from './code';
+
+export function AddShared({ visible, onClose, theme }: { visible: boolean; onClose(): void; theme: Theme }) {
+  const insets = useSafeAreaInsets();
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const open = () => {
+    const code = findCode(text);
+    try {
+      decodeApp(text); // check it before leaving, so a bad paste gets an answer right here
+    } catch (e) {
+      haptics.error();
+      setError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    setText('');
+    setError(null);
+    onClose();
+    router.push({ pathname: '/s/[id]', params: { id: code! } });
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
+      <View style={[styles.sheet, { backgroundColor: theme.bg, borderColor: theme.border, paddingBottom: insets.bottom + space(4) }]}>
+        <View style={styles.header}>
+          <Text style={[type.headline, { color: theme.text, flex: 1 }]}>Add a shared app</Text>
+          <IconButton icon="close" label="Close" theme={theme} onPress={onClose} />
+        </View>
+        <Text style={[type.caption, { color: theme.muted }]}>
+          Paste the link or message someone sent you. You get your own copy; nothing of theirs but the design comes with it.
+        </Text>
+        <TextInput
+          value={text}
+          onChangeText={(v) => {
+            setText(v);
+            setError(null);
+          }}
+          placeholder="vonmini://s/VM1.…"
+          placeholderTextColor={theme.subtle}
+          accessibilityLabel="Share link or code"
+          autoCapitalize="none"
+          autoCorrect={false}
+          multiline
+          style={[type.body, styles.input, { color: theme.text, backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+        />
+        {error && <Text style={[type.caption, { color: theme.danger }]}>{error}</Text>}
+        <Button label="Open" icon="arrow-forward" theme={theme} disabled={!text.trim()} onPress={open} />
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet: { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, borderWidth: stroke, padding: space(5), gap: space(3), maxWidth: 560, width: '100%', alignSelf: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
+  input: { minHeight: 96, maxHeight: 180, borderWidth: stroke, borderRadius: radius.md, padding: space(3), textAlignVertical: 'top' },
+});

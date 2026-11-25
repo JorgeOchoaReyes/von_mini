@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { firebaseConfigured } from '../../firebase/app';
+import { decodeApp, findCode } from '../../share/code';
 import { loadShared } from '../../share/share';
 import type { AppSpec } from '../../spec/types';
 import { newId, pushVersion, saveApp } from '../../storage/store';
@@ -33,23 +34,34 @@ const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kin
 
 export default function SharedApp() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [shared, setShared] = useState<{ spec: AppSpec; request: string } | null>(null);
+  // A share code ("VM1.…", from a QR code or link) carries the whole app and is opened right here,
+  // offline. Anything else is an older link to a design published in Firestore.
+  const code = findCode(String(id ?? ''));
+  const [fromCode] = useState(() => {
+    if (!code) return null;
+    try {
+      return { shared: decodeApp(code), error: null };
+    } catch (e) {
+      return { shared: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  const [shared, setShared] = useState<{ spec: AppSpec; request: string } | null>(fromCode?.shared ?? null);
   const [error, setError] = useState<string | null>(
-    firebaseConfigured ? null : 'Shared apps need a Firebase project (see README).',
+    fromCode ? fromCode.error : firebaseConfigured ? null : 'This link needs a Firebase project. Ask for a QR code or a new link instead.',
   );
   const [adding, setAdding] = useState(false);
   const theme = useTheme(shared?.spec.accent);
 
   useEffect(() => {
     let alive = true;
-    if (!firebaseConfigured) return;
+    if (code || !firebaseConfigured) return;
     loadShared(String(id))
       .then((s) => alive && setShared(s))
       .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, code]);
 
   const add = async () => {
     if (!shared) return;
@@ -63,7 +75,7 @@ export default function SharedApp() {
       updatedAt: Date.now(),
     };
     await saveApp(app);
-    await pushVersion(app.id, app.spec, ['Added from a shared link.'], 'build', 'starter');
+    await pushVersion(app.id, app.spec, [code ? 'Added from a QR code or share link.' : 'Added from a shared link.'], 'build', 'starter');
     haptics.success();
     router.replace({ pathname: '/app/[id]', params: { id: app.id } });
   };

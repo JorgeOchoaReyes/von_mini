@@ -1,5 +1,5 @@
 /**
- * The bottom navigation: Home, a raised voice button, Settings.
+ * The bottom navigation: Home and Chat, a raised voice button, then Arcade and Settings.
  *
  * The voice button is a front door to the whole product. Tap it and say what you want:
  *   - a name that matches one of your apps ("open mood journal") opens that app;
@@ -21,6 +21,8 @@ import { stroke, radius, space, type, useTheme } from './theme';
 
 const TABS: Record<string, { label: string; icon: IconName; iconOn: IconName }> = {
   index: { label: 'Home', icon: 'home-outline', iconOn: 'home' },
+  chat: { label: 'Chat', icon: 'chatbubbles-outline', iconOn: 'chatbubbles' },
+  arcade: { label: 'Arcade', icon: 'game-controller-outline', iconOn: 'game-controller' },
   settings: { label: 'Settings', icon: 'settings-outline', iconOn: 'settings' },
 };
 
@@ -106,8 +108,8 @@ export function BottomBar({ state, navigateToTab, insets }: BottomTabBarProps) {
               </Text>
             </Pressable>
           );
-          // The voice button sits between the two tabs.
-          return i === 0 ? (
+          // The voice button sits in the middle, after the first half of the tabs.
+          return i === Math.ceil(state.routes.length / 2) - 1 ? (
             <View key={route.key} style={styles.pair}>
               {tab}
               <View style={styles.center}>

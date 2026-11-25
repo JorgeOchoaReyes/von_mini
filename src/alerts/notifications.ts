@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance } from 'expo-notifications';
 import { AppState, Platform } from 'react-native';
+import { alertPrefsReady, getAlertPrefs, setAlertPrefs } from './alertPrefs';
 
 export const alertsSupported = true;
 
@@ -76,6 +77,13 @@ export async function scheduleDailyReminders(
   times: string[],
   content: { title: string; body: string; url: string },
 ): Promise<boolean> {
+  await alertPrefsReady;
+  // Reminders switched off in Settings: remember what was asked for, schedule nothing.
+  if (!getAlertPrefs().reminders) {
+    await cancelReminders(key);
+    await AsyncStorage.setItem(storeKey(key), JSON.stringify({ ids: [], times, content }));
+    return true;
+  }
   if (!(await ensureAlertPermission())) return false;
   await cancelReminders(key);
   const ids: string[] = [];
@@ -94,15 +102,44 @@ export async function scheduleDailyReminders(
       }),
     );
   }
-  await AsyncStorage.setItem(storeKey(key), JSON.stringify(ids));
+  // The times and message are kept with the ids, so reminders can be restored after being switched off.
+  await AsyncStorage.setItem(storeKey(key), JSON.stringify({ ids, times, content }));
   return true;
 }
 
-export async function cancelReminders(key: string): Promise<void> {
+type Stored = { ids: string[]; times: string[]; content: { title: string; body: string; url: string } | null };
+
+async function readStored(key: string): Promise<Stored | null> {
   const raw = await AsyncStorage.getItem(storeKey(key));
-  const ids: string[] = raw ? JSON.parse(raw) : [];
-  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  if (!raw) return null;
+  const v = JSON.parse(raw) as string[] | Stored;
+  // Older versions stored just the ids.
+  return Array.isArray(v) ? { ids: v, times: [], content: null } : v;
+}
+
+export async function cancelReminders(key: string): Promise<void> {
+  const stored = await readStored(key).catch(() => null);
+  await Promise.all((stored?.ids ?? []).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
   await AsyncStorage.removeItem(storeKey(key));
+}
+
+/**
+ * Settings > Daily reminders. Off cancels every scheduled reminder (keeping what they were); on
+ * schedules them again. Returns false if turning on needs a permission the user didn't give.
+ */
+export async function setRemindersEnabled(on: boolean): Promise<boolean> {
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(storeKey('')));
+  if (on && keys.length && !(await ensureAlertPermission())) return false;
+  setAlertPrefs({ reminders: on });
+  for (const k of keys) {
+    const key = k.slice(storeKey('').length);
+    const stored = await readStored(key).catch(() => null);
+    if (!stored) continue;
+    await Promise.all(stored.ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+    if (on && stored.content && stored.times.length) await scheduleDailyReminders(key, stored.times, stored.content);
+    else await AsyncStorage.setItem(k, JSON.stringify({ ...stored, ids: [] }));
+  }
+  return true;
 }
 
 /** Cancels every reminder an app scheduled (used when the app is deleted). */
@@ -126,6 +163,8 @@ export async function notifyIfInBackground(content: { title: string; body: strin
  */
 export async function notify(content: { title: string; body: string; url: string }) {
   try {
+    await alertPrefsReady;
+    if (!getAlertPrefs().builds) return;
     const perm = await Notifications.getPermissionsAsync();
     if (!perm.granted) return;
     await ensureChannels();

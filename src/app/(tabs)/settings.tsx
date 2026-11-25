@@ -17,6 +17,8 @@ import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, u
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { CloudCheck } from '../../ui/CloudCheck';
 import { UpdatesCard } from '../../ui/UpdatesCard';
+import { VoiceSettingsCard } from '../../ui/VoiceSettingsCard';
+import { NotificationsCard } from '../../ui/NotificationsCard';
 import { useSttSupport } from '../../voice/useVoice';
 import { MIC_OVERHANG } from '../../ui/BottomBar';
 
@@ -149,6 +151,8 @@ export default function Settings() {
           </Text>
         </Card>
 
+        <NotificationsCard theme={theme} />
+
         <Card theme={theme} style={{ gap: space(3) }}>
           <Text style={[type.headline, { color: theme.text }]}>Voice</Text>
           <Row
@@ -169,6 +173,7 @@ export default function Settings() {
             body="Speech is generated locally, a sentence at a time while the AI is still writing its reply."
             theme={theme}
           />
+          <VoiceSettingsCard theme={theme} />
         </Card>
 
         <Card theme={theme} style={{ gap: space(3) }}>
