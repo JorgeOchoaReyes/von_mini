@@ -15,6 +15,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /memory|matching|chess|checkers|tic.?tac|quiz|drawing|card game|board game/i,
+    json: `{"name":"Match Up","emoji":"🃏","accent":"teal","description":"Flip cards, find pairs, beat your best time.","code":"A memory game: 16 face-down emoji cards in a 4x4 grid. Tap two to flip; a pair stays up. Score is 100 minus moves; best scores saved.","components":[
+      {"type":"game","id":"match","label":"Match Up","game":"whack","item":"🃏"},{"type":"stat","id":"best","label":"Best","field":"match","op":"max","range":"all"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /\bdice\b|\bdie\b|roll|coin|flip|spinner|decide for me/i,
+    json: `{"name":"Lucky Dice","emoji":"🎲","accent":"rose","description":"Roll two dice and chase your best total.","components":[
+      {"type":"random","id":"roll","label":"Roll","roll":"dice","count":2,"sides":6},{"type":"stat","id":"best","label":"Best roll","field":"roll","op":"max","range":"all"},{"type":"history","label":"Rolls","groupBy":"day"}]}`,
+  },
+  {
     match: /shooter|invader|space|alien/i,
     json: `{"name":"Fish Patrol","emoji":"🐱","accent":"violet","description":"Steer your ship and stop the invaders.","components":[
       {"type":"game","id":"patrol","label":"Fish Patrol","game":"shooter","player":"🐱","item":"🐟"},
@@ -184,6 +194,17 @@ function editSpec(currentJson: string, change: string): string {
     spec.components.splice(at < 0 ? spec.components.length - 2 : at, 0, field);
   };
 
+  // Games and chance: dice turn the main game into a dice roll; other gameplay asks for a custom version.
+  if (/\bdice\b|\broll/.test(c)) {
+    const at = spec.components.findIndex((x) => x.type === 'game' || x.type === 'random');
+    const dice = { type: 'random', id: 'roll', label: 'Roll', roll: 'dice', count: /two|2/.test(c) ? 2 : 1, sides: 6 };
+    if (at >= 0) spec.components.splice(at, 1, dice);
+    else spec.components.unshift(dice);
+    return JSON.stringify(spec);
+  }
+  if (/memory|chess|checkers|tic.?tac|own rules|custom/.test(c)) {
+    return JSON.stringify({ ...spec, code: `A custom game: ${change}. Tap to play, score shown at the top, best scores saved.` });
+  }
   if (/date|when|day/.test(c)) addField('date', 'Date');
   if (/time|hour/.test(c)) addField('hours', 'How long?');
   if (/mood|feel/.test(c)) addField('mood_note', 'How do you feel?');
@@ -314,7 +335,16 @@ function chatTurn(prompt: string): string {
   return `{"reply":"Done, I updated the app.","app":${app}}`;
 }
 
+/** A tiny but real custom game, so the code-mode flow can be exercised end to end. */
+const MOCK_HTML = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body><div class="vm-stack"><div class="vm-hero"><div class="vm-title">Tap Rush</div><div class="vm-muted">Tap the target as fast as you can.</div></div>
+<div class="vm-card vm-stack"><div class="vm-headline">Score <span id="score">0</span> · Best <span id="best">0</span></div>
+<button id="tap" class="vm-btn vm-btn-block">Tap!</button></div></div>
+<script>let s=0,b=0;vonmini.store.get('best').then(v=>{b=v||0;document.getElementById('best').textContent=b});
+document.getElementById('tap').onclick=()=>{s++;document.getElementById('score').textContent=s;if(s>b){b=s;document.getElementById('best').textContent=b;vonmini.store.set('best',b)}};</script></body></html>`;
+
 function respond(prompt: string, options: GenerateOptions): string {
+  if (options.system?.includes('self-contained mobile-first HTML')) return '```html\n' + MOCK_HTML + '\n```';
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
   if (options.system?.includes('talking out loud')) {

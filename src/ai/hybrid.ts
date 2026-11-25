@@ -459,9 +459,10 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
 }
 
 export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {
+  // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify(spec)), {
+  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code), {
     mode: 'only_in_cloud',
     system: HTML_SYSTEM,
   });

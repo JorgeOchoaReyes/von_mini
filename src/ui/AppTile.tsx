@@ -1,4 +1,5 @@
 /** One app in a gallery (Home shelves, Arcade): icon, name, description, and its badges. */
+import { htmlUsesAI } from '../spec/offline';
 import { memo } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -58,7 +59,7 @@ export const AppTile = memo(function AppTile({
         </View>
         <View style={styles.badges}>
           <SourceBadge source={app.builtWith} />
-          <OfflineBadge spec={app.spec} html={!!app.html} />
+          <OfflineBadge spec={app.spec} html={htmlUsesAI(app.html)} />
         </View>
       </Animated.View>
     </Pressable>

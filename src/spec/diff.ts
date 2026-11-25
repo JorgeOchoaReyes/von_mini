@@ -13,6 +13,7 @@ const KIND: Record<SpecComponent['type'], string> = {
   reminder: 'reminder',
   save: 'save button',
   game: 'game',
+  random: 'dice & chance block',
   history: 'history list',
 };
 
@@ -27,6 +28,8 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
   const out: string[] = [];
   if (before.name !== after.name) out.push(`Renamed the app to “${after.name}”.`);
   if (before.emoji !== after.emoji || before.accent !== after.accent) out.push('Updated the look.');
+  if (after.code && after.code !== before.code) out.push('Writing a custom version: ' + after.code);
+  else if (before.code && !after.code) out.push('Went back to the built-in version.');
 
   const prev = new Map(before.components.map((c, i) => [keyOf(c, i), c]));
   const next = new Map(after.components.map((c, i) => [keyOf(c, i), c]));
@@ -52,6 +55,12 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     if (old.fills !== c.fills && c.fills) out.push(`“${nameOf(c)}” now fills in a field.`);
     if ((c.type === 'stat' || c.type === 'chart') && (old.field !== c.field || old.op !== c.op || old.range !== c.range || old.unit !== c.unit)) {
       out.push(`Changed what “${nameOf(c)}” counts.`);
+    }
+    const same = (keys: (keyof SpecComponent)[]) => keys.every((key) => JSON.stringify(old[key]) === JSON.stringify(c[key]));
+    if (c.type === 'game' && !same(['game', 'speed', 'player', 'item'])) out.push(`Changed the game “${nameOf(c)}”.`);
+    if (c.type === 'random' && !same(['roll', 'count', 'sides', 'min', 'max'])) out.push(`Changed how “${nameOf(c)}” picks.`);
+    if (old.type === c.type && (c.type === 'game' || c.type === 'random') && old.text !== c.text && c.text && (old.label ?? old.text) === (c.label ?? c.text)) {
+      out.push(`Changed the description of “${nameOf(c)}”.`);
     }
     if (!!old.multiline !== !!c.multiline) out.push(`Made “${nameOf(c)}” ${c.multiline ? 'multi-line' : 'single-line'}.`);
   }

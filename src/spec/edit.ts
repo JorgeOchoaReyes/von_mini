@@ -90,11 +90,12 @@ export function setPlaceholder(spec: AppSpec, index: number, placeholder: string
 export function setOptions(spec: AppSpec, index: number, options: string[]): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || (c.type !== 'choice' && c.type !== 'checklist')) return spec;
+  if (!c || (c.type !== 'choice' && c.type !== 'checklist' && c.type !== 'random')) return spec;
   // Checklist items are saved joined by ", ", so an item can't contain a comma.
   const clean = [...new Set(options.map((o) => (c.type === 'checklist' ? o.replace(/,/g, ' ') : o).trim().slice(0, 40)).filter(Boolean))];
   if (clean.length < (c.type === 'choice' ? 2 : 1)) return spec;
-  c.options = clean.slice(0, c.type === 'choice' ? 8 : 12);
+  if (c.type === 'random' && clean.length < 2) return spec;
+  c.options = clean.slice(0, c.type === 'choice' ? 8 : c.type === 'random' ? 20 : 12);
   return next;
 }
 
@@ -156,6 +157,36 @@ export function setGame(
   if (patch.speed) c.speed = patch.speed;
   if (patch.player !== undefined) c.player = [...patch.player.trim()].slice(0, 4).join('') || undefined;
   if (patch.item !== undefined) c.item = [...patch.item.trim()].slice(0, 4).join('') || undefined;
+  return next;
+}
+
+/** Changes how a dice & chance block picks: what it rolls, how many dice, their sides, a range. */
+export function setRandom(
+  spec: AppSpec,
+  index: number,
+  patch: { roll?: SpecComponent['roll']; count?: number; sides?: number; min?: number; max?: number },
+): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'random') return spec;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
+  if (patch.roll) {
+    c.roll = patch.roll;
+    if (patch.roll === 'dice') {
+      c.count ??= 1;
+      c.sides ??= 6;
+    }
+    if (patch.roll === 'number') {
+      c.min ??= 1;
+      c.max ??= 100;
+    }
+    if (patch.roll === 'pick' && (c.options?.length ?? 0) < 2) c.options = ['Yes', 'No', 'Maybe'];
+  }
+  if (patch.count !== undefined && Number.isFinite(patch.count)) c.count = clamp(patch.count, 1, 6);
+  if (patch.sides !== undefined && Number.isFinite(patch.sides)) c.sides = clamp(patch.sides, 2, 100);
+  if (patch.min !== undefined && Number.isFinite(patch.min)) c.min = Math.round(patch.min);
+  if (patch.max !== undefined && Number.isFinite(patch.max)) c.max = Math.round(patch.max);
+  if (c.min !== undefined && c.max !== undefined && c.min >= c.max) c.max = c.min + 1;
   return next;
 }
 
@@ -263,6 +294,9 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
     }
     case 'game':
       next.components.push({ type, id: uniqueId(next, 'game'), label: 'Lane Dash', game: 'runner', speed: 'normal' });
+      break;
+    case 'random':
+      next.components.push({ type, id: uniqueId(next, 'roll'), label: 'Roll', roll: 'dice', count: 1, sides: 6 });
       break;
     case 'heading':
       next.components.push({ type, text: 'New heading' });

@@ -5,7 +5,7 @@ import { ACCENTS } from '../spec/types';
  * The same prompt works in the cloud, which just follows it more creatively.
  */
 export const SPEC_SYSTEM = `You design tiny single-screen apps. Reply with ONLY one JSON object:
-{"name":string,"emoji":string,"accent":one of ${ACCENTS.join('|')},"description":string,"components":[...]}
+{"name":string,"emoji":string,"accent":one of ${ACCENTS.join('|')},"description":string,"code":string (optional, see below),"components":[...]}
 Component types:
 - heading {text} / text {text}: static text
 - input {id,label,placeholder,kind,unit,multiline}: a field. kind is "text" (default), "number" (with optional unit like "kcal", "$", "min"), "yesno", "rating" (1-5 stars) or "date". multiline only for text
@@ -17,6 +17,7 @@ Component types:
 - voice {id,label,prompt,text}: a spoken conversation with the AI (the user talks, the AI talks back out loud). prompt says who the AI plays and its goal, and may use {field_id} and {entries}; text is the AI's short opening line
 - reminder {id,label,text,times:["HH:MM",...]}: daily phone notifications the user can switch on; text is the short notification message, times are 1-4 times of day in 24-hour format
 - game {id,label,game,speed,player,item,text}: a built-in arcade game, played full screen with score, lives, levels and a high-score table; every finished run saves its score. game: "blocks" (falling blocks: move, rotate, clear rows), "runner" (dodge obstacles across 3 lanes), "snake" (grow by eating), "flyer" (tap to fly through gaps), "bricks" (paddle and ball breaking bricks), "shooter" (ship fires up at descending enemies), "catch" (move a basket to catch good things and avoid bombs) or "whack" (tap targets as they pop up). speed: slow|normal|fast. player = one emoji for the player (runner, flyer, shooter, catch); item = one emoji for obstacles (runner), food (snake), enemies (shooter), good things to catch (catch) or targets (whack). text = one short line on how to play
+- random {id,label,roll,count,sides,options,min,max,text}: dice and chance, every result saved. roll: "dice" (count 1-6 dice with sides 2-100), "coin" (heads or tails), "pick" (spins to pick one of options: a decision wheel, a card, a dare) or "number" (min to max). label is the button ("Roll", "Flip", "Spin")
 - save {label}: saves the fields, checklist ticks and AI results as one entry
 - history {label,groupBy,total}: lists saved entries. groupBy:"day" groups them under each day; total = a number or checklist field summed per day
 Rules: 3-12 components. ids are lowercase_snake. Every ai prompt uses a {placeholder} and asks for a short answer.
@@ -29,6 +30,8 @@ Make it feel like a polished app:
 - Routines and habits: a checklist, a streak stat, a chart of items done per day.
 - Journals and reflection: a multiline text field, maybe a rating, an ai that reflects on {entry}, an ai that looks back over {entries} for patterns.
 - Games: one game block, an optional stat of the best score (field = the game id, op "max", range "all"), and history labelled "Scores". No save block, no inputs needed. Fit the theme with player/item emoji (a cat dodging dogs: player "🐱", item "🐶"). Always give the game an original name: never use the name of an existing game or brand (if asked for a well-known game, make the closest built-in game under a new name).
+- Dice, coin flips, spinners, random picks, lucky draws: a random block, a stat of the highest or latest result (field = its id), history labelled "Rolls". No save block.
+- When the user wants a game or interactive thing these blocks can't really do (chess, checkers, memory cards, a puzzle, a timed quiz, drawing, a board or card game, physics, a game with its own rules), still build the closest app from blocks AND set "code" to 1-3 sentences describing exactly what to build: the rules, the controls, how scoring works. A custom version is then written from it. Leave "code" out when the blocks do it well.
 - Coaches and practice: a voice block with a clear role; a text field for the topic it uses as {field_id}; optionally an ai that gives feedback.
 - ai labels: a verb, 1-3 words ("Tag my mood"). Use 1-3 ai buttons, each doing something clearly different.
 - Use one reminder block for regular habits or logs, e.g. meals at ["08:00","13:00","19:00"] or one evening check-in at ["20:00"].
@@ -38,7 +41,14 @@ Make it feel like a polished app:
 const GAME_EXAMPLE = `Example for "a game where a cat dodges dogs":
 {"name":"Cat Dash","emoji":"🐱","accent":"teal","description":"Dodge the dogs and beat your best run.","components":[{"type":"game","id":"dash","label":"Cat Dash","game":"runner","speed":"normal","player":"🐱","item":"🐶","text":"Swipe left and right to dodge the dogs."},{"type":"stat","id":"best","label":"Best run","field":"dash","op":"max","range":"all"},{"type":"history","label":"Scores","groupBy":"day"}]}`;
 
+const DICE_EXAMPLE = `Example for "roll two dice":
+{"name":"Lucky Dice","emoji":"🎲","accent":"rose","description":"Roll two dice and chase your best total.","components":[{"type":"random","id":"roll","label":"Roll","roll":"dice","count":2,"sides":6},{"type":"stat","id":"best","label":"Best roll","field":"roll","op":"max","range":"all"},{"type":"history","label":"Rolls","groupBy":"day"}]}`;
+
 const EXAMPLES: { match: RegExp; text: string }[] = [
+  {
+    match: /\bdice\b|\bdie\b|\broll|coin|flip|spinner|spin the|wheel|random|lottery|raffle|decide for me|pick for me|draw a card/i,
+    text: DICE_EXAMPLE,
+  },
   {
     match: /\bgames?\b|arcade|tetris|snake|flappy|subway|runner|dodge|high ?score/i,
     text: GAME_EXAMPLE,
@@ -98,9 +108,19 @@ Hard rules:
   await vonmini.converse(persona, history) -> string: history is [{role:'user'|'assistant', text}] ending with the user's turn; the AI replies in the role described by persona and the reply is spoken aloud as it is written.
   For practice/rehearsal/role-play apps, build a voice conversation: a big round mic button that calls listen() then converse(), a transcript of turns as chat bubbles, a "hands-free" toggle that listens again after each reply, a stop button, and a text box to type instead of speaking. Show the state (Listening / Thinking / Speaking).
 - For persistence call: await vonmini.store.get(key) -> any|null and await vonmini.store.set(key, value).
-- Never use localStorage, cookies or alert().`;
+- Never use localStorage, cookies or alert().
+Games and toys:
+- Draw on a <canvas> sized to the screen (devicePixelRatio aware) and animate with requestAnimationFrame; or use DOM for board and card games.
+- Touch first: tap, drag and swipe with pointer events; big hit areas; no hover. Arrow keys and space as extras.
+- Minimal arcade look: a score and best score at the top, a "Tap to start" screen, a game-over card with the score and a Play again button, pause when the page is hidden.
+- Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
+- Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
+- Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
-export function htmlPrompt(request: string, specJson?: string) {
+export function htmlPrompt(request: string, specJson?: string, brief?: string) {
+  if (brief) {
+    return `Build this: ${brief.trim()}\nIt is the custom version of the app below: use its name, emoji and purpose.\nApp JSON:\n${specJson ?? '{}'}\nUser's original request: "${request}"`;
+  }
   return specJson
     ? `Build a richer custom version of this app. Keep its purpose and features, improve layout and interactions.\nApp JSON:\n${specJson}\nUser's original request: "${request}"`
     : `Build this app: "${request.trim()}"`;
@@ -114,7 +134,8 @@ export const CHAT_TURN_RULES = `Now you are chatting with the user about the app
 Reply with ONLY one JSON object, "reply" first: {"reply":string,"app":object|null}
 - If the user wants the app changed in any way (add, remove, rename, reword, restyle, fix, track something new, make it do more), set "app" to the FULL updated app JSON in the format above, keeping the ids and wording of blocks you didn't change. "reply" is one short sentence saying what you changed.
 - If the user asks a question or is chatting, set "app" to null and answer in "reply" in 1-3 short, friendly sentences. Explain blocks in plain words, never JSON. When useful, end with one concrete change they could ask for.
-- If what they ask is impossible with these blocks (internet, photos, live data, other apps), set "app" to null and say in "reply" what the app can do instead.
+- If they want gameplay or an interaction the blocks can't do (a different game, its own rules, board/card games, drawing, a timed quiz), return the app with the closest blocks AND "code" set to 1-3 sentences describing exactly what to build; "reply" says a custom version is being written.
+- If what they ask is impossible in any app (internet, photos, live data, other apps), set "app" to null and say in "reply" what the app can do instead.
 - Never answer with "app" equal to the current app: either change something or use null.`;
 
 export function chatTurnPrompt(specJson: string, history: { role: string; text: string }[], message: string) {

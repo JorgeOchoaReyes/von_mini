@@ -11,10 +11,12 @@
  * Paths 1 and 2 work with no network and no Gemini Nano at all, because an app here is a small
  * JSON document rather than generated code.
  */
+import { htmlUsesAI } from '../../spec/offline';
 import { cancelOrphanReminders } from '../../alerts/notifications';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -34,6 +36,7 @@ import { OfflineBadge } from '../../ui/OfflineBadge';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
 import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
+import { customState, useCustomJobsVersion, writeCustom, type CustomState } from '../../chat/customJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecEditor } from '../../runtime/SpecEditor';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
@@ -46,7 +49,7 @@ import { canDelete, confirmDeleteApp, isChangedStarter } from '../../ui/deleteAp
 import { haptics } from '../../ui/haptics';
 import { useKeyboardInset } from '../../ui/useKeyboardInset';
 import { FadeUp } from '../../ui/motion';
-import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
+import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, stroke, type, useTheme, type Theme } from '../../ui/theme';
 
 type Tab = 'preview' | 'chat' | 'history' | 'custom';
 
@@ -65,6 +68,7 @@ export default function AppScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= WIDE;
   const chatVersion = useChatVersion();
+  const customVersion = useCustomJobsVersion();
 
   const [app, setApp] = useState<SavedApp | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>('preview');
@@ -122,7 +126,24 @@ export default function AppScreen() {
     return () => {
       alive = false;
     };
-  }, [id, chatVersion]);
+  }, [id, chatVersion, customVersion]);
+
+  // A custom version (a game or interaction the blocks can't do) is written by itself when the
+  // design asks for one, and shown as soon as it's ready. Apps that have one open on it.
+  const custom: CustomState = app ? customState(app, ai) : { kind: 'none' };
+  const customKind = custom.kind;
+  const appId = app?.id;
+  useEffect(() => {
+    if (appId && customKind === 'pending') void writeCustom(appId, ai);
+  }, [appId, customKind, ai]);
+  const prevCustom = useRef<{ id?: string; kind: CustomState['kind'] }>({ kind: 'none' });
+  useEffect(() => {
+    const prev = prevCustom.current;
+    const opened = prev.id !== appId;
+    prevCustom.current = { id: appId, kind: customKind };
+    // Right after writing, the app reloads a moment later, so it reads "pending" in between.
+    if (customKind === 'ready' && (opened || prev.kind === 'writing' || prev.kind === 'pending')) setTab('custom');
+  }, [appId, customKind]);
 
   // A reminder block that's gone (removed, or undone by a chat edit or restore) stops reminding.
   const reminderIds = app?.spec.components.filter((c) => c.type === 'reminder' && c.id).map((c) => c.id!).join('|');
@@ -304,10 +325,12 @@ export default function AppScreen() {
             <View style={[styles.row, { flexWrap: 'wrap' }]}>
               <SourceBadge source={app.builtWith} />
               <Text style={[type.caption, { color: appTheme.subtle }]}>{app.spec.components.length} blocks</Text>
-              <OfflineBadge spec={app.spec} html={!!app.html} />
+              <OfflineBadge spec={app.spec} html={htmlUsesAI(app.html)} />
             </View>
           </View>
         </View>
+
+        <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onOpen={() => setTab('custom')} onRetry={() => void writeCustom(app.id, ai)} />
 
         <View style={styles.row}>
           <Chip
@@ -432,6 +455,18 @@ export default function AppScreen() {
     </View>
   );
 
+  const customView = app.html ? (
+    <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
+      <View style={[styles.row, { paddingHorizontal: space(4), paddingVertical: space(2), justifyContent: 'space-between' }]}>
+        <Text style={[type.caption, { color: appTheme.muted }]}>✨ Custom version, written by Gemini</Text>
+        <Chip label="Built-in version" icon="apps-outline" theme={appTheme} onPress={() => setTab('preview')} />
+      </View>
+      <AppAiModeProvider mode={app.aiMode}>
+        <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
+      </AppAiModeProvider>
+    </View>
+  ) : null;
+
   const sidePanel = (
     <View style={[styles.side, { borderColor: appTheme.border, backgroundColor: appTheme.bg }]}>
       <View style={{ padding: space(3), paddingBottom: 0 }}>
@@ -505,7 +540,7 @@ export default function AppScreen() {
 
         {wide ? (
           <View style={styles.wide}>
-            <View style={styles.widePreview}>{preview}</View>
+            <View style={styles.widePreview}>{tab === 'custom' && customView ? customView : preview}</View>
             <View style={styles.wideSide}>{sidePanel}</View>
           </View>
         ) : (
@@ -524,11 +559,7 @@ export default function AppScreen() {
             {tab === 'history' && (
               <HistoryPanel appId={app.id} current={app.spec} version={chatVersion} onRestored={onRestored} />
             )}
-            {tab === 'custom' && app.html && (
-              <AppAiModeProvider mode={app.aiMode}>
-                <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
-              </AppAiModeProvider>
-            )}
+            {tab === 'custom' && customView}
           </View>
         )}
       </View>
@@ -629,6 +660,7 @@ function Tabs({
 }
 
 const styles = StyleSheet.create({
+  customCard: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(2) },
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space(4), padding: space(6) },
   header: {
     flexDirection: 'row',
@@ -664,3 +696,48 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3 },
 });
+
+/** Where the app's custom version stands: being written, ready to play, or why it isn't. */
+function CustomCard({
+  state,
+  brief,
+  theme,
+  onOpen,
+  onRetry,
+}: {
+  state: CustomState;
+  brief?: string;
+  theme: Theme;
+  onOpen(): void;
+  onRetry(): void;
+}) {
+  if (state.kind === 'none') return null;
+  const writing = state.kind === 'writing' || state.kind === 'pending';
+  return (
+    <View style={[styles.customCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+      <View style={styles.row}>
+        {writing ? <ActivityIndicator color={theme.accent} /> : <Text style={{ fontSize: 20 }}>✨</Text>}
+        <Text style={[type.label, { color: theme.text, flex: 1 }]}>
+          {writing
+            ? 'Writing a custom version…'
+            : state.kind === 'ready'
+              ? 'The custom version is ready'
+              : state.kind === 'needs-cloud'
+                ? 'A custom version is waiting to be written'
+                : 'Couldn’t write the custom version'}
+        </Text>
+      </View>
+      <Text style={[type.caption, { color: theme.muted }]} numberOfLines={3}>
+        {state.kind === 'failed'
+          ? state.message
+          : state.kind === 'needs-cloud'
+            ? 'Gemini in the cloud writes it, so it needs the internet (and private mode off). Below is the built-in version, which works offline.'
+            : writing
+              ? `${brief ?? ''} You can keep using the built-in version below; it switches over when ready.`
+              : brief}
+      </Text>
+      {state.kind === 'ready' && <Button label="Play the custom version" icon="play" size="sm" theme={theme} onPress={onOpen} />}
+      {state.kind === 'failed' && <Button label="Try again" icon="refresh" size="sm" variant="secondary" theme={theme} onPress={onRetry} />}
+    </View>
+  );
+}

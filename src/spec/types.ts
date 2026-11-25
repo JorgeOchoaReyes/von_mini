@@ -16,6 +16,7 @@ export const COMPONENT_TYPES = [
   'save',
   'history',
   'game',
+  'random',
 ] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
@@ -54,6 +55,17 @@ export interface SpecComponent {
   speed?: 'slow' | 'normal' | 'fast';
   player?: string;
   item?: string;
+  /**
+   * random: roll dice, flip a coin, spin to pick one of `options`, or pick a number from `min` to
+   * `max`. Every result is saved as an entry, so stats and history work on it.
+   */
+  roll?: 'dice' | 'coin' | 'pick' | 'number';
+  /** random dice: how many dice (1-6) and how many sides each (2-100). */
+  count?: number;
+  sides?: number;
+  /** random number: the range, inclusive. */
+  min?: number;
+  max?: number;
   /** For chart: how many days to show (7-31). */
   days?: number;
   /** For stat / chart: the field (input, choice, checklist or ai id) whose saved values it reads. */
@@ -77,6 +89,12 @@ export interface AppSpec {
   accent: Accent;
   description: string;
   components: SpecComponent[];
+  /**
+   * When the blocks can't do what was asked (a game other than the built-ins, a board or card
+   * game, a timed quiz, drawing…): a short brief for a custom version Gemini writes as HTML/JS.
+   * The blocks are the closest version that works everywhere; the custom one is the real thing.
+   */
+  code?: string;
 }
 
 /** Flat JSON Schema, kept simple so a small on-device model can follow it. */
@@ -87,6 +105,7 @@ export const appSpecJsonSchema = {
     emoji: { type: 'string' },
     accent: { type: 'string', enum: [...ACCENTS] },
     description: { type: 'string' },
+    code: { type: 'string' },
     components: {
       type: 'array',
       items: {
@@ -115,6 +134,11 @@ export const appSpecJsonSchema = {
           speed: { type: 'string', enum: ['slow', 'normal', 'fast'] },
           player: { type: 'string' },
           item: { type: 'string' },
+          roll: { type: 'string', enum: ['dice', 'coin', 'pick', 'number'] },
+          count: { type: 'number' },
+          sides: { type: 'number' },
+          min: { type: 'number' },
+          max: { type: 'number' },
         },
         required: ['type'],
       },

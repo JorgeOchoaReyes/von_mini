@@ -8,6 +8,7 @@ import { componentKey } from '../spec/edit';
 import { MicButton } from '../voice/MicButton';
 import { VoiceChat } from '../voice/VoiceChat';
 import { ReminderBlock } from '../alerts/ReminderBlock';
+import { RandomCard } from '../games/RandomCard';
 import { GameCard } from '../games/GameCard';
 import type { AppSpec, SpecComponent } from '../spec/types';
 import {
@@ -649,6 +650,20 @@ export function SpecRenderer({
             entries={entries}
             onFinish={async (score, by) => {
               setEntries(await addEntry(appId, { [c.id!]: String(score), ...(by ? { [`${c.id}_by`]: by } : {}) }));
+            }}
+          />
+        );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
+      case 'random': {
+        const node = (
+          <RandomCard
+            key={c.id}
+            c={c}
+            theme={theme}
+            entries={entries}
+            onResult={async (value) => {
+              setEntries(await addEntry(appId, { [c.id!]: value }));
             }}
           />
         );

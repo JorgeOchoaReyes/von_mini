@@ -68,6 +68,18 @@ const GAME_ALIASES: Record<string, SpecComponent['game']> = {
 const SPEED_ALIASES: Record<string, SpecComponent['speed']> = {
   slow: 'slow', easy: 'slow', relaxed: 'slow', chill: 'slow', normal: 'normal', medium: 'normal', fast: 'fast', hard: 'fast', quick: 'fast', insane: 'fast',
 };
+const ROLL_ALIASES: Record<string, SpecComponent['roll']> = {
+  dice: 'dice', die: 'dice', roll: 'dice', d6: 'dice', d20: 'dice', rolldice: 'dice',
+  coin: 'coin', flip: 'coin', coinflip: 'coin', headsortails: 'coin', toss: 'coin',
+  pick: 'pick', spin: 'pick', spinner: 'pick', wheel: 'pick', choose: 'pick', choice: 'pick', random: 'pick', decide: 'pick', draw: 'pick', card: 'pick',
+  number: 'number', range: 'number', integer: 'number', lottery: 'number', randomnumber: 'number',
+};
+/** A whole number from model output, clamped; `fallback` when it isn't one. */
+const int = (v: unknown, lo: number, hi: number, fallback: number) => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseInt(v, 10) : NaN;
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
+};
+
 /** A short emoji-ish token for a game sprite: at most 2 user-perceived characters. */
 const sprite = (v: unknown) => {
   const t = typeof v === 'string' ? v.trim() : '';
@@ -213,6 +225,26 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.text = str(comp.text, 120);
         break;
       }
+      case 'random': {
+        // Dice, a coin, a spinner over options, or a random number. Every result saves as an entry.
+        const options = [...new Set(list(comp.options ?? comp.items).map((o) => str(o, 40)).filter((o): o is string => !!o))].slice(0, 20);
+        const roll = ROLL_ALIASES[word(comp.roll ?? comp.mode ?? comp.style ?? comp.kind)] ?? (options.length >= 2 ? 'pick' : 'dice');
+        if (roll === 'pick' && options.length < 2) continue;
+        out.id = uniqueId(str(comp.id) ?? label ?? roll);
+        out.label = label ?? { dice: 'Roll', coin: 'Flip a coin', pick: 'Spin', number: 'Pick a number' }[roll!];
+        out.roll = roll;
+        if (roll === 'dice') {
+          out.count = int(comp.count ?? comp.dice, 1, 6, 1);
+          out.sides = int(comp.sides ?? comp.faces, 2, 100, 6);
+        } else if (roll === 'number') {
+          const a = int(comp.min, -1_000_000, 1_000_000, 1);
+          const b = int(comp.max, -1_000_000, 1_000_000, 100);
+          out.min = Math.min(a, b);
+          out.max = Math.max(a, b) === Math.min(a, b) ? Math.min(a, b) + 1 : Math.max(a, b);
+        } else if (roll === 'pick') out.options = options;
+        out.text = str(comp.text, 120);
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
@@ -274,7 +306,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   // count entries without one. Anything else would show a number that can never change.
   const savedIds = new Set(
     components
-      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game')
+      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game' || c.type === 'random')
       .map((c) => c.id),
   );
   // An AI can only fill a field the user could also type into.
@@ -300,7 +332,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   repairPrompts();
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
-  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game')) {
+  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game' || c.type === 'random')) {
     throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   // A game saves its own scores, so a games-only app needs no save button.
@@ -319,6 +351,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     emoji: (str(r.emoji, 8) || '✨').slice(0, 4),
     accent,
     description: str(r.description, 160) ?? '',
+    ...(str(r.code, 600) ? { code: str(r.code, 600) } : {}),
     components: normalizeLayout(components),
   };
 }
@@ -351,6 +384,7 @@ const RANK: Record<SpecComponent['type'], number> = {
   // Totals sit at the top, like a dashboard, above the form that feeds them.
   // A game is the point of its app, so it leads.
   game: 0.4,
+  random: 0.4,
   stat: 0.5,
   chart: 0.5,
   input: 1,

@@ -29,6 +29,7 @@ const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kin
   reminder: { icon: 'alarm-outline', kind: 'Reminders' },
   save: { icon: 'checkmark-outline', kind: 'Save' },
   game: { icon: 'game-controller-outline', kind: 'Game' },
+  random: { icon: 'dice-outline', kind: 'Dice & chance' },
   history: { icon: 'time-outline', kind: 'History' },
 };
 

@@ -14,6 +14,8 @@ export interface SavedApp {
   spec: AppSpec;
   /** Custom HTML version written by Gemini in the cloud (optional). */
   html?: string;
+  /** The design's `code` brief that `html` was written from, so a changed brief writes it again. */
+  htmlFor?: string;
   builtWith: InferenceSource | 'starter';
   /** Where this app's own AI runs: auto (hybrid, default), device (Gemini Nano only) or cloud. */
   aiMode?: 'auto' | 'device' | 'cloud';
