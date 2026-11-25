@@ -44,6 +44,19 @@ Each response reports its `inferenceSource`, and the UI shows it with a 📱 On-
 - **Web (Chrome):** [`src/ai/engine.web.ts`](src/ai/engine.web.ts) uses the Firebase JS SDK (`firebase/ai`) with `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`. On-device requests run on Chrome's built-in Gemini Nano.
 - **App Check** protects every request: the debug provider on Android (debug tokens are accepted for the hackathon), and reCAPTCHA Enterprise or a debug token on web.
 
+### Other Firebase products
+
+| Product | What it does in von mini | Where |
+|---|---|---|
+| **Remote Config** | Tunes the product from the console without a release: the cloud model (`cloud_model`), whether new apps are designed `prefer_in_cloud` or `prefer_on_device` (`build_mode`), extra app-design rules (`spec_rules_extra`), and kill switches for voice input (`voice_input`) and sharing (`sharing`). Bundled defaults mean it behaves the same offline or before the first fetch; Settings shows whether live values are active. | Web: `firebase/remote-config`. Android: the native SDK in `modules/nano-bridge` (the JS SDK needs IndexedDB). [`src/remote/`](src/remote) |
+| **Authentication** | Anonymous sign-in, only when someone shares an app, so a shared design has an owner who can update or remove it. No account, no email. | [`src/firebase/services.ts`](src/firebase/services.ts) |
+| **Cloud Firestore** | Holds shared app designs (`shared/{id}`), and nothing else: entries, chats and custom HTML never leave the device. Security rules let anyone open a design by its link but nobody list them, and only the owner can change or delete one; shape and size are validated. | [`firestore.rules`](firestore.rules), [`src/share/share.ts`](src/share/share.ts) |
+
+**Sharing an app** (⋯ → *Share this app*) publishes its design and opens the share sheet. Whoever
+opens the link sees what's inside and can **Add to my apps**; the copy's AI then runs on *their*
+device. Links are `https://<your web host>/s/<id>` on the web (set `EXPO_PUBLIC_SHARE_BASE_URL`
+to your hosted URL so links made on phones open in any browser) or `vonmini://s/<id>` on a phone.
+
 ### Why apps are JSON, not code
 
 Gemini Nano is small, so writing working HTML/JS is unreliable for it, but it is good at **structured output**. So von mini asks the model for an **app spec**: a short JSON description of a screen built from prebuilt blocks (inputs, choices, AI buttons, save, history). See [`src/spec/types.ts`](src/spec/types.ts). The runtime renders specs natively ([`src/runtime/SpecRenderer.tsx`](src/runtime/SpecRenderer.tsx)), and every spec is validated and repaired before it is rendered ([`src/spec/validate.ts`](src/spec/validate.ts)). This makes offline, on-device app building dependable.
@@ -173,6 +186,12 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 3. **Run on web:** `npm run web` (use desktop Chrome with built-in AI enabled to get on-device Gemini Nano).
 4. **Run on Android:** `npm run android` builds a development build with the native bridge. Expo Go cannot load it.
    - On first launch, the App Check debug token is printed to logcat (`DebugAppCheckProvider`). Add it in the Firebase console under App Check > Manage debug tokens.
+
+**Sharing and Remote Config:** in the Firebase console, enable **Authentication > Anonymous**,
+create a **Cloud Firestore** database, and deploy the rules: `npx firebase-tools deploy --only
+firestore:rules`. Remote Config needs no setup; add any of the parameters listed above to
+override their defaults. To develop against local emulators instead, run `npx firebase-tools
+emulators:start --only auth,firestore` and set `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST=127.0.0.1`.
 
 **Offline mode:** set `EXPO_PUBLIC_ON_DEVICE_ONLY=true` in `.env.local` to force every AI call to run on-device (`ONLY_ON_DEVICE`). Private mode is locked on and cloud-only features are disabled. This mode needs no App Check or cloud setup — it is the fastest way to try the whole product, including building and editing apps, without a Firebase project.
 

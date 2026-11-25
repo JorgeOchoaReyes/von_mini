@@ -120,6 +120,8 @@ is being built, is immediately usable, and is saved on your device.
 - **Nine ready-made apps** ship with it (Interview Coach, Mood Journal, Tone Fixer, Meeting Notes,
   Flashcards, Habit Tracker, Expense Notes, Recipe Scaler, Workout Log) so you can see the whole
   thing work before you build anything.
+- **Share it.** One tap publishes an app's design (never your entries) and gives you a link;
+  whoever opens it adds a copy that runs its AI on *their* device.
 - **Make it custom ✨** (online only) asks Gemini in the cloud for a fully custom single-file HTML
   version of the app, which runs in a sandbox whose `vonmini` bridge still routes AI through
   Firebase AI Logic on-device and stores data locally.
@@ -155,6 +157,20 @@ surfaces:
   on first interaction, and streamed with `generateContentStream`.
 - Both share the same router, prompts, validators and UI. The engine is selected at runtime
   ([`src/ai/engineSelect.ts`](src/ai/engineSelect.ts)).
+
+**The rest of Firebase, where it earns its place.**
+
+- **App Check** on every AI request (debug provider on Android, reCAPTCHA Enterprise on web).
+- **Remote Config** turns the hybrid strategy into something you can operate: switch the cloud
+  model, move app design from `PREFER_IN_CLOUD` to `PREFER_ON_DEVICE` (to cut cloud cost, say),
+  add app-design rules, or switch off voice input or sharing — from the console, no release.
+  Bundled defaults keep it identical offline. On Android it runs in the native SDK, because the
+  JS SDK needs IndexedDB.
+- **Authentication + Cloud Firestore** power one opt-in feature: **sharing an app**. Anonymous
+  sign-in gives the shared design an owner; Firestore stores the design only — never entries,
+  chats or custom HTML — under rules that allow opening by link but not listing, and only the
+  owner can change it. The person who opens the link runs the app's AI on their own device, so
+  sharing spreads apps without spreading anyone's data.
 
 **We target Gemini Nano 4 explicitly.** The Nano build is a runtime choice — `nano-v4-full`
 (`OnDeviceModelOption.PREVIEW`), `nano-v4-fast` (`PREVIEW_FAST`), or the older `STABLE` — settable
@@ -376,12 +392,13 @@ origin/master..HEAD` is the record.
 |---|---|
 | Built with the required tools; Firebase AI Logic called at runtime | `src/ai/engine.web.ts` (`getAI`, `getGenerativeModel`, `InferenceMode`), `modules/nano-bridge/android/src/main/java/expo/modules/nanobridge/NanoBridgeModule.kt` (`com.google.firebase.ai`) — both are the app's real request path, not a README mention |
 | Text description: how Firebase AI Logic is used, features, value proposition | §2 of this file; "How it uses Firebase AI Logic" in `README.md` |
-| Public repo, open-source license detectable at the top | `LICENSE` (Apache-2.0); the repo is public |
+| Public repo, open-source license detectable at the top | `LICENSE` (Apache-2.0, detected by GitHub). **Human step: the repo is still private — make it public before submitting** (Settings → General → Change visibility), and add a one-line About description |
 | Repo contains everything needed to run it, with instructions | `README.md` → Setup; `.env.example`; `package.json` scripts |
 | Demonstration video ≤ 3 min, public on YouTube, English | §3 script (2:50 target). **Human step:** record, upload, paste the link into the Devpost form |
 | URL to the project for judging and testing | **Human step:** `npm run export:web` produces a static build in `dist/` (see "Hosting" below); paste the hosted URL into the form |
 | No production keys, secrets, or PII in the repo/form/instructions | `.env.local` and `google-services.json` are git-ignored and never committed (verified with `git check-ignore`); no key values appear in any doc, screenshot, or the PR |
-| New project: everything built during the period | §5; first commit 2026-11-22, all 14 commits inside the submission window |
+| New project: everything built during the period | §5; first commit 2026-11-22, every commit inside the submission window |
+| Encouraged Firebase products (App Check, Remote Config, Firestore, Authentication) | All four are used: App Check on every AI request; Remote Config tunes model, routing, prompts and kill switches (`src/remote/`); anonymous Auth + Firestore power opt-in app sharing (`src/share/share.ts`, `firestore.rules`, tested against the Firestore emulator) |
 | Platform selected | Web (Chrome) **and** Android — both implemented |
 
 ### Judging criteria
