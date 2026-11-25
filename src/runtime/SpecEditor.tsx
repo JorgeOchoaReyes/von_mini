@@ -24,10 +24,16 @@ import {
   setPrompt,
   setAccent,
   setText,
+  setAiFill,
+  setHistoryDays,
+  setKind,
+  setStat,
   setTimes,
+  setUnit,
   toggleMultiline,
 } from '../spec/edit';
-import { ACCENTS, type Accent, type AppSpec, type ComponentType } from '../spec/types';
+import { OP_LABEL, RANGE_LABEL, STAT_OPS, STAT_RANGES } from '../spec/stats';
+import { ACCENTS, INPUT_KINDS, type Accent, type AppSpec, type ComponentType, type InputKind } from '../spec/types';
 import { Button, Card, Chip, Icon, IconButton, type IconName } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { FadeUp } from '../ui/motion';
@@ -36,12 +42,43 @@ import { stroke, ACCENT_COLORS, alpha, radius, space, type, useTheme } from '../
 const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'input', label: 'Text field', icon: 'create-outline' },
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
+  { type: 'checklist', label: 'Checklist', icon: 'checkbox-outline' },
+  { type: 'stat', label: 'Stat', icon: 'stats-chart-outline' },
+  { type: 'chart', label: 'Chart', icon: 'bar-chart-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
   { type: 'voice', label: 'Voice chat', icon: 'mic-outline' },
   { type: 'reminder', label: 'Reminders', icon: 'alarm-outline' },
   { type: 'heading', label: 'Heading', icon: 'text-outline' },
   { type: 'text', label: 'Paragraph', icon: 'reorder-four-outline' },
 ];
+
+const KIND_LABEL: Record<InputKind, string> = { text: 'Text', number: 'Number', yesno: 'Yes / No', rating: 'Rating', date: 'Date' };
+
+/** A labelled row of chips for picking one value. */
+function Pick<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  theme,
+}: {
+  label: string;
+  value: T | undefined;
+  options: { value: T; label: string }[];
+  onChange(v: T): void;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <View style={{ gap: space(2) }}>
+      <Text style={[type.caption, { color: theme.muted }]}>{label}</Text>
+      <View style={styles.chipRow}>
+        {options.map((o) => (
+          <Chip key={o.value || 'none'} label={o.label} theme={theme} selected={value === o.value} onPress={() => onChange(o.value)} />
+        ))}
+      </View>
+    </View>
+  );
+}
 
 /**
  * A labelled text input.
@@ -153,6 +190,16 @@ function BlockFields({
       {c.type === 'input' && (
         <>
           <Field label="Label" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the field to “${v}”.`)} theme={theme} />
+          <Pick<InputKind>
+            label="Holds"
+            value={c.kind ?? 'text'}
+            options={INPUT_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+            onChange={(k) => emit(setKind(spec, index, k), `Made “${title}” a ${KIND_LABEL[k].toLowerCase()} field.`)}
+            theme={theme}
+          />
+          {c.kind === 'number' && (
+            <Field label="Unit" value={c.unit ?? ''} onChange={(v) => emit(setUnit(spec, index, v), `Changed the unit of “${title}”.`)} placeholder="kcal, $, min…" theme={theme} />
+          )}
           <Field
             label="Placeholder"
             value={c.placeholder ?? ''}
@@ -160,7 +207,7 @@ function BlockFields({
             placeholder="A concrete example"
             theme={theme}
           />
-          <Pressable
+          {(!c.kind || c.kind === 'text') && <Pressable
             accessibilityRole="switch"
             accessibilityState={{ checked: !!c.multiline }}
             onPress={() => emit(toggleMultiline(spec, index), `Made “${title}” ${c.multiline ? 'single-line' : 'multi-line'}.`)}
@@ -170,7 +217,7 @@ function BlockFields({
               {c.multiline && <Icon name="checkmark" size={13} color={theme.onAccent} />}
             </View>
             <Text style={[type.caption, { color: theme.text }]}>Allow long answers</Text>
-          </Pressable>
+          </Pressable>}
         </>
       )}
 
@@ -200,9 +247,90 @@ function BlockFields({
             value={c.prompt ?? ''}
             multiline
             onChange={(v) => emit(setPrompt(spec, index, v), `Changed what “${title}” asks the AI.`)}
-            hint="Use {field_id} to insert what the user typed."
+            hint="Use {field_id} for what the user typed, {today_entries} or {entries} for what they saved before."
             theme={theme}
           />
+          <Pick<string>
+            label="Puts the answer in"
+            value={c.fills ?? ''}
+            options={[
+              { value: '', label: 'Just shows it' },
+              ...spec.components.filter((x) => x.type === 'input' && x.id).map((x) => ({ value: x.id!, label: x.label ?? x.id! })),
+            ]}
+            onChange={(f) => emit(setAiFill(spec, index, { fills: f }), `“${title}” now fills in a field.`)}
+            theme={theme}
+          />
+          <Pick<'tap' | 'auto'>
+            label="Runs"
+            value={c.auto ? 'auto' : 'tap'}
+            options={[
+              { value: 'tap', label: 'When tapped' },
+              { value: 'auto', label: 'Also on save' },
+            ]}
+            onChange={(v) => emit(setAiFill(spec, index, { auto: v === 'auto' }), `“${title}” ${v === 'auto' ? 'now runs when you save' : 'runs when tapped'}.`)}
+            theme={theme}
+          />
+        </>
+      )}
+
+      {c.type === 'checklist' && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the checklist to “${v}”.`)} theme={theme} />
+          <Field
+            label="Items (one per line)"
+            value={(c.options ?? []).join('\n')}
+            multiline
+            onChange={(v) => {
+              const items = v.split('\n').map((o) => o.trim()).filter(Boolean);
+              if (items.length) emit(setOptions(spec, index, items), `Updated the items in “${title}”.`);
+            }}
+            hint="Up to 12. Each save records which ones were done."
+            theme={theme}
+          />
+        </>
+      )}
+
+      {(c.type === 'stat' || c.type === 'chart') && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed “${title}”.`)} theme={theme} />
+          <Pick<string>
+            label="Counts"
+            value={c.field ?? ''}
+            options={[
+              { value: '', label: 'Entries' },
+              ...spec.components
+                .filter(
+                  (x) =>
+                    x.id &&
+                    ((x.type === 'input' && (x.kind === 'number' || x.kind === 'rating' || x.kind === 'yesno')) ||
+                      x.type === 'choice' ||
+                      x.type === 'checklist' ||
+                      (x.type === 'ai' && !x.fills && /number|score|rate|1-10|count/i.test(x.prompt ?? ''))),
+                )
+                .map((x) => ({ value: x.id!, label: x.label ?? x.id! })),
+            ]}
+            onChange={(f) => emit(setStat(spec, index, f ? { field: f, op: c.op === 'count' ? 'sum' : c.op } : { field: '', op: 'count' }), `Changed what “${title}” counts.`)}
+            theme={theme}
+          />
+          {c.field ? (
+            <Pick
+              label="How"
+              value={c.op ?? 'sum'}
+              options={STAT_OPS.filter((o) => c.type === 'stat' || (o !== 'latest' && o !== 'streak')).map((o) => ({ value: o, label: OP_LABEL[o] }))}
+              onChange={(op) => emit(setStat(spec, index, { op }), `Changed what “${title}” counts.`)}
+              theme={theme}
+            />
+          ) : null}
+          {c.type === 'stat' && c.op !== 'streak' && (
+            <Pick
+              label="Over"
+              value={c.range ?? 'today'}
+              options={STAT_RANGES.map((r) => ({ value: r, label: RANGE_LABEL[r] }))}
+              onChange={(range) => emit(setStat(spec, index, { range }), `Changed what “${title}” counts.`)}
+              theme={theme}
+            />
+          )}
+          <Field label="Unit" value={c.unit ?? ''} onChange={(v) => emit(setUnit(spec, index, v), `Changed the unit of “${title}”.`)} placeholder="kcal, $, min…" theme={theme} />
         </>
       )}
 
@@ -259,6 +387,24 @@ function BlockFields({
 
       {(c.type === 'save' || c.type === 'history') && (
         <Field label="Label" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed “${title}”.`)} theme={theme} />
+      )}
+
+      {c.type === 'history' && (
+        <Pick<string>
+          label="Group by day, with a daily total of"
+          value={c.total ?? (c.groupBy === 'day' ? '-' : '')}
+          options={[
+            { value: '', label: 'Don’t group' },
+            { value: '-', label: 'Just group' },
+            ...spec.components
+              .filter((x) => x.id && ((x.type === 'input' && x.kind === 'number') || x.type === 'checklist'))
+              .map((x) => ({ value: x.id!, label: x.label ?? x.id! })),
+          ]}
+          onChange={(v) =>
+            emit(setHistoryDays(spec, index, v === '' ? { byDay: false, total: '' } : v === '-' ? { byDay: true, total: '' } : { total: v }), 'Changed how history is grouped.')
+          }
+          theme={theme}
+        />
       )}
 
       <View style={styles.row}>
@@ -371,6 +517,7 @@ function AppFields({
 }
 
 const styles = StyleSheet.create({
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
   head: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2), flexWrap: 'wrap' },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(2) },

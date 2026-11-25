@@ -9,22 +9,48 @@ import { MicButton } from '../voice/MicButton';
 import { VoiceChat } from '../voice/VoiceChat';
 import { ReminderBlock } from '../alerts/ReminderBlock';
 import type { AppSpec, SpecComponent } from '../spec/types';
-import { fillTemplate } from '../spec/validate';
+import {
+  CHECK_SEP,
+  checklistCount,
+  computeStat,
+  dayTotal,
+  daySeries,
+  fillPrompt,
+  firstNumber,
+  formatStat,
+  OP_LABEL,
+  promptFields,
+  RANGE_LABEL,
+  type StatOp,
+  type StatRange,
+} from '../spec/stats';
 import { addEntry, deleteEntry, listEntries, type Entry } from '../storage/store';
 import { Button, Card, Chip, EmptyState, Icon, IconButton, SourceBadge, relativeTime } from '../ui/components';
 import { FadeUp } from '../ui/motion';
 import { stroke, radius, space, type, useTheme, type Theme } from '../ui/theme';
 
-/** Groups consecutive form fields so they render in one card, like a real form. */
+/**
+ * Groups consecutive form fields so they render in one card, like a real form, and consecutive
+ * stats so they sit side by side, like a dashboard.
+ */
 function sections(components: SpecComponent[]) {
-  const out: { kind: 'form' | 'single'; items: SpecComponent[] }[] = [];
+  const out: { kind: 'form' | 'stats' | 'single'; items: SpecComponent[] }[] = [];
   for (const c of components) {
-    const isField = c.type === 'input' || c.type === 'choice';
+    const kind = c.type === 'input' || c.type === 'choice' ? 'form' : c.type === 'stat' ? 'stats' : 'single';
     const last = out[out.length - 1];
-    if (isField && last?.kind === 'form') last.items.push(c);
-    else out.push({ kind: isField ? 'form' : 'single', items: [c] });
+    if (kind !== 'single' && last?.kind === kind) last.items.push(c);
+    else out.push({ kind, items: [c] });
   }
   return out;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayKey = (t: number) => new Date(t).toDateString();
+function dayTitle(t: number) {
+  const k = dayKey(t);
+  if (k === dayKey(Date.now())) return 'Today';
+  if (k === dayKey(Date.now() - DAY_MS)) return 'Yesterday';
+  return new Date(t).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 /** Renders model text: bullet lines become a list, **bold** markers are stripped. */
@@ -71,6 +97,10 @@ const HistoryList = memo(function HistoryList({
   labels,
   theme,
   onChange,
+  byDay,
+  total,
+  units,
+  kinds,
 }: {
   appId: string;
   label: string;
@@ -79,6 +109,14 @@ const HistoryList = memo(function HistoryList({
   labels: Record<string, string>;
   theme: Theme;
   onChange(next: Entry[]): void;
+  /** Group entries under day headers. */
+  byDay?: boolean;
+  /** A field totalled on each day's header, with its unit and whether it's a checklist. */
+  total?: { field: string; unit?: string; checklist: boolean };
+  /** Units of number fields, so "4.5" reads "$4.50" in the summary line. */
+  units?: Record<string, string>;
+  /** Field kinds, so a rating reads "★ 4/5" and a yes/no reads "✓ Worked out?". */
+  kinds?: Record<string, string>;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   // Rendering every entry would cost more the longer an app is used; show the newest slice.
@@ -95,12 +133,40 @@ const HistoryList = memo(function HistoryList({
         <EmptyState icon="file-tray-outline" title="Nothing saved yet" body="Your entries stay on this device." theme={theme} />
       ) : (
         <>
-          {shown.map((e) => {
+          {shown.map((e, idx) => {
             const keys = Object.keys(e.values);
+            // Day header before the first entry of each day (entries are newest first).
+            const newDay = byDay && (idx === 0 || dayKey(shown[idx - 1].at) !== dayKey(e.at));
+            const dayEntries = newDay ? entries.filter((x) => dayKey(x.at) === dayKey(e.at)) : [];
+            const dayValue = newDay && total ? dayTotal(dayEntries, total.field, total.checklist) : null;
+            const header = newDay ? (
+              <View key={`d-${e.id}`} style={[styles.row, { marginTop: idx ? space(2) : 0 }]}>
+                <Text style={[type.label, { color: theme.text, flex: 1 }]}>{dayTitle(e.at)}</Text>
+                <Text style={[type.caption, { color: theme.muted }]}>
+                  {dayValue !== null ? `${formatStat(dayValue, total?.unit)}${total?.checklist ? ' done' : ''} · ` : ''}
+                  {dayEntries.length} {dayEntries.length === 1 ? 'entry' : 'entries'}
+                </Text>
+              </View>
+            ) : null;
             const firstField = keys.find((k) => fieldIds.includes(k)) ?? keys[0];
             const expanded = open === e.id;
             const rest = keys.filter((k) => k !== firstField);
-            return (
+            // Short values (amounts, ratings, picks, AI tags) as one line, so a tracker's entry is
+            // readable without expanding it.
+            const summary = rest
+              .filter((k) => fieldIds.includes(k) || labels[k])
+              .map((k) => {
+                const v = e.values[k]?.trim() ?? '';
+                if (!v || v.length > 28 || v.includes('\n')) return null;
+                if (kinds?.[k] === 'rating') return `★ ${v}/5`;
+                if (kinds?.[k] === 'yesno') return `${/^yes$/i.test(v) ? '✓' : '✗'} ${(labels[k] ?? k).replace(/\?$/, '')}`;
+                const n = units?.[k] !== undefined ? firstNumber(v) : null;
+                return n !== null ? formatStat(n, units?.[k] || undefined) : v;
+              })
+              .filter(Boolean)
+              .join(' · ');
+            return [
+              header,
               <Card key={e.id} theme={theme} style={{ gap: space(2), padding: space(3) }}>
                 <View style={[styles.row, { alignItems: 'flex-start' }]}>
                   {/* Expand toggle and delete are siblings: a button can't contain another button. */}
@@ -111,14 +177,23 @@ const HistoryList = memo(function HistoryList({
                     accessibilityState={{ expanded }}
                   >
                     <View style={styles.row}>
-                      <Text style={[type.caption, { color: theme.subtle }]}>{relativeTime(e.at)}</Text>
+                      <Text style={[type.caption, { color: theme.subtle }]}>
+                      {byDay ? new Date(e.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : relativeTime(e.at)}
+                    </Text>
                       {rest.length > 0 && (
                         <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.subtle} />
                       )}
                     </View>
                     <Text style={[type.body, { color: theme.text }]} numberOfLines={expanded ? undefined : 2}>
-                      {e.values[firstField]}
+                      {units?.[firstField] !== undefined && firstNumber(e.values[firstField]) !== null
+                        ? formatStat(firstNumber(e.values[firstField]), units[firstField] || undefined)
+                        : e.values[firstField]}
                     </Text>
+                    {!expanded && summary ? (
+                      <Text style={[type.caption, { color: theme.muted }]} numberOfLines={1}>
+                        {summary}
+                      </Text>
+                    ) : null}
                   </Pressable>
                   <IconButton
                     icon="trash-outline"
@@ -134,8 +209,8 @@ const HistoryList = memo(function HistoryList({
                       <RichText text={e.values[k]} theme={theme} />
                     </View>
                   ))}
-              </Card>
-            );
+              </Card>,
+            ];
           })}
           {entries.length > limit && (
             <Button label={`Show ${Math.min(25, entries.length - limit)} more`} theme={theme} variant="secondary" onPress={() => setLimit((l) => l + 25)} />
@@ -195,39 +270,94 @@ export function SpecRenderer({
     [spec.components],
   );
   const fieldIds = useMemo(
-    // A voice chat's transcript is saved like any typed field.
-    () => spec.components.filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice').map((c) => c.id!),
+    // A voice chat's transcript and a checklist's ticks are saved like any typed field.
+    () =>
+      spec.components
+        .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist')
+        .map((c) => c.id!),
     [spec.components],
   );
+  const byId = useMemo(() => new Map(spec.components.filter((c) => c.id).map((c) => [c.id!, c])), [spec.components]);
+  const units = useMemo(
+    () =>
+      Object.fromEntries(
+        spec.components.filter((c) => c.type === 'input' && c.kind === 'number' && c.id).map((c) => [c.id!, c.unit ?? '']),
+      ),
+    [spec.components],
+  );
+  const kinds = useMemo(
+    () => Object.fromEntries(spec.components.filter((c) => c.type === 'input' && c.kind && c.id).map((c) => [c.id!, c.kind!])),
+    [spec.components],
+  );
+  const isChecklist = useCallback((id?: string) => !!id && byId.get(id)?.type === 'checklist', [byId]);
   const hasInput = fieldIds.some((id) => values[id]?.trim());
+  /** Fills a prompt with what's typed, plus saved entries and the date for {entries}/{today_entries}/{today}. */
+  const fill = useCallback((t: string, vals: Record<string, string> = values) => fillPrompt(t, vals, { entries, labels }), [values, entries, labels]);
+  /** An AI button can run once the fields its prompt reads have something in them (or it reads none). */
+  const canRun = (c: SpecComponent) => {
+    const refs = promptFields(c.prompt).filter((id) => byId.has(id));
+    return refs.length === 0 || refs.some((id) => values[id]?.trim());
+  };
 
+  /**
+   * Runs an AI block against `vals` and returns the values with its answer added. When the block
+   * fills a field, the answer goes there too (a number field gets just the number).
+   */
   const run = useCallback(
-    async (c: SpecComponent) => {
-      if (!c.id || !c.prompt) return;
+    async (c: SpecComponent, vals: Record<string, string> = values): Promise<Record<string, string>> => {
+      if (!c.id || !c.prompt) return vals;
       setBusy(c.id);
       setErrors((e) => ({ ...e, [c.id!]: '' }));
       try {
-        const result = await runAction(fillTemplate(c.prompt, values), ai);
-        setValues((s) => ({ ...s, [c.id!]: result.text.trim() }));
+        const target = c.fills ? byId.get(c.fills) : undefined;
+        // A number field takes a number: ask for just that, so "400 + 50 = 450" can't land as 400.
+        const ask = target?.kind === 'number' && !/just the number|only the number/i.test(c.prompt) ? `${c.prompt}\nReply with just the number.` : c.prompt;
+        const result = await runAction(fill(ask, vals), ai);
+        const text = result.text.trim();
+        const next = { ...vals, [c.id]: text };
+        if (c.fills) {
+          const n = target?.kind === 'number' ? firstNumber(text) : null;
+          next[c.fills] = n !== null ? String(n) : text;
+        }
+        setValues((s) => ({ ...s, ...next }));
         setSources((s) => ({ ...s, [c.id!]: result.source }));
+        return next;
       } catch (e) {
         setErrors((x) => ({ ...x, [c.id!]: e instanceof Error ? e.message : String(e) }));
+        return vals;
       } finally {
         setBusy(null);
       }
     },
-    [values, ai],
+    [values, ai, fill, byId],
   );
 
+  const [saving, setSaving] = useState(false);
   const save = useCallback(async () => {
-    const filled = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim()));
-    if (!Object.keys(filled).length) return;
-    setEntries(await addEntry(appId, filled));
-    setValues({});
-    setSources({});
-    setJustSaved(true);
-    setSaveCount((n) => n + 1);
-  }, [appId, values]);
+    if (saving) return;
+    setSaving(true);
+    try {
+      // AI blocks marked auto run first (e.g. "estimate calories" on save), if they haven't yet and
+      // the fields they read have something in them. A failed run still saves what was typed.
+      let vals = values;
+      for (const c of spec.components) {
+        if (c.type !== 'ai' || !c.auto || !c.id) continue;
+        const done = c.fills ? vals[c.fills]?.trim() : vals[c.id]?.trim();
+        const refs = promptFields(c.prompt).filter((id) => byId.has(id));
+        const ready = refs.length ? refs.some((id) => vals[id]?.trim()) : Object.values(vals).some((v) => v?.trim());
+        if (!done && ready) vals = await run(c, vals);
+      }
+      const filled = Object.fromEntries(Object.entries(vals).filter(([, v]) => v?.trim()));
+      if (!Object.keys(filled).length) return;
+      setEntries(await addEntry(appId, filled));
+      setValues({});
+      setSources({});
+      setJustSaved(true);
+      setSaveCount((n) => n + 1);
+    } finally {
+      setSaving(false);
+    }
+  }, [appId, values, spec.components, run, saving, byId]);
 
   /**
    * Wraps a block with the tap-to-select affordance when the builder asks for it.
@@ -317,7 +447,54 @@ export function SpecRenderer({
     const node = (
       <View key={c.id} style={{ gap: space(2) }}>
         {label}
-        {c.type === 'choice' ? (
+        {c.type === 'input' && c.kind === 'yesno' ? (
+          <View style={styles.chips}>
+            {['Yes', 'No'].map((o) => (
+              <Chip key={o} label={o} theme={theme} selected={values[c.id!] === o} onPress={() => set(c.id!, values[c.id!] === o ? '' : o)} />
+            ))}
+          </View>
+        ) : c.type === 'input' && c.kind === 'rating' ? (
+          <View style={styles.row} accessibilityRole="adjustable" accessibilityLabel={`${c.label}: ${values[c.id!] || 'not rated'} of 5`}>
+            {[1, 2, 3, 4, 5].map((n) => {
+              const on = Number(values[c.id!] || 0) >= n;
+              return (
+                <Pressable key={n} hitSlop={6} onPress={() => set(c.id!, values[c.id!] === String(n) ? '' : String(n))} accessibilityLabel={`${n} of 5`}>
+                  <Icon name={on ? 'star' : 'star-outline'} size={30} color={on ? theme.accent : theme.subtle} />
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : c.type === 'input' && c.kind === 'date' ? (
+          <View style={styles.row}>
+            <TextInput
+              value={values[c.id!] ?? ''}
+              onChangeText={(v) => set(c.id!, v)}
+              placeholder={c.placeholder || 'e.g. Mon, Nov 24'}
+              placeholderTextColor={theme.subtle}
+              accessibilityLabel={c.label}
+              style={[styles.input, type.body, { flex: 1, backgroundColor: theme.surfaceAlt, color: theme.text }]}
+            />
+            <Chip
+              label="Today"
+              icon="calendar-outline"
+              theme={theme}
+              onPress={() => set(c.id!, new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }))}
+            />
+          </View>
+        ) : c.type === 'input' && c.kind === 'number' ? (
+          <View style={styles.row}>
+            <TextInput
+              value={values[c.id!] ?? ''}
+              onChangeText={(v) => set(c.id!, v.replace(/[^0-9.,-]/g, ''))}
+              placeholder={c.placeholder || '0'}
+              placeholderTextColor={theme.subtle}
+              keyboardType="decimal-pad"
+              accessibilityLabel={c.label}
+              style={[styles.input, type.body, { flex: 1, backgroundColor: theme.surfaceAlt, color: theme.text }]}
+            />
+            {c.unit ? <Text style={[type.label, { color: theme.muted }]}>{c.unit}</Text> : null}
+          </View>
+        ) : c.type === 'choice' ? (
           <View style={styles.chips}>
             {c.options!.map((o) => (
               <Chip
@@ -389,8 +566,8 @@ export function SpecRenderer({
               icon="sparkles"
               theme={theme}
               variant="secondary"
-              disabled={!!busy || !hasInput}
-              onPress={() => run(c)}
+              disabled={!!busy || !canRun(c)}
+              onPress={() => void run(c)}
             />
             {(loading || result) && (
               <View style={[styles.result, { backgroundColor: theme.accentSoft, borderLeftColor: theme.accent }]}>
@@ -403,11 +580,22 @@ export function SpecRenderer({
                 ) : (
                   <>
                     <RichText text={result} theme={theme} />
+                    {c.fills && values[c.fills] ? (
+                      <View style={styles.row}>
+                        <Icon name="arrow-forward-circle-outline" size={16} color={theme.accent} />
+                        <Text style={[type.caption, { color: theme.text }]}>
+                          Filled “{labels[c.fills] ?? c.fills}”: {values[c.fills]}
+                        </Text>
+                      </View>
+                    ) : null}
                     {sources[c.id!] && <SourceBadge source={sources[c.id!]} />}
                   </>
                 )}
               </View>
             )}
+            {c.auto && !result && !loading ? (
+              <Text style={[type.caption, { color: theme.subtle }]}>Runs by itself when you save.</Text>
+            ) : null}
             {errors[c.id!] ? (
               <View style={styles.row}>
                 <Icon name="alert-circle-outline" size={16} color={theme.danger} />
@@ -420,7 +608,14 @@ export function SpecRenderer({
       }
       case 'voice': {
         const node = (
-          <VoiceChat key={`${c.id}:${saveCount}`} c={c} values={values} theme={theme} onTranscript={(t) => set(c.id!, t)} />
+          <VoiceChat
+            key={`${c.id}:${saveCount}`}
+            c={c}
+            values={values}
+            fill={fill}
+            theme={theme}
+            onTranscript={(t) => set(c.id!, t)}
+          />
         );
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
@@ -428,10 +623,93 @@ export function SpecRenderer({
         const node = <ReminderBlock key={c.id} appId={appId} appName={spec.name} appEmoji={spec.emoji} c={c} theme={theme} />;
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
+      case 'chart': {
+        const series = daySeries(c, entries, c.days ?? 7, Date.now(), isChecklist(c.field));
+        const max = Math.max(0, ...series.map((d) => d.value ?? 0));
+        const known = series.filter((d) => d.value !== null);
+        const today = series[series.length - 1]?.value ?? null;
+        const avg = known.length ? known.reduce((a, d) => a + (d.value ?? 0), 0) / known.length : null;
+        const node = (
+          <Card key={c.id} theme={theme} style={{ gap: space(3) }}>
+            <View style={styles.row}>
+              <Icon name="bar-chart-outline" size={16} color={theme.accent} />
+              <Text style={[type.label, { color: theme.text, flex: 1 }]}>{c.label}</Text>
+              <Text style={[type.caption, { color: theme.muted }]}>
+                Today {formatStat(today, c.unit)} · avg {formatStat(avg, c.unit)}
+              </Text>
+            </View>
+            <View style={styles.chart} accessibilityLabel={`${c.label}: ${known.length} days with data`}>
+              {series.map((d, k) => (
+                <View key={d.day} style={styles.chartCol}>
+                  <View
+                    style={{
+                      width: '70%',
+                      height: d.value && max ? Math.max(6, (d.value / max) * 96) : 4,
+                      borderRadius: 4,
+                      backgroundColor: d.value ? (k === series.length - 1 ? theme.accent : theme.accentSoft) : theme.surfaceAlt,
+                      borderWidth: d.value ? 1 : 0,
+                      borderColor: theme.accent,
+                    }}
+                  />
+                  {series.length <= 14 && (
+                    <Text style={[type.caption, { color: theme.subtle, fontSize: 11 }]}>
+                      {new Date(d.day).toLocaleDateString(undefined, { weekday: 'narrow' })}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </Card>
+        );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
+      case 'checklist': {
+        const ticked = (values[c.id!] ?? '').split(CHECK_SEP).filter(Boolean);
+        const toggle = (item: string) => {
+          const next = ticked.includes(item) ? ticked.filter((t) => t !== item) : [...ticked, item];
+          // Keep the list's own order so saved values read naturally.
+          set(c.id!, (c.options ?? []).filter((o) => next.includes(o)).join(CHECK_SEP));
+        };
+        const node = (
+          <Card key={c.id} theme={theme} style={{ gap: space(2) }}>
+            <View style={styles.row}>
+              <Text style={[type.label, { color: theme.text, flex: 1 }]}>{c.label}</Text>
+              <Text style={[type.caption, { color: theme.muted }]}>
+                {checklistCount(values[c.id!])}/{c.options?.length ?? 0} done
+              </Text>
+            </View>
+            {(c.options ?? []).map((item) => {
+              const on = ticked.includes(item);
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => toggle(item)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  style={[styles.row, { paddingVertical: space(1) }]}
+                >
+                  <Icon name={on ? 'checkbox' : 'square-outline'} size={24} color={on ? theme.accent : theme.subtle} />
+                  <Text style={[type.body, { color: theme.text, flexShrink: 1 }, on && { opacity: 0.6, textDecorationLine: 'line-through' }]}>
+                    {item}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </Card>
+        );
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
       case 'save': {
         const node = (
           <View key="save" style={{ gap: space(2) }}>
-            <Button label={c.label ?? 'Save'} icon="checkmark" theme={theme} disabled={!hasInput} onPress={save} />
+            <Button
+              label={saving && busy ? 'Thinking…' : (c.label ?? 'Save')}
+              icon="checkmark"
+              theme={theme}
+              loading={saving}
+              disabled={!hasInput || saving || !!busy}
+              onPress={save}
+            />
             {justSaved && (
               <View style={[styles.row, { justifyContent: 'center' }]}>
                 <Icon name="checkmark-circle" size={16} color={theme.success} />
@@ -453,6 +731,10 @@ export function SpecRenderer({
             labels={labels}
             theme={theme}
             onChange={setEntries}
+            byDay={c.groupBy === 'day'}
+            units={units}
+            kinds={kinds}
+            total={c.total ? { field: c.total, unit: byId.get(c.total)?.unit, checklist: isChecklist(c.total) } : undefined}
           />
         );
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
@@ -460,6 +742,25 @@ export function SpecRenderer({
       default:
         return null;
     }
+  };
+
+  const stat = (c: SpecComponent, i: number): ReactNode => {
+    const op = (c.op ?? 'sum') as StatOp;
+    const { value, n } = computeStat(c, entries, Date.now(), isChecklist(c.field));
+    const node = (
+      <View key={c.id} style={[styles.stat, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
+        <Text style={[type.overline, { color: theme.accent }]} numberOfLines={1}>
+          {(c.label ?? '').toUpperCase()}
+        </Text>
+        <Text style={[type.title, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
+          {op === 'streak' ? `${value ?? 0} ${value === 1 ? 'day' : 'days'}` : formatStat(value, c.unit)}
+        </Text>
+        <Text style={[type.caption, { color: theme.muted }]} numberOfLines={1}>
+          {op === 'streak' ? 'in a row' : op === 'count' ? RANGE_LABEL[(c.range ?? 'today') as StatRange] : `${OP_LABEL[op]} · ${RANGE_LABEL[(c.range ?? 'today') as StatRange]}${n ? ` · ${n} ${n === 1 ? 'entry' : 'entries'}` : ''}`}
+        </Text>
+      </View>
+    );
+    return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
   };
 
   // Track a running index across the grouped layout so selection keys stay stable.
@@ -477,6 +778,19 @@ export function SpecRenderer({
           );
           return node;
         }
+        if (s.kind === 'stats') {
+          const start = cursor;
+          cursor += s.items.length;
+          return (
+            <FadeUp key={`s-${i}`} distance={6} style={styles.stats}>
+              {s.items.map((c, j) => (
+                <View key={c.id ?? j} style={styles.statCell}>
+                  {stat(c, start + j)}
+                </View>
+              ))}
+            </FadeUp>
+          );
+        }
         const idx = cursor++;
         return (
           <FadeUp key={`b-${i}`} distance={6}>
@@ -490,6 +804,11 @@ export function SpecRenderer({
 
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: space(3) },
+  statCell: { flexGrow: 1, flexBasis: 140 },
+  stat: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: 2 },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: 2 },
+  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: space(1), height: '100%' },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(3) },
   inputWrap: { position: 'relative' },
   inputMic: { position: 'absolute', right: space(2), top: space(2) },

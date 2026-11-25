@@ -10,7 +10,8 @@
  * The AI is still used for changes expressed in words ("make this kinder"); these functions back
  * the tap-to-edit UI and the quick-edit chips.
  */
-import { ACCENTS, COMPONENT_TYPES, type Accent, type AppSpec, type ComponentType, type SpecComponent } from './types';
+import type { StatOp, StatRange } from './stats';
+import { ACCENTS, COMPONENT_TYPES, type Accent, type AppSpec, type ComponentType, type InputKind, type SpecComponent } from './types';
 import { normalizeLayout, normalizeTimes } from './validate';
 
 export const componentTitle = (c: SpecComponent, index: number) =>
@@ -89,10 +90,62 @@ export function setPlaceholder(spec: AppSpec, index: number, placeholder: string
 export function setOptions(spec: AppSpec, index: number, options: string[]): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || c.type !== 'choice') return spec;
-  const clean = options.map((o) => o.trim().slice(0, 40)).filter(Boolean);
-  if (clean.length < 2) return spec;
-  c.options = clean.slice(0, 8);
+  if (!c || (c.type !== 'choice' && c.type !== 'checklist')) return spec;
+  // Checklist items are saved joined by ", ", so an item can't contain a comma.
+  const clean = [...new Set(options.map((o) => (c.type === 'checklist' ? o.replace(/,/g, ' ') : o).trim().slice(0, 40)).filter(Boolean))];
+  if (clean.length < (c.type === 'choice' ? 2 : 1)) return spec;
+  c.options = clean.slice(0, c.type === 'choice' ? 8 : 12);
+  return next;
+}
+
+/** Changes what kind of value a field holds (text, number, yes/no, rating, date). */
+export function setKind(spec: AppSpec, index: number, kind: InputKind): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'input') return spec;
+  c.kind = kind === 'text' ? undefined : kind;
+  if (kind !== 'text') c.multiline = undefined;
+  if (kind !== 'number') c.unit = undefined;
+  return next;
+}
+
+export function setUnit(spec: AppSpec, index: number, unit: string): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || !(c.type === 'input' || c.type === 'stat' || c.type === 'chart')) return spec;
+  c.unit = unit.trim().slice(0, 12) || undefined;
+  return next;
+}
+
+/** Points a stat or chart at a field and says how to count it. */
+export function setStat(spec: AppSpec, index: number, patch: { field?: string; op?: StatOp; range?: StatRange }): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || (c.type !== 'stat' && c.type !== 'chart')) return spec;
+  if (patch.field !== undefined) c.field = patch.field || undefined;
+  if (patch.op) c.op = c.type === 'chart' && (patch.op === 'latest' || patch.op === 'streak') ? 'sum' : patch.op;
+  if (patch.range && c.type === 'stat') c.range = patch.range;
+  return next;
+}
+
+/** Sets which field an AI button writes its answer into, and whether it runs on save. */
+export function setAiFill(spec: AppSpec, index: number, patch: { fills?: string; auto?: boolean }): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'ai') return spec;
+  if (patch.fills !== undefined) c.fills = patch.fills || undefined;
+  if (patch.auto !== undefined) c.auto = patch.auto || undefined;
+  return next;
+}
+
+/** Groups history by day, optionally totalling a field on each day. */
+export function setHistoryDays(spec: AppSpec, index: number, patch: { byDay?: boolean; total?: string }): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'history') return spec;
+  if (patch.byDay !== undefined) c.groupBy = patch.byDay ? 'day' : undefined;
+  if (patch.total !== undefined) c.total = patch.total || undefined;
+  if (c.total) c.groupBy = 'day';
   return next;
 }
 
@@ -162,6 +215,19 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
         times: ['09:00', '20:00'],
       });
       break;
+    case 'checklist':
+      next.components.push({ type, id: uniqueId(next, 'checklist'), label: 'Today', options: ['First thing', 'Second thing', 'Third thing'] });
+      break;
+    case 'stat':
+    case 'chart': {
+      const num = next.components.find((c) => c.type === 'input' && c.kind === 'number');
+      next.components.push(
+        num
+          ? { type, id: uniqueId(next, type), label: type === 'stat' ? `${num.label} today` : `${num.label} per day`, field: num.id, op: 'sum', range: type === 'stat' ? 'today' : undefined, days: type === 'chart' ? 7 : undefined, unit: num.unit }
+          : { type, id: uniqueId(next, type), label: type === 'stat' ? 'Entries today' : 'Entries per day', op: 'count', range: type === 'stat' ? 'today' : undefined, days: type === 'chart' ? 7 : undefined },
+      );
+      break;
+    }
     case 'heading':
       next.components.push({ type, text: 'New heading' });
       break;

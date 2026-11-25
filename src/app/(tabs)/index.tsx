@@ -60,7 +60,7 @@ const AppTile = memo(function AppTile({
   onLongPress(app: SavedApp): void;
 }) {
   const theme = useTheme(app.spec.accent);
-  const color = ACCENT_COLORS[app.spec.accent][theme.scheme];
+  const color = (ACCENT_COLORS[app.spec.accent] ?? ACCENT_COLORS.violet)[theme.scheme];
   const spring = usePressScale(0.965);
   return (
     <Pressable

@@ -18,6 +18,9 @@ import { MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
 const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kind: string }> = {
   heading: { icon: 'text-outline', kind: 'Heading' },
   text: { icon: 'reorder-four-outline', kind: 'Text' },
+  stat: { icon: 'stats-chart-outline', kind: 'Stat' },
+  chart: { icon: 'bar-chart-outline', kind: 'Chart' },
+  checklist: { icon: 'checkbox-outline', kind: 'Checklist' },
   input: { icon: 'create-outline', kind: 'Field' },
   choice: { icon: 'radio-button-on-outline', kind: 'Choice' },
   ai: { icon: 'sparkles-outline', kind: 'AI action' },

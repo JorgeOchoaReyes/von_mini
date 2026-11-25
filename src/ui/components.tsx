@@ -102,6 +102,8 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      // Read the label as written, not shouted letter by letter or prefixed with the icon.
+      accessibilityLabel={label}
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       onPress={press}
       disabled={off}

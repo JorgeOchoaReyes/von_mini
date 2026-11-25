@@ -16,12 +16,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
     match: /calorie|food|meal|diet|nutrition|ate\b/i,
-    json: `{"name":"Calorie Tracker","emoji":"🥗","accent":"green","description":"Log meals in seconds and get a gentle daily nudge.","components":[
+    json: `{"name":"Bite Log","emoji":"🍽️","accent":"amber","description":"Log meals and watch your daily calories.","components":[
+      {"type":"stat","id":"kcal_today","label":"Today","field":"calories","op":"sum","range":"today","unit":"kcal"},
+      {"type":"chart","id":"kcal_chart","label":"Calories per day","field":"calories","op":"sum","days":7,"unit":"kcal"},
       {"type":"input","id":"meal","label":"What did you eat?","placeholder":"Chicken salad and an apple"},
-      {"type":"choice","id":"when","label":"Which meal?","options":["Breakfast","Lunch","Dinner","Snack"]},
-      {"type":"ai","id":"estimate","label":"Estimate calories","prompt":"Estimate the calories in this {when}: {meal}. Reply with one number and a one-sentence breakdown."},
+      {"type":"input","id":"calories","label":"Calories","kind":"number","unit":"kcal","placeholder":"450"},
+      {"type":"ai","id":"estimate","label":"Estimate calories","prompt":"Estimate the total calories in: {meal}. Reply with just the number.","fills":"calories","auto":true},
+      {"type":"ai","id":"review","label":"Review my day","prompt":"Here is what I ate today:\\n{today_entries}\\nIn 2 sentences, how balanced was it?"},
       {"type":"reminder","id":"log_meals","label":"Meal reminders","text":"Log what you ate","times":["08:00","13:00","19:00"]},
-      {"type":"save","label":"Log meal"},{"type":"history","label":"Today"}]}`,
+      {"type":"save","label":"Log meal"},{"type":"history","label":"Meals","groupBy":"day","total":"calories"}]}`,
   },
   {
     match: /interview|tough question|practi[cs]e|rehears|role.?play|speak|voice|talk/i,
@@ -49,12 +52,14 @@ const LIBRARY: { match: RegExp; json: string }[] = [
       {"type":"save","label":"Save entry"},{"type":"history","label":"Past entries"}]}`,
   },
   {
-    match: /habit|streak|routine|daily/i,
-    json: `{"name":"Habit Tracker","emoji":"🔁","accent":"green","description":"Log a habit and get a weekly reflection.","components":[
-      {"type":"input","id":"habit","label":"Which habit?","placeholder":"Morning walk"},
-      {"type":"choice","id":"done","label":"Did you do it?","options":["Yes","Partly","Not today"]},
-      {"type":"ai","id":"reflect","label":"Reflect on my week","prompt":"The habit is {habit} and today I did it: {done}. In two short sentences, encourage me and suggest one small adjustment."},
-      {"type":"save","label":"Log today"},{"type":"history","label":"Recent logs"}]}`,
+    match: /habit|streak|routine|daily|checklist/i,
+    json: `{"name":"Morning Flow","emoji":"🌅","accent":"amber","description":"Tick off your morning and keep the streak alive.","components":[
+      {"type":"stat","id":"streak","label":"Streak","op":"streak"},
+      {"type":"chart","id":"done_chart","label":"Done per day","field":"steps","op":"max","days":7},
+      {"type":"checklist","id":"steps","label":"This morning","options":["Glass of water","Stretch 5 min","Make the bed","Plan top 3 tasks"]},
+      {"type":"input","id":"energy","label":"Energy","kind":"rating"},
+      {"type":"ai","id":"coach","label":"Coach me","prompt":"My recent mornings:\\n{entries}\\nIn 2 short sentences, encourage me and suggest one tweak."},
+      {"type":"save","label":"Done for today"},{"type":"history","label":"Past mornings","groupBy":"day","total":"steps"}]}`,
   },
   {
     match: /rewrit|tone|message|email|reply/i,
@@ -68,10 +73,11 @@ const LIBRARY: { match: RegExp; json: string }[] = [
     match: /expense|spend|money|budget|receipt/i,
     json: `{"name":"Expense Notes","emoji":"💸","accent":"amber","description":"Note what you spent and see where the money went.","components":[
       {"type":"input","id":"item","label":"What did you buy?","placeholder":"Coffee and a sandwich"},
-      {"type":"input","id":"amount","label":"How much?","placeholder":"12.50"},
+      {"type":"input","id":"amount","label":"How much?","kind":"number","unit":"$","placeholder":"12.50"},
       {"type":"choice","id":"category","label":"Category","options":["Food","Transport","Home","Fun","Health"]},
       {"type":"ai","id":"tip","label":"Money tip","prompt":"I spent {amount} on {item} ({category}). In one short sentence, give me a practical money tip."},
-      {"type":"save","label":"Add expense"},{"type":"history","label":"This week"}]}`,
+      {"type":"stat","id":"week","label":"This week","field":"amount","op":"sum","range":"week","unit":"$"},
+      {"type":"save","label":"Add expense"},{"type":"history","label":"Spending","groupBy":"day","total":"amount"}]}`,
   },
   {
     match: /flashcard|study|quiz|memor|exam/i,
@@ -186,10 +192,13 @@ export const mockEngine: AIEngine = {
 
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
     await sleep(options.json ? 220 : 180);
+    // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
+    if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     return { text: respond(prompt, options), source: 'on_device' };
   },
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
+    if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
     // end to end), so the streaming UI is exercised realistically rather than flashing past.
@@ -214,12 +223,15 @@ function respond(prompt: string, options: GenerateOptions): string {
     return editSpec(json.trim(), change);
   }
   if (options.system?.includes('tiny single-screen apps')) {
-    const hit = LIBRARY.find((l) => l.match.test(prompt));
+    // Match only the user's request, not the example the prompt starts with.
+    const request = prompt.slice(prompt.lastIndexOf('Now design an app for:'));
+    const hit = LIBRARY.find((l) => l.match.test(request));
     return hit ? hit.json : FALLBACK;
   }
   if (options.system?.includes('help a user understand')) {
     return 'This app takes what you type, sends it to a small on-device model, and saves the result locally. You could ask me to “add a field for the date” to keep a timeline.';
   }
   if (options.json) return '{"intent":"question"}';
+  if (/just the number/i.test(prompt)) return String(300 + (prompt.length % 7) * 50);
   return 'Here is a short answer produced on this device. It never left your phone.';
 }
