@@ -11,7 +11,7 @@ Component types:
 - input {id,label,placeholder,kind,unit,multiline}: a field. kind is "text" (default), "number" (with optional unit like "kcal", "$", "min"), "yesno", "rating" (1-5 stars) or "date". multiline only for text
 - choice {id,label,options:[2-6 strings]}: user picks one
 - checklist {id,label,options:[1-12 short items]}: tick-off list for routines; saves which items were done
-- ai {id,label,prompt,fills,auto}: a button; prompt is an instruction for a small AI. Placeholders: {field_id} = what the user typed; {today_entries} = entries saved today; {entries} = recent saved entries; {today} = today's date. fills = id of an input the answer is written into (e.g. estimate calories into a number field). auto:true also runs it when the user saves
+- ai {id,label,prompt,fills,auto}: a button; prompt is an instruction for a small AI. Placeholders: {field_id} = what the user typed; {today_entries} = entries saved today; {entries} = recent saved entries; {today} = today's date. fills = id of an input the answer is written into (e.g. estimate calories into a number field); never a field the prompt reads. auto:true also runs it when the user saves
 - stat {id,label,field,op,range,unit}: a big number computed from saved entries. op: sum|avg|count|min|max|latest|streak. range: today|week|all. field = an input, choice, checklist or ai id (not needed for count/streak)
 - chart {id,label,field,op,days,unit}: bars per day over the last days (7-31). op: sum|avg|count|max|min
 - voice {id,label,prompt,text}: a spoken conversation with the AI (the user talks, the AI talks back out loud). prompt says who the AI plays and its goal, and may use {field_id} and {entries}; text is the AI's short opening line

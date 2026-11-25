@@ -365,6 +365,12 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
     const c = components[i];
     if (c.type === 'ai') {
       if (c.fills && !fillable.has(c.fills)) c.fills = undefined;
+      // Never write the answer over the text the AI is reading (a mood tag replacing the journal
+      // entry, scaled amounts replacing the recipe): the answer shows under the button instead.
+      if (c.fills && new RegExp(`\\{\\s*${c.fills}\\s*\\}`, 'i').test(c.prompt ?? '')) {
+        c.fills = undefined;
+        c.auto = undefined;
+      }
       continue;
     }
     if (c.type === 'history') {

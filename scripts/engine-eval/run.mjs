@@ -138,7 +138,12 @@ for (const [i, d] of designs.entries()) {
   let shown = false;
   try {
     await viewer.goto(`${base}/app/${id}`, { waitUntil: 'load', timeout: 60000 });
-    await viewer.getByText(d.spec.name, { exact: false }).first().waitFor({ timeout: 20000 });
+    // Shown: the app's name on screen, or its custom version opened (it may write one by itself).
+    await viewer.waitForFunction(
+      (name) => document.body.innerText.includes(name) || document.body.innerText.includes('Custom version, written by Gemini'),
+      d.spec.name,
+      { timeout: 20000 },
+    );
     shown = true;
     await viewer.waitForTimeout(400);
   } catch {
