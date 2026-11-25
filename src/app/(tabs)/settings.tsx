@@ -18,6 +18,7 @@ import { useRemoteConfig } from '../../remote/remoteConfig';
 import { CloudCheck } from '../../ui/CloudCheck';
 import { UpdatesCard } from '../../ui/UpdatesCard';
 import { VoiceSettingsCard } from '../../ui/VoiceSettingsCard';
+import { NotificationsCard } from '../../ui/NotificationsCard';
 import { useSttSupport } from '../../voice/useVoice';
 import { MIC_OVERHANG } from '../../ui/BottomBar';
 
@@ -149,6 +150,8 @@ export default function Settings() {
             runtime; on the web the browser decides which Nano build to load.
           </Text>
         </Card>
+
+        <NotificationsCard theme={theme} />
 
         <Card theme={theme} style={{ gap: space(3) }}>
           <Text style={[type.headline, { color: theme.text }]}>Voice</Text>

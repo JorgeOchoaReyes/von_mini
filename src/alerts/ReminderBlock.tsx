@@ -13,6 +13,7 @@ import { Icon } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { PopIn } from '../ui/motion';
 import { stroke, radius, space, type, type Theme } from '../ui/theme';
+import { useAlertPrefs } from './alertPrefs';
 import { alertsSupported, cancelReminders, scheduleDailyReminders } from './notifications';
 
 /** "19:30" -> "7:30 PM" in the user's locale. */
@@ -42,6 +43,7 @@ export function ReminderBlock({
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
+  const prefs = useAlertPrefs();
 
   useEffect(() => {
     let alive = true;
@@ -121,8 +123,10 @@ export function ReminderBlock({
           ? 'Reminders work in the Android app.'
           : denied
             ? 'Notifications are turned off for von mini. Allow them in your phone’s settings to get reminders.'
-            : on
-              ? 'Every day, on this phone. Works offline.'
+            : on && !prefs.reminders
+              ? 'Paused: daily reminders are off in Settings.'
+              : on
+                ? 'Every day, on this phone. Works offline.'
               : 'Off. Turn on to get a notification every day at these times.'}
       </Text>
     </View>
