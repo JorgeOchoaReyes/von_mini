@@ -73,7 +73,7 @@ export function MicButton({
           ) : mic.state === 'error' ? (
             <Icon name="mic-off-outline" size={size * 0.45} color={theme.danger} />
           ) : (
-            <Icon name="mic-outline" size={size * 0.48} color={theme.accent} />
+            <Icon name="mic-outline" size={size * 0.48} color={theme.text} />
           )}
         </PopIn>
       </Pressable>

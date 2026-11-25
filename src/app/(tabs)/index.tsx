@@ -17,6 +17,7 @@ import {
   Composer,
   EmptyState,
   Icon,
+  IconButton,
   ModePill,
   Segmented,
   SourceBadge,
@@ -27,7 +28,7 @@ import {
 import { haptics } from '../../ui/haptics';
 import { Halftone } from '../../ui/Halftone';
 import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
-import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../../ui/theme';
+import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
 
 /** Which shelf of the app gallery is showing. */
 type Shelf = 'mine' | 'ready';
@@ -175,6 +176,7 @@ export default function Home() {
   };
 
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
+  const schemePref = useSchemePref();
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
   const ready = apps.filter(isStarter);
@@ -211,6 +213,14 @@ export default function Home() {
             <Text style={[type.title, { color: theme.text }]}>von mini</Text>
           </View>
           <View style={{ flex: 1 }} />
+          {/* One tap cycles the look: follow the system, light (paper), dark (night comic). */}
+          <IconButton
+            icon={schemePref === 'system' ? 'contrast-outline' : schemePref === 'light' ? 'sunny-outline' : 'moon-outline'}
+            label={`Appearance: ${schemePref}. Tap to change`}
+            theme={theme}
+            color={theme.text}
+            onPress={() => setSchemePref(schemePref === 'system' ? 'light' : schemePref === 'light' ? 'dark' : 'system')}
+          />
           <ModePill
             status={ai.deviceStatus}
             online={ai.online}
@@ -340,7 +350,7 @@ export default function Home() {
                 ['pricetag-outline', 'On-device inference costs nothing, so your apps are free to run.'],
               ].map(([icon, text]) => (
                 <View key={text} style={styles.row}>
-                  <Icon name={icon as IconName} size={16} color={theme.accent} />
+                  <Icon name={icon as IconName} size={16} color={theme.text} />
                   <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{text}</Text>
                 </View>
               ))}

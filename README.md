@@ -27,13 +27,17 @@ Say or type what you need ("a calorie tracker that reminds me to log meals", "he
 
 It's built on **Firebase AI Logic hybrid inference**: Gemini in the cloud when it adds quality, Gemini Nano on the device whenever privacy, cost or connectivity matter, and an automatic switch between them when one isn't available.
 
-| Build from one sentence | Edit any block | Every change is reversible |
+| Say or type an idea | It builds as you watch | A working app, AI on-device |
 |---|---|---|
-| ![Home screen](docs/screenshots/01-home.png) | ![Tap a block to edit it](docs/screenshots/07-tap-to-edit.png) | ![Version history](docs/screenshots/08-history.png) |
+| ![Home screen](docs/screenshots/home-light.png) | ![Building an app](docs/screenshots/building.png) | ![A generated calorie tracker](docs/screenshots/app.png) |
 
-| Chat edits patch the app, they don't rebuild it | Dark mode | Desktop |
+| Daily reminders | Spoken mock interviews | Edit by chat, in speech balloons |
 |---|---|---|
-| ![Edit and diff](docs/screenshots/06-edit-and-diff.png) | ![Home in dark mode](docs/screenshots/02-home-dark.png) | ![Desktop](docs/screenshots/03-home-desktop.png) |
+| ![Reminders block](docs/screenshots/reminders.png) | ![Voice chat block](docs/screenshots/voice.png) | ![Edit chat](docs/screenshots/edit-chat.png) |
+
+| Night comic (dark mode) | Edit chat, dark | Settings: appearance and on-device status |
+|---|---|---|
+| ![Home in dark mode](docs/screenshots/home-dark.png) | ![Edit chat in dark mode](docs/screenshots/edit-chat-dark.png) | ![Settings](docs/screenshots/settings-dark.png) |
 
 ## What you can do
 
@@ -324,6 +328,17 @@ request, never with a direct push.
 6. Open the **History** tab and restore an earlier version.
 7. Turn on **airplane mode** (or 🔒 Private) and do 4–6 again. Gemini Nano builds and edits the app on-device.
 8. Online, open an app and tap **Make it custom ✨** to get a Gemini-written HTML version whose AI still runs on-device.
+
+## Roadmap
+
+Ideas under consideration, not built yet:
+
+- **Photos in apps.** A photo block (camera or gallery) whose AI looks at the picture: snap a meal
+  for the calorie tracker, a receipt for an expense log, a plant for a care journal. Cloud Gemini
+  takes images; Gemini Nano does on newer phones (and in Chrome). The plan is to send photos on-device
+  first and use the cloud only when the phone's Nano can't read images (never in Private mode).
+- **Regular chat mode.** Chat with the assistant about anything, not only to build or edit apps:
+  answers, brainstorming, a chat that can turn into an app ("make this a tracker").
 
 ## Built during #BuildHybridAI 2026
 
