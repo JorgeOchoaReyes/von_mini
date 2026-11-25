@@ -20,8 +20,8 @@ import { fetchRemoteValues } from './fetchRemote';
 
 export const RC_DEFAULTS = {
   cloud_model: cloudModel,
-  // Used when cloud_model's quota is exhausted (the free tier allows few requests per day per model).
-  cloud_model_fallback: 'gemini-3.5-flash-lite',
+  // Used when cloud_model's quota is exhausted (each model has its own free-tier daily quota).
+  cloud_model_fallback: 'gemini-3.8-flash',
   build_mode: 'prefer_in_cloud',
   spec_rules_extra: '',
   voice_input: 'true',

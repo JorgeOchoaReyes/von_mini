@@ -1,7 +1,7 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import type { ComponentProps, ComponentRef, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -504,11 +504,18 @@ export function Composer({
 }) {
   const can = !!value.trim() && !busy;
   const sendPress = usePressScale(0.88);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  // Android: if the keyboard is still composing a word when the parent clears the text (after
+  // sending), the keyboard writes it straight back. Clearing the native input as well fixes that.
+  useEffect(() => {
+    if (value === '') input.current?.clear();
+  }, [value]);
   // While the AI is thinking or streaming, the send button becomes Stop (when the caller allows it).
   const stoppableNow = !!busy && !!onStop;
   return (
     <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadowSm }]}>
       <TextInput
+        ref={input}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}

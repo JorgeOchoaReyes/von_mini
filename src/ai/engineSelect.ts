@@ -6,10 +6,10 @@
  * flows can be exercised — and screenshotted — on machines without Gemini Nano. It is never on
  * by default and never runs in a release build (see `mockEngine.ts`).
  *
- * Quota fallback: Gemini's free tier allows only a few requests per day per model (20 for
- * gemini-3.8-flash), and each build makes several. When the cloud says the model's quota is used
- * up, the same request is retried once on `cloud_model_fallback` (Remote Config), which has its
- * own quota. A stream is retried only if it failed before producing any text.
+ * Quota fallback: Gemini's free tier caps requests per day per model (gemini-3.8-flash allows 20),
+ * and each build makes several. When the cloud says the model's quota is used up, the same request
+ * is retried once on `cloud_model_fallback` (Remote Config), which has its own quota. A stream is
+ * retried only if it failed before producing any text.
  */
 import { rcString } from '../remote/remoteConfig';
 import { engine as platformEngine } from './engine';

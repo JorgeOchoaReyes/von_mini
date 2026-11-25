@@ -220,14 +220,16 @@ export function ChatPanel({
                     {m.text.split('\n').map((line, i) => (
                       <View key={i} style={[styles.row, { alignItems: 'flex-start' }]}>
                         <Text style={[type.body, { color: theme.accent }]}>•</Text>
-                        <Text style={[type.body, { color: theme.text, flex: 1 }, m.undone && styles.struck]}>{line}</Text>
+                        <Text style={[type.body, { color: theme.text, flexShrink: 1 }, m.undone && styles.struck]}>{line}</Text>
                       </View>
                     ))}
                   </View>
                 ) : (
                   <View style={[styles.row, { alignItems: 'flex-start' }]}>
                     {isError && <Icon name="alert-circle-outline" size={16} color={theme.danger} />}
-                    <Text selectable style={[type.body, { color: isError ? theme.danger : theme.text, flex: 1 }]}>
+                    {/* flexShrink, not flex: 1. Inside a content-sized bubble, flex: 1 collapsed the text to
+                        no width on Android, leaving an unreadable sliver (seen with an error message). */}
+                    <Text selectable style={[type.body, { color: isError ? theme.danger : theme.text, flexShrink: 1 }]}>
                       {m.text}
                     </Text>
                   </View>

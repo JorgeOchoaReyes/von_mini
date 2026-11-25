@@ -20,8 +20,12 @@ export const appCheckDebugToken = process.env.EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN ?
 /** Offline mode: when true, every AI call runs on-device only and the cloud is never used. */
 export const onDeviceOnly = process.env.EXPO_PUBLIC_ON_DEVICE_ONLY === 'true';
 
-/** Cloud model used when Firebase AI Logic runs in the cloud. */
-export const cloudModel = process.env.EXPO_PUBLIC_CLOUD_MODEL ?? 'gemini-3.8-flash';
+/**
+ * Cloud model used when Firebase AI Logic runs in the cloud. Flash-Lite by default: our requests
+ * are short and schema-constrained, and it has a far larger free quota than Flash (gemini-3.8-flash
+ * allows 20 requests/day on the free tier). Switch back with Remote Config's `cloud_model`.
+ */
+export const cloudModel = process.env.EXPO_PUBLIC_CLOUD_MODEL ?? 'gemini-3.5-flash-lite';
 
 /**
  * Which on-device model to request on Android. The hackathon targets **Gemini Nano 4**, which
