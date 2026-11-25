@@ -13,6 +13,7 @@ import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
 import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
 import { ProgressBar } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+import { UpdatesCard } from '../ui/UpdatesCard';
 import { useSttSupport } from '../voice/useVoice';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
@@ -128,6 +129,8 @@ export default function Settings() {
           <Row icon="eye-off-outline" title="Private mode blocks the cloud entirely" body="Turn it on to make every request on-device only." theme={theme} />
           <Row icon="pricetag-outline" title="No paid services" body="On-device inference costs nothing, so the app has no usage limits." theme={theme} />
         </Card>
+
+        <UpdatesCard theme={theme} />
 
         <Button label="Done" theme={theme} variant="secondary" onPress={() => router.back()} />
       </ScrollView>

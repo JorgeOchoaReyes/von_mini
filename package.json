@@ -9,6 +9,7 @@
     "expo": "~58.0.26",
     "expo-build-properties": "~58.0.12",
     "expo-constants": "~58.0.16",
+    "expo-dev-client": "~58.0.21",
     "expo-font": "~58.0.12",
     "expo-haptics": "~58.0.8",
     "expo-linear-gradient": "~58.0.4",
@@ -18,6 +19,7 @@
     "expo-speech-recognition": "^58.0.1",
     "expo-status-bar": "~58.0.5",
     "expo-system-ui": "~58.0.7",
+    "expo-updates": "~58.0.22",
     "firebase": "^13.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -41,7 +43,12 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:dev": "npx eas-cli@latest build --platform android --profile development",
+    "build:apk": "npx eas-cli@latest build --platform android --profile preview",
+    "build:release": "npx eas-cli@latest build --platform android --profile production",
+    "update:preview": "npx eas-cli@latest update --channel preview --environment preview",
+    "update:production": "npx eas-cli@latest update --channel production --environment production"
   },
   "private": true
 }

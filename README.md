@@ -182,6 +182,48 @@ Requirements: Node 20+, and for Android a JDK 17+, the Android SDK, and a phone 
 
 Useful scripts: `npm run lint`, `npm run typecheck`, `npm run export:web`, `npx expo-doctor`.
 
+## Android builds (APK) and over-the-air updates
+
+Builds run in the cloud on **EAS Build**, so no local Android SDK is needed, and JavaScript
+changes ship to installed apps through **EAS Update** without a reinstall. Profiles live in
+[`eas.json`](eas.json):
+
+| Profile | Output | Use it for | Update channel |
+|---|---|---|---|
+| `development` | APK with the dev client | day-to-day development (`npx expo start`) | `development` |
+| `preview` | **installable APK** | testers, judges, the demo phone | `preview` |
+| `production` | Play Store app bundle (AAB) | publishing; the version code auto-increments | `production` |
+
+**One-time setup**
+
+1. Sign in: `npx eas-cli@latest login`
+2. Link the project: `npx eas-cli@latest init`, then paste the project ID it prints into
+   `EAS_PROJECT_ID` in [`app.config.ts`](app.config.ts) and commit it (it is not a secret). OTA
+   updates are switched on once it is set.
+3. Give EAS the Firebase config, which is git-ignored, as EAS environment variables. Do this for
+   each environment you build (`development`, `preview`, `production`):
+   - `npx eas-cli@latest env:create --environment preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret`
+   - `npx eas-cli@latest env:push --environment preview --path .env.local` (the `EXPO_PUBLIC_*` values)
+
+**Build an APK:** `npm run build:apk`. EAS prints a link and a QR code; open it on the phone to
+install. `npm run build:dev` makes a development build and `npm run build:release` a Play Store
+bundle.
+
+The Android app uses App Check's **debug provider** (debug tokens are accepted for this contest),
+so each phone prints its own token to logcat on first launch (`DebugAppCheckProvider`). Add it in
+the Firebase console under App Check > Manage debug tokens. On-device features (Gemini Nano,
+voice) work before that; cloud calls need the token.
+
+**Ship an update without a new APK:** after a JavaScript-only change, run
+`npm run update:preview -- --message "What changed"`. Phones running the `preview` APK download
+it on the next launch and apply it on the launch after, or straight away from
+**Settings > App updates**. Use `npm run update:production` for Play Store builds.
+
+The runtime version uses Expo's **fingerprint** policy, so any native change (the Kotlin bridge in
+`modules/nano-bridge`, a new native library, a config plugin) produces a new runtime. Updates are
+only delivered to builds with a matching runtime, so after a native change, make a new APK; an old
+one will never receive JavaScript it can't run.
+
 ## Testing it
 
 1. Open a **built-in starter app** (Mood Journal, Tone Fixer, Meeting Notes, Flashcards, Habit Tracker, Expense Notes, Recipe Scaler, Workout Log). They work immediately.

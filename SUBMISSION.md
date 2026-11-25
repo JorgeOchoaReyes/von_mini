@@ -314,6 +314,10 @@ The native module needs a development build (Expo Go cannot load it):
 npm run android          # requires JDK 17+, Android SDK, and google-services.json
 ```
 
+Or install an APK built on EAS (no local SDK needed): `npm run build:apk` produces an installable
+APK on the `preview` update channel, and JavaScript fixes reach it over the air with
+`npm run update:preview`. See the README section "Android builds (APK) and over-the-air updates".
+
 On a Nano-capable device (recent Pixel/Galaxy S), the on-device path runs on Gemini Nano 4 through
 AICore. On other devices it falls back to the cloud.
 
