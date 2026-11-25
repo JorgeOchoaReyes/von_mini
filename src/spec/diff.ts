@@ -62,11 +62,27 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     if (old.type === c.type && (c.type === 'game' || c.type === 'random') && old.text !== c.text && c.text && (old.label ?? old.text) === (c.label ?? c.text)) {
       out.push(`Changed the description of “${nameOf(c)}”.`);
     }
+    if (c.type === 'chart' && old.days !== c.days) out.push(`“${nameOf(c)}” now shows ${c.days ?? 7} days.`);
+    if (c.type === 'history' && (old.groupBy !== c.groupBy || old.total !== c.total)) out.push(`Changed how “${nameOf(c)}” is grouped.`);
+    if (c.type === 'input' && (old.unit !== c.unit || old.placeholder !== c.placeholder)) out.push(`Updated the “${nameOf(c)}” field.`);
+    if (c.type === 'ai' && !!old.auto !== !!c.auto) out.push(`“${nameOf(c)}” ${c.auto ? 'now runs on save' : 'no longer runs on save'}.`);
     if (!!old.multiline !== !!c.multiline) out.push(`Made “${nameOf(c)}” ${c.multiline ? 'multi-line' : 'single-line'}.`);
   }
   for (const [k, c] of prev) if (!next.has(k)) out.push(`Removed the “${nameOf(c)}” ${KIND[c.type]}.`);
 
   const order = (s: AppSpec) => s.components.map(keyOf).filter((k) => prev.has(k) && next.has(k)).join(',');
   if (!out.length && order(before) !== order(after)) out.push('Reordered the screen.');
+  if (before.description !== after.description && after.description) out.push('Updated the description.');
+  // Anything else that differs still counts: an edit must never be thrown away as "no change".
+  if (!out.length && canonical(before) !== canonical(after)) out.push('Made a small change.');
   return out;
+}
+
+/** JSON with sorted keys and no empty values, so a model reordering keys isn't a change. */
+function canonical(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x as Record<string, unknown>).filter(([, y]) => y !== undefined && y !== '').sort(([a], [b]) => a.localeCompare(b)))
+      : x,
+  );
 }

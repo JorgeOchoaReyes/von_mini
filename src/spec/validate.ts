@@ -331,14 +331,17 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
     return near.length === 1 ? near[0].id : raw;
   };
   const DATA = ['today', 'today_entries', 'entries'];
-  const repairPrompts = () => {
+  const repairPrompts = (final = false) => {
     for (const c of components) {
       if ((c.type !== 'ai' && c.type !== 'voice') || !c.prompt) continue;
       c.prompt = c.prompt.replace(/\{\s*([A-Za-z0-9_ -]+?)\s*\}/g, (m, name: string) => {
         const s = slug(name);
         if (DATA.includes(s)) return `{${s}}`;
         const id = resolve(name);
-        return id && ids.some((x) => x.id === id) ? `{${id}}` : m;
+        if (id && ids.some((x) => x.id === id)) return `{${id}}`;
+        // Still pointing at nothing after blocks were settled: say it in words, so the AI never
+        // sees a raw "{preset}" and the app doesn't wait on a field that doesn't exist.
+        return final ? name.trim().replace(/_/g, ' ') : m;
       });
     }
   };
@@ -376,7 +379,7 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
 
   // Blocks may have been dropped above; resolve placeholders against what's left.
   ids = components.filter((c) => c.id).map((c) => ({ id: c.id!, label: c.label ? slug(c.label) : '' }));
-  repairPrompts();
+  repairPrompts(true);
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
   if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game' || c.type === 'random')) {

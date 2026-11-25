@@ -517,7 +517,7 @@
     {
       "base": "a tip calculator that splits the bill",
       "message": "write it as code",
-      "expect": "edit",
+      "expect": "any",
       "code": true
     },
     {
@@ -562,6 +562,17 @@
     {
       "base": "una app para registrar mis gastos",
       "message": "añade un total semanal",
+      "expect": "edit"
+    },
+    {
+      "base": "habit tracker with streaks",
+      "message": "write it as code",
+      "expect": "edit",
+      "code": true
+    },
+    {
+      "base": "weight log with a weekly chart",
+      "message": "show 30 days on the chart",
       "expect": "edit"
     }
   ],

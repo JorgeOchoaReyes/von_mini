@@ -99,6 +99,29 @@ export function localProblem(ctx: RouteContext): string | null {
   return 'Private mode keeps AI on this phone, but this phone can’t run Gemini Nano. Turn off Private mode in Settings to use AI.';
 }
 
+/** A chat message asking for the app to be written in code: "write it as code", "make this a custom version". */
+export const ASKS_FOR_CODE_VERSION =
+  /\b(write|make|turn|rewrite|redo|build|do|remake|recreate)\s+(it|this|that|the app|this app|my app)?\s*(as|in|into|with|using)\s+(code|html|javascript)\b|\b(make|give|want|build|write)\b[^.?!]{0,20}\bcustom version\b|^\s*(in |as )?code\s*[.!]?\s*$/i;
+
+/** The user asked for code / a custom version in so many words. */
+const ASKS_CODE = /\b(code|coded|html|javascript|custom (version|app|game))\b/i;
+/** Things custom code can't do either: it runs alone on the phone (no internet, camera, people). */
+const NO_CODE_TOPIC = /\b(weather|forecast|stocks?|crypto|bitcoin|live prices?|prices? live|news|photos?|pictures?|camera|selfies?|filters?|social|followers|feed)\b/i;
+/** Requests a built-in game already covers. */
+const BUILT_IN_GAME = /\b(tetris|falling blocks?|block (drop|stack)|subway|runner|dodge|snake|flappy|bird|brick|breakout|arkanoid|space ?shooter|shooter|invaders?|aliens?|galaga|catch(ing|er)?|whack|mole)\b/i;
+
+/**
+ * Keeps a design's code brief only where code helps. The model adds one too eagerly (a built-in
+ * game, or live weather that code can't fetch either), which would write a needless custom app.
+ */
+export function settleCode(request: string, spec: AppSpec): AppSpec {
+  if (!spec.code || ASKS_CODE.test(request)) return spec;
+  const builtInGame = spec.components.some((c) => c.type === 'game') && BUILT_IN_GAME.test(request) && !/power.?ups?|boss|level editor|multiplayer|own rules/i.test(request);
+  if (!NO_CODE_TOPIC.test(request) && !builtInGame) return spec;
+  const { code: _drop, ...rest } = spec;
+  return rest;
+}
+
 function checkLocal(ctx: RouteContext) {
   const problem = localProblem(ctx);
   if (problem) throw new Error(problem);
@@ -106,7 +129,8 @@ function checkLocal(ctx: RouteContext) {
 
 export async function buildApp(request: string, ctx: RouteContext): Promise<{ spec: AppSpec; source: InferenceSource }> {
   checkLocal(ctx);
-  return generateSpec(specPrompt(request), modeFor('build', ctx));
+  const r = await generateSpec(specPrompt(request), modeFor('build', ctx));
+  return { ...r, spec: settleCode(request, r.spec) };
 }
 
 /* ------------------------------------------------------------------ *
@@ -348,7 +372,8 @@ export async function buildAppProgressive(
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
   checkLocal(ctx);
-  return generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
+  const r = await generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
+  return { ...r, spec: settleCode(request, r.spec) };
 }
 
 /** Applies a requested change, reporting progress as the new spec streams in. */
@@ -436,6 +461,18 @@ export async function chatAboutApp(
   onEvent: (e: BuildEvent) => void = () => undefined,
 ): Promise<ChatReply> {
   checkLocal(ctx);
+  // "Write it as code": no model needed to say yes. The brief carries anything else they asked.
+  if (ASKS_FOR_CODE_VERSION.test(message) && message.length < 200) {
+    if (spec.code) {
+      return {
+        kind: 'answer',
+        source: 'on_device',
+        text: 'It already has a custom version written in code: open the Custom tab. Tell me what to change in it (like “make the breaks 10 minutes”) and I’ll rewrite it.',
+      };
+    }
+    const next = { ...spec, code: `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features and a more interactive design. The user asked: "${message.trim()}"` };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Writing a custom version in code.', source: 'on_device' };
+  }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
   let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
@@ -463,7 +500,7 @@ export async function chatAboutApp(
 }
 
 /** A reply in which the model says it has already made a change. */
-const SAYS_DONE = /\b(i('ve| have)|i)\s+(just\s+)?(added|changed|updated|removed|renamed|made|turned|replaced|switched|extended|set|increased|decreased|moved)\b|\b(is|are) now\b|\bnow (has|shows|uses|rolls|includes)\b/i;
+const SAYS_DONE = /\b(i('ve| have)|i)\s+(just\s+)?(added|changed|updated|removed|renamed|made|turned|replaced|switched|extended|set|increased|decreased|moved|generated|created|built|wrote|written)\b|\b(is|are) now\b|\bnow (has|shows|uses|rolls|includes)\b/i;
 
 /** A reply that says the app was changed. */
 const CLAIMS_CHANGE = /\b(added|add(ing)?|changed|updated|removed|renamed|made|turned|replaced|switched|set|now (has|shows|uses|rolls|is))\b/i;
