@@ -11,11 +11,22 @@ import { Button, IconButton } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { radius, space, stroke, type, type Theme } from '../ui/theme';
 import { decodeApp, findCode } from './code';
+import { canScan, Scanner } from './Scanner';
 
 export function AddShared({ visible, onClose, theme }: { visible: boolean; onClose(): void; theme: Theme }) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+
+  /** Opens a shared app's preview from its code. */
+  const openCode = (code: string) => {
+    setText('');
+    setError(null);
+    setScanning(false);
+    onClose();
+    router.push({ pathname: '/s/[id]', params: { id: code } });
+  };
 
   const open = () => {
     const code = findCode(text);
@@ -26,10 +37,7 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
       setError(e instanceof Error ? e.message : String(e));
       return;
     }
-    setText('');
-    setError(null);
-    onClose();
-    router.push({ pathname: '/s/[id]', params: { id: code! } });
+    openCode(code!);
   };
 
   return (
@@ -40,6 +48,12 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
           <Text style={[type.headline, { color: theme.text, flex: 1 }]}>Add a shared app</Text>
           <IconButton icon="close" label="Close" theme={theme} onPress={onClose} />
         </View>
+        {canScan && (
+          <>
+            <Button label="Scan a QR code" icon="scan-outline" theme={theme} onPress={() => setScanning(true)} />
+            <Text style={[type.caption, { color: theme.subtle, textAlign: 'center' }]}>or</Text>
+          </>
+        )}
         <Text style={[type.caption, { color: theme.muted }]}>
           Paste the link or message someone sent you. You get your own copy; nothing of theirs but the design comes with it.
         </Text>
@@ -58,8 +72,9 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
           style={[type.body, styles.input, { color: theme.text, backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
         />
         {error && <Text style={[type.caption, { color: theme.danger }]}>{error}</Text>}
-        <Button label="Open" icon="arrow-forward" theme={theme} disabled={!text.trim()} onPress={open} />
+        <Button label="Open" icon="arrow-forward" variant={canScan ? 'secondary' : 'primary'} theme={theme} disabled={!text.trim()} onPress={open} />
       </View>
+      {canScan && <Scanner visible={scanning} onClose={() => setScanning(false)} onCode={openCode} theme={theme} />}
     </Modal>
   );
 }
