@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -154,7 +152,8 @@ export function ChatPanel({
   const local = ai.privateMode || !ai.online;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // The app screen lifts its content above the keyboard (useKeyboardInset), so no avoiding view here.
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView
         ref={scroll}
         contentContainerStyle={styles.list}
@@ -315,7 +314,7 @@ export function ChatPanel({
           }
         />
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

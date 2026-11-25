@@ -45,6 +45,7 @@ import type { AppSpec } from '../../spec/types';
 import { deleteApp, getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
 import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
 import { haptics } from '../../ui/haptics';
+import { useKeyboardInset } from '../../ui/useKeyboardInset';
 import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
 
@@ -54,6 +55,7 @@ type Tab = 'preview' | 'chat' | 'history' | 'custom';
 const COMMIT_MS = 700;
 
 export default function AppScreen() {
+  const { ref: keyboardRef, inset: keyboardInset } = useKeyboardInset();
   const { id } = useLocalSearchParams<{ id: string }>();
   const ai = useAI();
   const theme = useTheme();
@@ -493,7 +495,8 @@ export default function AppScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
+      {/* Lift everything above the keyboard (chat box, inspector, the app's own text fields). */}
+      <View ref={keyboardRef} style={{ flex: 1, backgroundColor: appTheme.bg, paddingBottom: keyboardInset }}>
         <View
           style={[
             styles.header,
