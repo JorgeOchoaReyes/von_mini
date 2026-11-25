@@ -161,6 +161,28 @@ function editSpec(currentJson: string, change: string): string {
       if (i >= 0) spec.components.splice(i, 1);
     }
   }
+  // v2 blocks, so the mock can demonstrate them through chat too.
+  const firstNumber = () => spec.components.find((x) => x.type === 'input' && x.kind === 'number');
+  if (/total|sum|stat|how much|count/.test(c) && !spec.components.some((x) => x.type === 'stat')) {
+    const num = firstNumber();
+    spec.components.unshift(
+      num
+        ? { type: 'stat', id: 'total_today', label: 'Today', field: num.id, op: 'sum', range: 'today', unit: num.unit }
+        : { type: 'stat', id: 'entries_today', label: 'Entries today', op: 'count', range: 'today' },
+    );
+  }
+  if (/chart|graph/.test(c) && !spec.components.some((x) => x.type === 'chart')) {
+    const num = firstNumber();
+    spec.components.unshift(num ? { type: 'chart', id: 'per_day', label: 'Per day', field: num.id, op: 'sum', days: 7 } : { type: 'chart', id: 'per_day', label: 'Entries per day', op: 'count', days: 7 });
+  }
+  if (/checklist|routine|to-?do/.test(c) && !spec.components.some((x) => x.type === 'checklist')) {
+    addField('__tmp', '');
+    const i = spec.components.findIndex((x) => x.id === '__tmp');
+    spec.components[i] = { type: 'checklist', id: 'routine', label: 'Today', options: ['Stretch', 'Water', 'Read'] };
+  }
+  if (/streak/.test(c) && !spec.components.some((x) => x.op === 'streak')) {
+    spec.components.unshift({ type: 'stat', id: 'streak', label: 'Streak', op: 'streak' });
+  }
   if (/rename|call it/.test(c)) {
     const m = change.match(/["“']([^"”']{2,30})["”']/);
     if (m) (spec as unknown as { name: string }).name = m[1];
@@ -177,6 +199,12 @@ const MOCK_INTERVIEW = [
   'Nice use of a concrete example. Last one: what would your first ninety days here look like?',
 ];
 
+/** Tests read this to check how many model requests an action made. */
+const countCall = () => {
+  const g = globalThis as { __mockCalls?: number };
+  g.__mockCalls = (g.__mockCalls ?? 0) + 1;
+};
+
 export const mockEngine: AIEngine = {
   runtime: 'none',
   streaming: true,
@@ -191,6 +219,7 @@ export const mockEngine: AIEngine = {
   },
 
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
+    countCall();
     await sleep(options.json ? 220 : 180);
     // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
@@ -198,6 +227,7 @@ export const mockEngine: AIEngine = {
   },
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
+    countCall();
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
@@ -211,7 +241,22 @@ export const mockEngine: AIEngine = {
   },
 };
 
+/** A chat turn in the single-request format: {"reply", "app"}. */
+function chatTurn(prompt: string): string {
+  const json = prompt.slice('App JSON:'.length, prompt.indexOf('\n\n')).trim();
+  const message = prompt.slice(prompt.lastIndexOf('User:') + 5).trim();
+  if (/internet|website|photo|picture|camera|weather|stock/i.test(message)) {
+    return JSON.stringify({ reply: 'Apps here can’t reach the internet or take photos. You could add a field to type it in, and an AI button to make sense of it.', app: null });
+  }
+  if (/\?$/.test(message) && !/^(can|could|would) you\b/i.test(message)) {
+    return JSON.stringify({ reply: 'This app saves what you type on your phone and uses a small AI to help with it. You could ask me to “add a daily total” to see your numbers add up.', app: null });
+  }
+  const app = editSpec(json, message);
+  return `{"reply":"Done, I updated the app.","app":${app}}`;
+}
+
 function respond(prompt: string, options: GenerateOptions): string {
+  if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
   if (options.system?.includes('talking out loud')) {
     const turns = (prompt.match(/^User:/gm) ?? []).length;

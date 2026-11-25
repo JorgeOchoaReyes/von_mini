@@ -13,16 +13,17 @@
 import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
+import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
 import { engine, isQuotaError } from './engineSelect';
 import {
   ACTION_SYSTEM,
-  CHAT_SYSTEM,
+  CHAT_TURN_RULES,
+  chatTurnJsonSchema,
+  chatTurnPrompt,
   HTML_SYSTEM,
-  INTENT_SYSTEM,
   SPEC_SYSTEM,
-  chatPrompt,
   editSpecPrompt,
   htmlPrompt,
   specPrompt,
@@ -238,15 +239,26 @@ async function generateSpecProgressive(
   task: 'build' | 'edit',
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  return withDeviceFallback(mode, onEvent, (m) => generateSpecOnce(prompt, m, task, onEvent));
+}
+
+/**
+ * Hybrid, for real: when the cloud is busy or unreachable, run the same request on Gemini Nano if
+ * this device has it (the SDK's own PREFER_IN_CLOUD only falls back when offline, not on server
+ * errors). Otherwise turns the failure into a message a person can act on.
+ */
+async function withDeviceFallback<T>(
+  mode: InferenceMode,
+  onEvent: (e: BuildEvent) => void,
+  run: (mode: InferenceMode) => Promise<T>,
+): Promise<T> {
   try {
-    return await generateSpecOnce(prompt, mode, task, onEvent);
+    return await run(mode);
   } catch (e) {
-    // Hybrid, for real: when the cloud is busy or unreachable, use Gemini Nano if this device has
-    // it. (The SDK's own PREFER_IN_CLOUD only falls back when offline, not on server errors.)
     const cloudFirst = mode === 'prefer_in_cloud' || mode === 'prefer_on_device';
     if (cloudFirst && isCloudUnavailable(e) && (await engine.status()) === 'available') {
       onEvent({ type: 'fallback' });
-      return generateSpecOnce(prompt, 'only_on_device', task, onEvent);
+      return run('only_on_device');
     }
     if (isQuotaError(e)) throw explainCloudError(e);
     if (isCloudUnavailable(e)) {
@@ -339,43 +351,79 @@ export async function editApp(
 
 export type ChatReply =
   | { kind: 'answer'; text: string; source: InferenceSource }
-  | { kind: 'edit'; spec: AppSpec; changes: string[]; source: InferenceSource };
+  /** `reply` is the model's own one-line summary; `changes` is computed locally from the diff. */
+  | { kind: 'edit'; spec: AppSpec; changes: string[]; reply: string; source: InferenceSource };
 
-const CHANGE_WORDS =
-  /^(please\s+)?(can you\s+|could you\s+)?(add|remove|delete|drop|rename|change|make|replace|put|move|include|turn|use|set|show|hide|reword|shorten|swap|let|give|improve|split|merge)\b/i;
+const CHAT_STEPS = ['Reading your message', 'Updating your app', 'Checking the result'];
 
-async function classify(message: string, ctx: RouteContext): Promise<'change' | 'question'> {
-  const m = message.trim();
-  if (CHANGE_WORDS.test(m)) return 'change';
-  if (m.endsWith('?')) return 'question';
-  try {
-    const r = await engine.generate(m, { mode: modeFor('action', ctx), system: INTENT_SYSTEM, json: true });
-    return (extractJson(r.text) as { intent?: string }).intent === 'change' ? 'change' : 'question';
-  } catch {
-    return 'question';
+async function chatTurnOnce(
+  prompt: string,
+  mode: InferenceMode,
+  onEvent: (e: BuildEvent) => void,
+): Promise<{ reply: string; app: AppSpec | null; source: InferenceSource }> {
+  const opts = { mode, system: `${specSystem()}\n\n${CHAT_TURN_RULES}`, json: true, schema: chatTurnJsonSchema(appSpecJsonSchema) };
+  const step = (n: number, state: ProgressStep['state']) => onEvent({ type: 'step', step: { id: `chat${n}`, label: CHAT_STEPS[n], state } });
+  let attempt = 0;
+  for (;;) {
+    step(0, 'active');
+    let text = '';
+    let source: InferenceSource = 'on_device';
+    let editing = false;
+    const p = attempt === 0 ? prompt : `${prompt}\n\nReturn valid JSON only, no other text.`;
+    try {
+      for await (const chunk of withTimeouts(engine.stream(p, opts), FIRST_CHUNK_MS, IDLE_MS)) {
+        text = chunk.text;
+        source = chunk.source;
+        // Only show "Updating your app" once the model has started writing a new app.
+        if (!editing && /"app"\s*:\s*\{/.test(text)) {
+          editing = true;
+          step(0, 'done');
+          step(1, 'active');
+        }
+        if (editing) onEvent({ type: 'peek', peek: peekSpec(text.slice(text.search(/"app"\s*:/))) });
+      }
+    } catch (e) {
+      if (!(e instanceof StalledError) || text) throw e;
+      onEvent({ type: 'retry' });
+      const r = await withDeadline(engine.generate(p, opts), REQUEST_MS);
+      text = r.text;
+      source = r.source;
+    }
+    try {
+      const turn = parseChatTurn(text);
+      step(editing ? 1 : 0, 'done');
+      if (turn.app) step(2, 'done');
+      return { ...turn, source };
+    } catch (e) {
+      // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
+      if (attempt++ > 0) throw e;
+      onEvent({ type: 'retry' });
+    }
   }
 }
 
-/** One chat turn about an app: answers questions, or applies the requested change. */
+/**
+ * One chat turn about an app, in a single request: the model answers, or returns the updated app.
+ * An "edit" that changes nothing is turned into an answer, using the model's own reply.
+ */
 export async function chatAboutApp(
   spec: AppSpec,
   history: { role: string; text: string }[],
   message: string,
   ctx: RouteContext,
-  /** Optional: streams the edit so the chat can show progress instead of a bare spinner. */
-  onEvent?: (e: BuildEvent) => void,
+  onEvent: (e: BuildEvent) => void = () => undefined,
 ): Promise<ChatReply> {
-  if ((await classify(message, ctx)) === 'change') {
-    const { spec: next, source } = onEvent
-      ? await editAppProgressive(spec, message, ctx, onEvent)
-      : await editApp(spec, message, ctx);
-    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), source };
+  const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
+  const turn = await withDeviceFallback(modeFor('edit', ctx), onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  if (turn.app) {
+    const changes = describeChanges(spec, turn.app);
+    if (changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
   }
-  const r = await engine.generate(chatPrompt(JSON.stringify(spec), history.slice(-6), message), {
-    mode: modeFor('action', ctx),
-    system: CHAT_SYSTEM,
-  });
-  return { kind: 'answer', text: r.text.trim(), source: r.source };
+  // An "updated" app identical to the current one: its reply would claim a change that didn't
+  // happen, so say so plainly instead.
+  const noChange =
+    'I couldn’t work out a change from that, so the app is as it was. Try naming what to change, e.g. “add a daily total of calories” or “make the AI answers shorter”.';
+  return { kind: 'answer', source: turn.source, text: turn.app ? noChange : turn.reply || noChange };
 }
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {

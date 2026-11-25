@@ -97,18 +97,28 @@ export function htmlPrompt(request: string, specJson?: string) {
     : `Build this app: "${request.trim()}"`;
 }
 
-/** Chat about one app: decide whether the user wants a change or an answer. */
-export const INTENT_SYSTEM =
-  'Classify a message a user sent about their app. Reply with ONLY JSON: {"intent":"change"} if they want the app modified (add, remove, rename, reword, restyle, improve), or {"intent":"question"} if they are asking or chatting.';
+/**
+ * One chat turn about an app, in a single request: the model either answers or returns the
+ * updated app, so a message never costs a separate "is this a change?" call.
+ */
+export const CHAT_TURN_RULES = `Now you are chatting with the user about the app they already built (its JSON is in the message).
+Reply with ONLY one JSON object, "reply" first: {"reply":string,"app":object|null}
+- If the user wants the app changed in any way (add, remove, rename, reword, restyle, fix, track something new, make it do more), set "app" to the FULL updated app JSON in the format above, keeping the ids and wording of blocks you didn't change. "reply" is one short sentence saying what you changed.
+- If the user asks a question or is chatting, set "app" to null and answer in "reply" in 1-3 short, friendly sentences. Explain blocks in plain words, never JSON. When useful, end with one concrete change they could ask for.
+- If what they ask is impossible with these blocks (internet, photos, live data, other apps), set "app" to null and say in "reply" what the app can do instead.
+- Never answer with "app" equal to the current app: either change something or use null.`;
 
-export const CHAT_SYSTEM = `You help a user understand and improve a small app they built. The app is described by JSON:
-input = a field (kind: text, number, yesno, rating, date), choice = pick one, checklist = tick-off items, ai = button that sends its prompt (with {field} values, and {entries}/{today_entries} for saved entries) to a small AI and can fill a field, stat = a number computed from saved entries, chart = bars per day, voice = spoken conversation, save = stores an entry, history = past entries.
-Answer in 1-3 short, friendly sentences. Do not show JSON. When useful, suggest one concrete change they could ask for.`;
-
-export function chatPrompt(specJson: string, history: { role: string; text: string }[], message: string) {
+export function chatTurnPrompt(specJson: string, history: { role: string; text: string }[], message: string) {
   const convo = history.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n');
-  return `App JSON:\n${specJson}\n\n${convo ? `${convo}\n` : ''}User: ${message.trim()}\nAssistant:`;
+  return `App JSON:\n${specJson}\n\n${convo ? `Conversation so far:\n${convo}\n\n` : ''}User: ${message.trim()}`;
 }
+
+/** JSON schema for a chat turn, for runtimes that can constrain output (Gemini Nano on the web). */
+export const chatTurnJsonSchema = (app: object) => ({
+  type: 'object',
+  properties: { reply: { type: 'string' }, app: { anyOf: [app, { type: 'null' }] } },
+  required: ['reply', 'app'],
+});
 
 export const ACTION_SYSTEM =
   'You are a helpful assistant inside a small personal app. Answer briefly and directly. Plain text only, no markdown headings.';
