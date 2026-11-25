@@ -188,17 +188,17 @@ export function ChatPanel({
         {messages.map((m) => {
           if (m.role === 'user') {
             return (
-              <View key={m.id} style={[styles.bubble, styles.mine, { backgroundColor: theme.accent }]}>
+              <FadeUp key={m.id} distance={8} style={[styles.bubble, styles.mine, { backgroundColor: theme.accent }]}>
                 <Text selectable style={[type.body, { color: theme.onAccent }]}>
                   {m.text}
                 </Text>
-              </View>
+              </FadeUp>
             );
           }
           const isEdit = m.kind === 'edit';
           const isError = m.kind === 'error';
           return (
-            <View key={m.id} style={styles.theirsRow}>
+            <FadeUp key={m.id} distance={8} style={styles.theirsRow}>
               <Avatar emoji={spec.emoji} theme={theme} />
               <View
                 style={[
@@ -254,7 +254,7 @@ export function ChatPanel({
                   </View>
                 )}
               </View>
-            </View>
+            </FadeUp>
           );
         })}
 

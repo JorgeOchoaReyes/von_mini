@@ -5,7 +5,7 @@
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Pulse } from '../ui/motion';
+import { PopIn, Ripples } from '../ui/motion';
 
 import { haptics } from '../ui/haptics';
 import { Icon } from '../ui/components';
@@ -48,40 +48,39 @@ export function MicButton({
   };
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={listening ? 'Stop listening' : label}
-      accessibilityState={{ busy: listening }}
-      onPress={press}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.btn,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: listening ? theme.accent : theme.surfaceAlt,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}
-    >
-      {listening ? (
-        <>
-          <Icon name="stop" size={size * 0.4} color={theme.onAccent} />
-          <View style={styles.pulse} pointerEvents="none">
-            <Pulse color={theme.onAccent} size={6} />
-          </View>
-        </>
-      ) : mic.state === 'error' ? (
-        <Icon name="mic-off-outline" size={size * 0.45} color={theme.danger} />
-      ) : (
-        <Icon name="mic-outline" size={size * 0.48} color={theme.accent} />
-      )}
-    </Pressable>
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Ripples size={size} color={theme.accent} active={listening} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={listening ? 'Stop listening' : label}
+        accessibilityState={{ busy: listening }}
+        onPress={press}
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.btn,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: listening ? theme.accent : theme.surfaceAlt,
+            transform: [{ scale: pressed ? 0.9 : 1 }],
+          },
+        ]}
+      >
+        <PopIn trigger={mic.state}>
+          {listening ? (
+            <Icon name="stop" size={size * 0.4} color={theme.onAccent} />
+          ) : mic.state === 'error' ? (
+            <Icon name="mic-off-outline" size={size * 0.45} color={theme.danger} />
+          ) : (
+            <Icon name="mic-outline" size={size * 0.48} color={theme.accent} />
+          )}
+        </PopIn>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   btn: { alignItems: 'center', justifyContent: 'center' },
-  pulse: { position: 'absolute', top: 5, right: 5 },
 });

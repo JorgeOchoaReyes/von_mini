@@ -1,6 +1,6 @@
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { memo, useCallback, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../ai/AIContext';
@@ -23,10 +23,11 @@ import {
   type IconName,
 } from '../ui/components';
 import { haptics } from '../ui/haptics';
-import { FadeUp, Pulse } from '../ui/motion';
+import { Drift, FadeUp, Pulse, usePressScale } from '../ui/motion';
 import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
+  { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
   { label: 'Mood journal', icon: 'happy-outline', prompt: 'A journal that tags my mood' },
   { label: 'Habit tracker', icon: 'repeat', prompt: 'A habit tracker that reflects on my week' },
   { label: 'Expense notes', icon: 'wallet-outline', prompt: 'An expense logger that categorizes what I buy' },
@@ -41,6 +42,7 @@ const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
 const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(id: string): void }) {
   const theme = useTheme(app.spec.accent);
   const color = ACCENT_COLORS[app.spec.accent][theme.scheme];
+  const spring = usePressScale(0.965);
   return (
     <Pressable
       accessibilityRole="button"
@@ -49,28 +51,28 @@ const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(i
         haptics.tap();
         onOpen(app.id);
       }}
-      style={({ pressed }) => [
-        styles.tile,
-        {
-          backgroundColor: theme.surface,
-          borderColor: theme.border,
-          boxShadow: theme.shadow,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
-        },
-      ]}
+      {...spring.handlers}
     >
-      <View style={[styles.tileIcon, { backgroundColor: alpha(color, theme.scheme === 'dark' ? 0.22 : 0.12) }]}>
-        <Text style={styles.tileEmoji}>{app.spec.emoji}</Text>
-      </View>
-      <View style={{ gap: 3, flex: 1 }}>
-        <Text style={[type.label, { color: theme.text }]} numberOfLines={1}>
-          {app.spec.name}
-        </Text>
-        <Text style={[type.caption, { color: theme.muted }]} numberOfLines={2}>
-          {app.spec.description || app.request}
-        </Text>
-      </View>
-      <SourceBadge source={app.builtWith} />
+      <Animated.View
+        style={[
+          styles.tile,
+          spring.style,
+          { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow },
+        ]}
+      >
+        <View style={[styles.tileIcon, { backgroundColor: alpha(color, theme.scheme === 'dark' ? 0.22 : 0.12) }]}>
+          <Text style={styles.tileEmoji}>{app.spec.emoji}</Text>
+        </View>
+        <View style={{ gap: 3, flex: 1 }}>
+          <Text style={[type.label, { color: theme.text }]} numberOfLines={1}>
+            {app.spec.name}
+          </Text>
+          <Text style={[type.caption, { color: theme.muted }]} numberOfLines={2}>
+            {app.spec.description || app.request}
+          </Text>
+        </View>
+        <SourceBadge source={app.builtWith} />
+      </Animated.View>
     </Pressable>
   );
 });
@@ -185,7 +187,8 @@ export default function Home() {
         {/* Prompt-first hero: the whole product starts here. */}
         <FadeUp delay={40}>
           <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow }]}>
-            <View style={[styles.heroWash, { backgroundColor: theme.accentSoft }]} pointerEvents="none" />
+            {/* The soft wash drifts slowly, so the screen feels alive while you think. */}
+            <Drift style={[styles.heroWash, { backgroundColor: theme.accentSoft }]} range={22} duration={11000} />
             <View style={{ gap: space(2) }}>
               <Text style={[type.display, { color: theme.text }]}>What do you want to build?</Text>
               <Text style={[type.body, { color: theme.muted }]}>

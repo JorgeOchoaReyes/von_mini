@@ -10,7 +10,7 @@
  * can be typed instead of spoken, and is saved with the app's other fields.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAI } from '../ai/AIContext';
 import type { InferenceSource } from '../ai/types';
@@ -18,7 +18,7 @@ import { fillTemplate } from '../spec/validate';
 import type { SpecComponent } from '../spec/types';
 import { Button, Icon, IconButton, SourceBadge } from '../ui/components';
 import { haptics } from '../ui/haptics';
-import { Pulse, TypingDots } from '../ui/motion';
+import { Breathe, FadeUp, PopIn, Ripples, TypingDots, usePressScale, Waveform } from '../ui/motion';
 import { radius, space, type, type Theme } from '../ui/theme';
 import { voiceReply, type Turn } from './cascade';
 import { setMuted, speak, stopSpeaking } from './tts';
@@ -62,6 +62,7 @@ export function VoiceChat({
   const [source, setSource] = useState<InferenceSource | null>(null);
 
   const mic = useListener(setPartial);
+  const talkPress = usePressScale(0.92);
   const turnsRef = useRef<Turn[]>([]);
   const abort = useRef<{ aborted: boolean } | null>(null);
   const active = useRef(false);
@@ -234,8 +235,9 @@ export function VoiceChat({
       {turns.length > 0 && (
         <View style={{ gap: space(2) }}>
           {turns.map((t, i) => (
-            <View
+            <FadeUp
               key={i}
+              distance={8}
               style={[
                 styles.bubble,
                 t.role === 'user'
@@ -250,7 +252,7 @@ export function VoiceChat({
               ) : (
                 <TypingDots color={theme.muted} />
               )}
-            </View>
+            </FadeUp>
           ))}
           {phase === 'listening' && partial ? (
             <View style={[styles.bubble, { alignSelf: 'flex-end', backgroundColor: theme.accentSoft }]}>
@@ -262,19 +264,32 @@ export function VoiceChat({
 
       {canTalk ? (
         <View style={styles.talkRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={PHASE_LABEL[phase]}
-            onPress={start}
-            style={({ pressed }) => [
-              styles.talk,
-              { backgroundColor: phase === 'listening' ? theme.danger : theme.accent, transform: [{ scale: pressed ? 0.96 : 1 }] },
-            ]}
-          >
-            <Icon name={phase === 'listening' ? 'stop' : 'mic'} size={30} color={theme.onAccent} />
-          </Pressable>
+          {/* The mic shows the conversation's state: rings while it listens, a slow breath while
+              Nano thinks, and a live waveform while the reply is spoken. */}
+          <View style={styles.talkStage}>
+            <Ripples size={76} color={theme.danger} active={phase === 'listening'} />
+            <Ripples size={76} color={theme.accent} active={phase === 'speaking'} />
+            <Breathe active={phase === 'thinking'}>
+              <Pressable accessibilityRole="button" accessibilityLabel={PHASE_LABEL[phase]} onPress={start} {...talkPress.handlers}>
+                <Animated.View
+                  style={[
+                    styles.talk,
+                    talkPress.style,
+                    { backgroundColor: phase === 'listening' ? theme.danger : theme.accent, boxShadow: theme.shadowSm },
+                  ]}
+                >
+                  {phase === 'speaking' ? (
+                    <Waveform color={theme.onAccent} active bars={5} height={26} />
+                  ) : (
+                    <PopIn trigger={phase}>
+                      <Icon name={phase === 'listening' ? 'stop' : 'mic'} size={30} color={theme.onAccent} />
+                    </PopIn>
+                  )}
+                </Animated.View>
+              </Pressable>
+            </Breathe>
+          </View>
           <View style={[styles.row, { justifyContent: 'center' }]}>
-            {running && <Pulse color={phase === 'listening' ? theme.danger : theme.accent} />}
             <Text style={[type.caption, { color: theme.muted }]}>
               {turns.length || running ? PHASE_LABEL[phase] : c.text ? 'Tap to start the conversation' : PHASE_LABEL.idle}
             </Text>
@@ -328,6 +343,7 @@ const styles = StyleSheet.create({
   badge: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '86%', borderRadius: radius.lg, paddingHorizontal: space(4), paddingVertical: space(3) },
   talkRow: { alignItems: 'center', gap: space(3) },
+  talkStage: { width: 152, height: 120, alignItems: 'center', justifyContent: 'center' },
   talk: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   typeRow: { flexDirection: 'row', alignItems: 'center', gap: space(2), borderRadius: radius.md, paddingLeft: space(3), paddingRight: space(1) },

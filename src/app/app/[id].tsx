@@ -37,7 +37,7 @@ import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
 import { deleteApp, getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
-import { Button, Card, Chip, Icon, IconButton, ModePill, SourceBadge, type IconName } from '../../ui/components';
+import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
 import { haptics } from '../../ui/haptics';
 import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
@@ -508,29 +508,7 @@ function Segmented_({
     { value: 'chat', label: 'Chat', icon: 'chatbubble-ellipses-outline', dot: chatDot },
     { value: 'history', label: 'History', icon: 'time-outline' },
   ];
-  return (
-    <View style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            onPress={() => {
-              if (!on) haptics.tap();
-              onChange(o.value);
-            }}
-            style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
-          >
-            <Icon name={o.icon} size={15} color={on ? theme.accent : theme.muted} />
-            <Text style={[type.label, { color: on ? theme.text : theme.muted }]}>{o.label}</Text>
-            {o.dot && <View style={[styles.dot, { backgroundColor: theme.accent }]} />}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  return <Segmented theme={theme} value={value} onChange={onChange} options={options} />;
 }
 
 /** The stacked switcher used on phones. */
@@ -555,27 +533,7 @@ function Tabs({
   ];
   return (
     <FadeUp distance={4}>
-      <View style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}>
-        {options.map((o) => {
-          const on = o.value === value;
-          return (
-            <Pressable
-              key={o.value}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              onPress={() => {
-                if (!on) haptics.tap();
-                onChange(o.value);
-              }}
-              style={[styles.segment, on && { backgroundColor: theme.surface, boxShadow: theme.shadowSm }]}
-            >
-              <Icon name={o.icon} size={15} color={on ? theme.accent : theme.muted} />
-              <Text style={[type.caption, { color: on ? theme.text : theme.muted, fontWeight: '600' }]}>{o.label}</Text>
-              {o.dot && <View style={[styles.dot, { backgroundColor: theme.accent }]} />}
-            </Pressable>
-          );
-        })}
-      </View>
+      <Segmented theme={theme} value={value} onChange={onChange} options={options} />
     </FadeUp>
   );
 }
