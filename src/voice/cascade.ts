@@ -7,7 +7,7 @@
  * the app is offline or in private mode.
  */
 import { engine } from '../ai/engineSelect';
-import { modeFor, type RouteContext } from '../ai/hybrid';
+import { appModeProblem, modeFor, type RouteContext } from '../ai/hybrid';
 import type { InferenceSource } from '../ai/types';
 import { SentenceSpeaker } from './tts';
 
@@ -48,6 +48,8 @@ export interface ReplyOptions {
  * Resolves with the full reply once it has been spoken.
  */
 export async function voiceReply(history: Turn[], o: ReplyOptions): Promise<{ text: string; source: InferenceSource }> {
+  const problem = appModeProblem(o.ctx);
+  if (problem) throw new Error(problem);
   const speaker = o.speak ? new SentenceSpeaker() : null;
   let text = '';
   let source: InferenceSource = 'on_device';

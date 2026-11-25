@@ -27,7 +27,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
-import { buildCustomHtml } from '../../ai/hybrid';
+import { APP_AI_MODES, AppAiModeProvider, type AppAiMode } from '../../ai/appMode';
+import { appModeProblem, buildCustomHtml } from '../../ai/hybrid';
 import { cancelRemindersForApp } from '../../alerts/notifications';
 import { firebaseConfigured } from '../../firebase/app';
 import { useRemoteConfig } from '../../remote/remoteConfig';
@@ -226,6 +227,17 @@ export default function AppScreen() {
     }
   };
 
+  /** Saves this app's AI location without touching its design or version history. */
+  const setAppMode = async (mode: AppAiMode) => {
+    const current = appRef.current;
+    if (!current || (current.aiMode ?? 'auto') === mode) return;
+    const latest = (await getApp(current.id)) ?? current;
+    const next = { ...latest, aiMode: mode };
+    await saveApp(next);
+    setApp((a) => (a ? { ...a, aiMode: mode } : a));
+    appRef.current = appRef.current ? { ...appRef.current, aiMode: mode } : null;
+  };
+
   const remove = () => {
     if (!app) return;
     const go = async () => {
@@ -267,6 +279,20 @@ export default function AppScreen() {
   const canCustom = ai.online && !ai.privateMode && !ai.locked;
   const canShare = canCustom;
   const chatBusy = isBusy(app.id);
+
+  const appMode: AppAiMode = app.aiMode ?? 'auto';
+  const modeProblem = appModeProblem({ ...ai, appMode });
+  const modeNote =
+    modeProblem ??
+    (ai.privateMode || ai.locked
+      ? 'Private mode is on, so this app’s AI runs on this device.'
+      : appMode === 'device'
+        ? 'This app’s AI runs on this device with Gemini Nano: private and offline.'
+        : appMode === 'cloud'
+          ? 'This app’s AI runs on Gemini in the cloud: a bigger model, needs a connection.'
+          : ai.deviceStatus === 'available'
+            ? 'Auto: on this device with Gemini Nano, the cloud only if it can’t.'
+            : 'Auto: this device has no Gemini Nano, so the cloud.');
 
   const preview = (
     <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
@@ -326,18 +352,34 @@ export default function AppScreen() {
           </Text>
         </View>
 
+        {/* Where this app's own AI runs, like von mini's Private mode but per app. */}
+        <View style={{ gap: space(2) }}>
+          <Segmented<AppAiMode>
+            theme={appTheme}
+            value={appMode}
+            onChange={(m) => void setAppMode(m)}
+            options={APP_AI_MODES.map((o) => ({
+              ...o,
+              icon: o.value === 'device' ? 'phone-portrait-outline' : o.value === 'cloud' ? 'cloud-outline' : 'git-compare-outline',
+            }))}
+          />
+          <Text style={[type.caption, { color: modeProblem ? appTheme.danger : appTheme.subtle }]}>{modeNote}</Text>
+        </View>
+
         {/* Keyed by app id, not by spec: editing a label must not remount the whole preview. */}
-        <SpecRenderer
-          key={app.id}
-          appId={app.id}
-          spec={app.spec}
-          selectable
-          selectedKey={selected}
-          onSelect={(k) => {
-            setEditingApp(false);
-            setSelected(k);
-          }}
-        />
+        <AppAiModeProvider mode={app.aiMode}>
+          <SpecRenderer
+            key={app.id}
+            appId={app.id}
+            spec={app.spec}
+            selectable
+            selectedKey={selected}
+            onSelect={(k) => {
+              setEditingApp(false);
+              setSelected(k);
+            }}
+          />
+        </AppAiModeProvider>
 
         <View style={[styles.footer, { borderColor: appTheme.border }]}>
           <Text style={[type.caption, { color: appTheme.subtle, flex: 1 }]}>
@@ -505,7 +547,11 @@ export default function AppScreen() {
             {tab === 'history' && (
               <HistoryPanel appId={app.id} current={app.spec} version={chatVersion} onRestored={onRestored} />
             )}
-            {tab === 'custom' && app.html && <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />}
+            {tab === 'custom' && app.html && (
+              <AppAiModeProvider mode={app.aiMode}>
+                <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
+              </AppAiModeProvider>
+            )}
           </View>
         )}
       </View>

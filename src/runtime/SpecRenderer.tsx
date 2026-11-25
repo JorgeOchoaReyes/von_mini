@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useAI } from '../ai/AIContext';
+import { useAppAI } from '../ai/appMode';
 import { runAction } from '../ai/hybrid';
 import type { InferenceSource } from '../ai/types';
 import { componentKey } from '../spec/edit';
@@ -166,7 +166,7 @@ export function SpecRenderer({
   onSelect?(key: string | null): void;
 }) {
   const theme = useTheme(spec.accent);
-  const ai = useAI();
+  const ai = useAppAI();
   const [values, setValues] = useState<Record<string, string>>({});
   const [sources, setSources] = useState<Record<string, InferenceSource>>({});
   const [busy, setBusy] = useState<string | null>(null);

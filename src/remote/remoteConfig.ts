@@ -7,6 +7,7 @@
  * at startup; the fetch is throttled to once an hour.
  *
  *   cloud_model        Gemini model used when Firebase AI Logic runs in the cloud
+ *   cloud_model_fallback  model to retry on when cloud_model's quota is used up
  *   build_mode         how new apps are designed: prefer_in_cloud (default) or prefer_on_device
  *   spec_rules_extra   extra design rules appended to the app-designer prompt
  *   voice_input        "false" hides speech input (a kill switch if recognition misbehaves)
@@ -19,6 +20,8 @@ import { fetchRemoteValues } from './fetchRemote';
 
 export const RC_DEFAULTS = {
   cloud_model: cloudModel,
+  // Used when cloud_model's quota is exhausted (the free tier allows few requests per day per model).
+  cloud_model_fallback: 'gemini-3.5-flash-lite',
   build_mode: 'prefer_in_cloud',
   spec_rules_extra: '',
   voice_input: 'true',

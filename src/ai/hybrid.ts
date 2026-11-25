@@ -15,7 +15,7 @@ import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
-import { engine } from './engineSelect';
+import { engine, isQuotaError } from './engineSelect';
 import {
   ACTION_SYSTEM,
   CHAT_SYSTEM,
@@ -35,13 +35,33 @@ export interface RouteContext {
   privateMode: boolean;
   /** Whether Gemini Nano can run here right now. Unknown (undefined) keeps the default routing. */
   deviceStatus?: DeviceStatus;
+  /** For AI inside a generated app: that app's own choice (see appMode.tsx). */
+  appMode?: 'auto' | 'device' | 'cloud';
 }
 
 /** True when every request must stay on the device (offline, private mode, or an offline build). */
 export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
 
+/**
+ * Why an app's AI can't run with its current setting, in plain words, or null if it can. Shown
+ * under the app's AI selector, and thrown by the app's AI calls so they fail clearly.
+ */
+export function appModeProblem(ctx: RouteContext): string | null {
+  const nano = ctx.deviceStatus === 'available';
+  if (local(ctx)) {
+    return nano ? null : 'Private mode (or no connection) keeps AI on this device, but this device can’t run Gemini Nano.';
+  }
+  if (ctx.appMode === 'device' && !nano) {
+    return 'This app is set to On-device, but this device can’t run Gemini Nano. Choose Auto or Cloud.';
+  }
+  return null;
+}
+
 export function modeFor(task: 'build' | 'edit' | 'action', ctx: RouteContext): InferenceMode {
   if (local(ctx)) return 'only_on_device';
+  // An app's own choice applies to its AI features ('action'), not to building or editing it.
+  if (task === 'action' && ctx.appMode === 'device') return 'only_on_device';
+  if (task === 'action' && ctx.appMode === 'cloud') return 'only_in_cloud';
   // No usable on-device model: go straight to the cloud. A PREFER_* mode would let the SDK fall
   // back to an on-device path that can't run here, which stalls instead of reporting the real
   // cloud error (seen on a phone without AICore: no request ever reached Firebase).
@@ -191,6 +211,15 @@ export function isCloudUnavailable(e: unknown): boolean {
  */
 export function explainCloudError(e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
+  if (isQuotaError(e)) {
+    // e.g. "...limit: 20, model: gemini-3.8-flash ... Please retry in 34m17.04s."
+    const model = msg.match(/model:\s*([\w.-]+)/)?.[1];
+    const wait = msg.match(/retry in\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*([\d.]+s)?/i);
+    const when = wait && (wait[1] || wait[2]) ? ` It resets in about ${wait[1] ? `${wait[1]} h ` : ''}${wait[2] ? `${wait[2]} min` : ''}.`.replace(/ \./, '.') : '';
+    return new Error(
+      `The free Gemini quota${model ? ` for ${model}` : ''} is used up for now.${when} More quota: enable billing on the Firebase project (Blaze plan), or change cloud_model in Remote Config.`,
+    );
+  }
   const hint = /android client application|API_KEY_ANDROID_APP_BLOCKED|blocked/i.test(msg)
     ? 'Firebase blocked this app’s requests. Add this build’s SHA-1 fingerprint to the Android app in Firebase project settings (for EAS builds, `eas credentials` shows it), or loosen the API key’s Android restriction.'
     : /API key not valid|API_KEY_INVALID/i.test(msg)
@@ -219,6 +248,7 @@ async function generateSpecProgressive(
       onEvent({ type: 'fallback' });
       return generateSpecOnce(prompt, 'only_on_device', task, onEvent);
     }
+    if (isQuotaError(e)) throw explainCloudError(e);
     if (isCloudUnavailable(e)) {
       throw new Error(
         e instanceof StalledError
@@ -349,6 +379,8 @@ export async function chatAboutApp(
 }
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {
+  const problem = appModeProblem(ctx);
+  if (problem) throw new Error(problem);
   return withDeadline(engine.generate(prompt, { mode: modeFor('action', ctx), system: ACTION_SYSTEM }), REQUEST_MS).catch(
     (e: unknown) => {
       throw e instanceof StalledError ? new Error('The AI didn’t answer within a minute. Try again.') : explainCloudError(e);

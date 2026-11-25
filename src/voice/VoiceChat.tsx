@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useAI } from '../ai/AIContext';
+import { useAppAI } from '../ai/appMode';
 import type { InferenceSource } from '../ai/types';
 import { fillTemplate } from '../spec/validate';
 import type { SpecComponent } from '../spec/types';
@@ -50,7 +50,7 @@ export function VoiceChat({
   theme: Theme;
   onTranscript(text: string): void;
 }) {
-  const ai = useAI();
+  const ai = useAppAI();
   const support = useSttSupport();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [phase, setPhase] = useState<Phase>('idle');

@@ -1,14 +1,14 @@
 // Web: runs a custom HTML app in a sandboxed iframe (scripts only, opaque origin).
 import { useEffect, useMemo, useRef } from 'react';
 
-import { useAI } from '../ai/AIContext';
+import { useAppAI } from '../ai/appMode';
 import type { Accent } from '../spec/types';
 import { ACCENT_COLORS } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
 export function HtmlRunner({ appId, html, accent }: { appId: string; html: string; accent: Accent }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const ai = useAI();
+  const ai = useAppAI();
   // Keep the latest routing context for the message listener without re-subscribing.
   const aiRef = useRef(ai);
   useEffect(() => {
