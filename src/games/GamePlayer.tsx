@@ -548,18 +548,20 @@ function WhackGame(p: GameProps) {
   return (
     <View accessibilityLabel="Whack board" style={[styles.whack, { width: side, height: side }]}>
       {s.holes.map((hole, i) => (
-        <Pressable
+        // A raw touch responder, not a Pressable: the board re-renders every frame, and a Pressable
+        // can lose a press that spans a re-render. The hit lands the moment the finger goes down.
+        <View
           key={i}
-          disabled={!running}
-          onPressIn={() => setS((x) => G.whackHit(x, i))}
+          onStartShouldSetResponder={() => running}
+          onResponderGrant={() => setS((x) => G.whackHit(x, i))}
           accessibilityRole="button"
           accessibilityLabel={hole.kind === 'none' ? `Hole ${i + 1}, empty` : `Hole ${i + 1}, ${hole.kind === 'bad' ? 'bomb' : 'target'}`}
           style={{ width: cell, height: cell, padding: 6 }}
         >
-          <View style={[styles.hole, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+          <View pointerEvents="none" style={[styles.hole, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
             {hole.kind !== 'none' && <Text style={{ fontSize: cell * 0.45 }}>{hole.kind === 'bad' ? '💣' : item}</Text>}
           </View>
-        </Pressable>
+        </View>
       ))}
     </View>
   );
