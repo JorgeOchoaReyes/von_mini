@@ -26,6 +26,7 @@ import {
   StepList,
   type IconName,
 } from '../../ui/components';
+import { confirmDeleteApp } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
 import { Halftone } from '../../ui/Halftone';
 import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
@@ -48,7 +49,16 @@ const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
 ];
 
 /** One app in the gallery. Memoized so typing in the prompt box never re-renders the grid. */
-const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(id: string): void }) {
+const AppTile = memo(function AppTile({
+  app,
+  onOpen,
+  onLongPress,
+}: {
+  app: SavedApp;
+  onOpen(id: string): void;
+  /** Long-press: delete (or reset a changed ready-made app). */
+  onLongPress(app: SavedApp): void;
+}) {
   const theme = useTheme(app.spec.accent);
   const color = ACCENT_COLORS[app.spec.accent][theme.scheme];
   const spring = usePressScale(0.965);
@@ -60,6 +70,11 @@ const AppTile = memo(function AppTile({ app, onOpen }: { app: SavedApp; onOpen(i
         haptics.tap();
         onOpen(app.id);
       }}
+      onLongPress={() => {
+        haptics.medium();
+        onLongPress(app);
+      }}
+      accessibilityHint="Long-press to delete"
       {...spring.handlers}
     >
       <Animated.View
@@ -186,6 +201,7 @@ export default function Home() {
   };
 
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
+  const deleteFromHome = useCallback((app: SavedApp) => confirmDeleteApp(app, () => void listApps().then(setApps)), []);
   const schemePref = useSchemePref();
   const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
   const mine = apps.filter((a) => !isStarter(a));
@@ -375,7 +391,7 @@ export default function Home() {
             <View style={styles.grid}>
               {shown.map((app, i) => (
                 <FadeUp key={`${shelf}:${app.id}`} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
-                  <AppTile app={app} onOpen={openApp} />
+                  <AppTile app={app} onOpen={openApp} onLongPress={deleteFromHome} />
                 </FadeUp>
               ))}
             </View>

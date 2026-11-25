@@ -7,7 +7,7 @@
  * (rules in firestore.rules: anyone can read one by id, only its owner can write it).
  */
 import { createURL } from 'expo-linking';
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
 import { currentUser, firestore } from '../firebase/services';
@@ -58,4 +58,10 @@ export async function loadShared(id: string): Promise<{ spec: AppSpec; request: 
   if (!snap.exists()) throw new Error('This shared app was not found. It may have been removed.');
   const d = snap.data() as { spec?: unknown; request?: unknown };
   return { spec: sanitizeSpec(d.spec), request: typeof d.request === 'string' ? d.request : '' };
+}
+
+/** Removes a shared design (only its owner can; see firestore.rules). */
+export async function unpublishApp(shareId: string): Promise<void> {
+  await currentUser();
+  await deleteDoc(doc(firestore(), 'shared', shareId));
 }

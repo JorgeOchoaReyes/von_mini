@@ -14,7 +14,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -29,7 +28,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAI } from '../../ai/AIContext';
 import { APP_AI_MODES, AppAiModeProvider, type AppAiMode } from '../../ai/appMode';
 import { appModeProblem, buildCustomHtml } from '../../ai/hybrid';
-import { cancelRemindersForApp } from '../../alerts/notifications';
 import { firebaseConfigured } from '../../firebase/app';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { publishApp } from '../../share/share';
@@ -42,8 +40,9 @@ import { SpecRenderer } from '../../runtime/SpecRenderer';
 import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
-import { deleteApp, getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
+import { getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
 import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
+import { canDelete, confirmDeleteApp, isChangedStarter } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
 import { useKeyboardInset } from '../../ui/useKeyboardInset';
 import { FadeUp } from '../../ui/motion';
@@ -242,20 +241,8 @@ export default function AppScreen() {
 
   const remove = () => {
     if (!app) return;
-    const go = async () => {
-      await cancelRemindersForApp(app.id);
-      await deleteApp(app.id);
-      router.back();
-    };
     setActionsOpen(false);
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Delete ${app.spec.name} and its saved data?`)) void go();
-    } else {
-      Alert.alert('Delete app?', `${app.spec.name} and its saved data will be removed from this device.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void go() },
-      ]);
-    }
+    confirmDeleteApp(app, () => router.back());
   };
 
   const editorIndex = useMemo(() => {
@@ -436,8 +423,14 @@ export default function AppScreen() {
                 Link: {shared}
               </Text>
             )}
-            {app.builtWith !== 'starter' && (
-              <ActionRow icon="trash-outline" title="Delete this app" onPress={remove} theme={appTheme} danger />
+            {canDelete(app) && (
+              <ActionRow
+                icon={isChangedStarter(app) ? 'refresh' : 'trash-outline'}
+                title={isChangedStarter(app) ? 'Reset to the original' : 'Delete this app'}
+                onPress={remove}
+                theme={appTheme}
+                danger
+              />
             )}
             {error && <Text style={[type.caption, { color: appTheme.danger }]}>{error}</Text>}
           </Card>
@@ -527,6 +520,15 @@ export default function AppScreen() {
             filled={tab === 'history'}
             onPress={() => setTab('history')}
           />
+          {canDelete(app) && (
+            <IconButton
+              icon={isChangedStarter(app) ? 'refresh' : 'trash-outline'}
+              label={isChangedStarter(app) ? 'Reset to the original' : 'Delete this app'}
+              theme={appTheme}
+              color={appTheme.danger}
+              onPress={remove}
+            />
+          )}
         </View>
 
         {wide ? (
