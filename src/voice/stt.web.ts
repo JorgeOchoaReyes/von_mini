@@ -40,14 +40,18 @@ function ctor(): RecognitionCtor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+/** Last known on-device availability, filled in the first time the user talks. */
+let knownLocal: Availability | null = null;
+
 async function onDeviceAvailability(C: RecognitionCtor, lang: string): Promise<Availability> {
   try {
-    if (C.available) return await C.available({ langs: [lang], processLocally: true });
-    if (C.availableOnDevice) return await C.availableOnDevice(lang);
+    if (C.available) knownLocal = await C.available({ langs: [lang], processLocally: true });
+    else if (C.availableOnDevice) knownLocal = await C.availableOnDevice(lang);
+    else knownLocal = 'unavailable';
   } catch {
-    // Not supported in this build.
+    knownLocal = 'unavailable';
   }
-  return 'unavailable';
+  return knownLocal;
 }
 
 /** Asks Chrome to fetch the on-device speech model. Must run from a user gesture. */
@@ -60,10 +64,14 @@ async function installOnDevice(C: RecognitionCtor, lang: string) {
   }
 }
 
-export async function sttSupport(lang = 'en-US'): Promise<SttSupport> {
-  const C = ctor();
-  if (!C) return { available: false, onDevice: false };
-  return { available: true, onDevice: (await onDeviceAvailability(C, lang)) === 'available' };
+/**
+ * Cheap capability check, safe to run on page load: it only looks for the API. The on-device
+ * check (`SpeechRecognition.available`) is deferred until the user taps a mic, because it talks to
+ * the browser's speech service, and in some environments (e.g. headless Chromium) that call
+ * crashes the tab. `onDevice` is therefore reported as false until the first use confirms it.
+ */
+export async function sttSupport(): Promise<SttSupport> {
+  return { available: !!ctor(), onDevice: knownLocal === 'available' };
 }
 
 export function listen({ onPartial, lang = 'en-US', offline }: ListenOptions): Listening {

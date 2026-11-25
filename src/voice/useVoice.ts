@@ -51,6 +51,8 @@ export function useListener(onPartial?: (text: string) => void) {
     try {
       const text = await l.done;
       setState('idle');
+      // The first real use can reveal more (e.g. that recognition runs on-device): re-check later.
+      cached = null;
       return text;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
