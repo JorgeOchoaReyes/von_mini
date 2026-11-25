@@ -776,7 +776,7 @@ export function SpecRenderer({
         <Text style={[type.title, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
           {op === 'streak' ? `${value ?? 0} ${value === 1 ? 'day' : 'days'}` : formatStat(value, c.unit)}
         </Text>
-        <Text style={[type.caption, { color: theme.muted }]} numberOfLines={1}>
+        <Text style={[type.caption, { color: theme.muted }]} numberOfLines={2}>
           {op === 'streak' ? 'in a row' : op === 'count' ? RANGE_LABEL[(c.range ?? 'today') as StatRange] : `${OP_LABEL[op]} · ${RANGE_LABEL[(c.range ?? 'today') as StatRange]}${n ? ` · ${n} ${n === 1 ? 'entry' : 'entries'}` : ''}`}
         </Text>
       </View>
