@@ -1,0 +1,20 @@
+# Check every text file out with LF line endings, on Windows too.
+#
+# EAS Update matches OTA updates to builds by a fingerprint of the project's files. With Windows'
+# default core.autocrlf, a Windows checkout has CRLF endings, so it fingerprints differently from
+# the Linux CI runner, and an APK built from Windows would never receive updates published by CI.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.jar binary
+*.keystore binary
