@@ -4,7 +4,8 @@ import { Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
-import { stoppable, StoppedError } from '../../ai/stoppable';
+import { StoppedError } from '../../ai/stoppable';
+import { backgroundWork } from '../../ai/background';
 import { buildAppProgressive, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { AddShared } from '../../share/AddShared';
@@ -107,7 +108,10 @@ export default function Home() {
     builtRef.current = false;
     // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
     void ensureAlertPermission().catch(() => false);
-    const run = stoppable(buildAppProgressive(value, ai, onEvent));
+    // Keeps going if the user switches apps (see background.ts).
+    const run = backgroundWork('Building your app…', () => buildAppProgressive(value, ai, onEvent), {
+      resumeNote: { title: 'Your app is almost ready', body: 'Your phone paused the build. Open von mini to finish it.', url: '/' },
+    });
     stopBuild.current = run.stop;
     try {
       const { spec, source } = await run.promise;

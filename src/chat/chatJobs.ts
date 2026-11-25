@@ -9,7 +9,8 @@ import { useSyncExternalStore } from 'react';
 
 import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
-import { stoppable, StoppedError } from '../ai/stoppable';
+import { backgroundWork } from '../ai/background';
+import { StoppedError } from '../ai/stoppable';
 import {
   appendMessage,
   getApp,
@@ -90,7 +91,10 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       .filter((m) => m.kind !== 'error')
       .slice(0, -1)
       .map((m) => ({ role: m.role, text: m.text }));
-    const turn = stoppable(chatAboutApp(app.spec, history, message, ctx, (e) => applyEvent(appId, e)));
+    // Keeps going if the user switches apps (see background.ts).
+    const turn = backgroundWork('Updating your app…', () => chatAboutApp(app.spec, history, message, ctx, (e) => applyEvent(appId, e)), {
+      resumeNote: { title: `${app.spec.emoji} ${app.spec.name}`, body: 'Your phone paused the change. Open von mini to finish it.', url: `/app/${appId}` },
+    });
     stops.set(appId, turn.stop);
     const reply = await turn.promise;
 

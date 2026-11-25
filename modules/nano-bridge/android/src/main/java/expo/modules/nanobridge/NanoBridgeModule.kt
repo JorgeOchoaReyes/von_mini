@@ -1,5 +1,7 @@
 package expo.modules.nanobridge
 
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.DownloadStatus
 import com.google.firebase.ai.FirebaseAI
@@ -42,6 +44,26 @@ class NanoBridgeModule : Module() {
     Name("NanoBridge")
 
     Events("onDownloadProgress", "onStreamChunk")
+
+    /**
+     * Starts the foreground service that keeps the app alive while a build or edit runs, so it
+     * survives the user switching away. Returns false when Android doesn't allow it right now.
+     */
+    Function("startKeepAlive") { title: String ->
+      val context = appContext.reactContext ?: return@Function false
+      try {
+        ContextCompat.startForegroundService(context, Intent(context, KeepAliveService::class.java).putExtra(KeepAliveService.EXTRA_TITLE, title))
+        true
+      } catch (e: Exception) {
+        false
+      }
+    }
+
+    /** Stops the keep-alive service (and its notification). */
+    Function("stopKeepAlive") {
+      appContext.reactContext?.let { it.stopService(Intent(it, KeepAliveService::class.java)) }
+      Unit
+    }
 
     /** Reports whether the selected on-device model can run on this phone. */
     AsyncFunction("getStatus") Coroutine { cloudModel: String, modelOption: String ->

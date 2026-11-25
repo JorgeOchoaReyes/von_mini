@@ -213,8 +213,11 @@ export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** Cloud failures worth retrying on the device: the model is busy, over quota, or unreachable. */
+/** The cloud couldn't be reached or didn't answer (as opposed to refusing the request). */
+export class UnreachableError extends Error {}
+
 export function isCloudUnavailable(e: unknown): boolean {
-  if (e instanceof StalledError) return true;
+  if (e instanceof StalledError || e instanceof UnreachableError) return true;
   const msg = e instanceof Error ? e.message : String(e);
   return /high demand|overloaded|unavailable|503|429|resource.?exhausted|quota|deadline|timed? ?out|network|fetch failed|failed to connect|unable to resolve host/i.test(
     msg,
@@ -277,7 +280,7 @@ async function withDeviceFallback<T>(
     }
     if (isQuotaError(e)) throw explainCloudError(e);
     if (isCloudUnavailable(e)) {
-      throw new Error(
+      throw new UnreachableError(
         e instanceof StalledError
           ? 'Gemini in the cloud didn’t answer in time, and this device has no on-device model to fall back to. Try again in a minute.'
           : 'Gemini in the cloud is busy right now, and this device has no on-device model to fall back to. Try again in a minute.',

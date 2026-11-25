@@ -31,6 +31,8 @@ dependencies {
   // Remote Config: model, routing and feature flags tunable from the Firebase console.
   implementation 'com.google.firebase:firebase-config:22.1.2'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+  // NotificationCompat / ServiceCompat for the keep-alive foreground service.
+  implementation 'androidx.core:core-ktx:1.17.0'
   // Task.await() for the Remote Config calls.
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
 }
