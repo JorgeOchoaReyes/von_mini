@@ -16,7 +16,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
     match: /calorie|food|meal|diet|nutrition|ate\b/i,
-    json: `{"name":"Bite Log","emoji":"🍽️","accent":"orange","description":"Log meals and watch your daily calories.","components":[
+    json: `{"name":"Bite Log","emoji":"🍽️","accent":"amber","description":"Log meals and watch your daily calories.","components":[
       {"type":"stat","id":"kcal_today","label":"Today","field":"calories","op":"sum","range":"today","unit":"kcal"},
       {"type":"chart","id":"kcal_chart","label":"Calories per day","field":"calories","op":"sum","days":7,"unit":"kcal"},
       {"type":"input","id":"meal","label":"What did you eat?","placeholder":"Chicken salad and an apple"},
@@ -192,10 +192,13 @@ export const mockEngine: AIEngine = {
 
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
     await sleep(options.json ? 220 : 180);
+    // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
+    if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     return { text: respond(prompt, options), source: 'on_device' };
   },
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
+    if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
     // end to end), so the streaming UI is exercised realistically rather than flashing past.

@@ -154,8 +154,10 @@ export function useTheme(accent: Accent = 'amber'): Theme {
   const pref = useSchemePref();
   const scheme = pref === 'system' ? system : pref;
   const base = scheme === 'dark' ? dark : light;
-  const a = ACCENT_COLORS[accent][scheme];
-  const b = ACCENT_PARTNER[accent][scheme];
+  // Stored or shared apps may carry an accent this build doesn't know; never crash on a colour.
+  const key = ACCENT_COLORS[accent] ? accent : 'violet';
+  const a = ACCENT_COLORS[key][scheme];
+  const b = ACCENT_PARTNER[key][scheme];
   return {
     ...base,
     scheme,

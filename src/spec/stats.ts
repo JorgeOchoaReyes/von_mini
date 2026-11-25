@@ -29,12 +29,17 @@ export const OP_LABEL: Record<StatOp, string> = {
 };
 export const RANGE_LABEL: Record<StatRange, string> = { today: 'today', week: 'last 7 days', all: 'all time' };
 
-/** First number in a text: "1,450 kcal" -> 1450, "≈ 3.5 h" -> 3.5, "$12.40" -> 12.4. */
+/**
+ * First number in a text: "1,450 kcal" -> 1450, "≈ 3.5 h" -> 3.5, "$12.40" -> 12.4, and a decimal
+ * comma as typed on many keyboards: "12,5" -> 12.5.
+ */
 export function firstNumber(text: string | undefined): number | null {
   if (!text) return null;
-  const m = text.match(/-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?/);
+  const m = text.match(/-?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?!\d)|-?\d+(?:[.,]\d+)?/);
   if (!m) return null;
-  const n = Number(m[0].replace(/,/g, ''));
+  const raw = m[0];
+  // "1,450" (groups of three) is thousands; "12,5" or "3,75" is a decimal comma.
+  const n = Number(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw) ? raw.replace(/,/g, '') : raw.replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -76,9 +81,10 @@ export function streak(entries: Entry[], field: string | undefined, now = Date.n
   return n;
 }
 
+/** "week" is the last 7 calendar days including today, the same days a 7-day chart shows. */
 export function inRange(at: number, range: StatRange, now = Date.now()): boolean {
   if (range === 'today') return sameDay(at, now);
-  if (range === 'week') return at >= now - 7 * 24 * 60 * 60 * 1000;
+  if (range === 'week') return at >= startOfDay(now) - 6 * DAY && at <= now + DAY;
   return true;
 }
 
@@ -100,7 +106,11 @@ export function computeStat(
     const n = c.field ? scoped.filter((e) => e.values[c.field!]?.trim()).length : scoped.length;
     return { value: n, n };
   }
-  const nums = scoped.map((e) => entryNumber(e, c.field, checklist)).filter((x): x is number => x !== null);
+  // Newest first, whatever order the caller passed, so "latest" is the most recent value.
+  const nums = [...scoped]
+    .sort((a, b) => b.at - a.at)
+    .map((e) => entryNumber(e, c.field, checklist))
+    .filter((x): x is number => x !== null);
   if (!nums.length) return { value: null, n: 0 };
   const value =
     op === 'sum'

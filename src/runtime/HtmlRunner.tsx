@@ -16,7 +16,7 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
   const ref = useRef<WebViewHandle>(null);
   const ai = useAppAI();
   const source = useMemo(
-    () => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage'), ACCENT_COLORS[accent]) }),
+    () => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage'), ACCENT_COLORS[accent] ?? ACCENT_COLORS.violet) }),
     [html, accent],
   );
 

@@ -24,7 +24,7 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
         // Sandboxed frames have an opaque origin, so the target must be '*'.
         bridgeScript("(function(m){ parent.postMessage(m, '*'); })") +
           `window.addEventListener('message', function(e){ var m=e.data; if(m && m.__vmReply) window.__vmReply(m.id, m.ok, m.v); });`,
-        ACCENT_COLORS[accent],
+        (ACCENT_COLORS[accent] ?? ACCENT_COLORS.violet),
       ),
     [html, accent],
   );

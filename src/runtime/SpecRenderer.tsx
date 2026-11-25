@@ -100,6 +100,7 @@ const HistoryList = memo(function HistoryList({
   byDay,
   total,
   units,
+  kinds,
 }: {
   appId: string;
   label: string;
@@ -114,6 +115,8 @@ const HistoryList = memo(function HistoryList({
   total?: { field: string; unit?: string; checklist: boolean };
   /** Units of number fields, so "4.5" reads "$4.50" in the summary line. */
   units?: Record<string, string>;
+  /** Field kinds, so a rating reads "★ 4/5" and a yes/no reads "✓ Worked out?". */
+  kinds?: Record<string, string>;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   // Rendering every entry would cost more the longer an app is used; show the newest slice.
@@ -155,6 +158,8 @@ const HistoryList = memo(function HistoryList({
               .map((k) => {
                 const v = e.values[k]?.trim() ?? '';
                 if (!v || v.length > 28 || v.includes('\n')) return null;
+                if (kinds?.[k] === 'rating') return `★ ${v}/5`;
+                if (kinds?.[k] === 'yesno') return `${/^yes$/i.test(v) ? '✓' : '✗'} ${(labels[k] ?? k).replace(/\?$/, '')}`;
                 const n = units?.[k] !== undefined ? firstNumber(v) : null;
                 return n !== null ? formatStat(n, units?.[k] || undefined) : v;
               })
@@ -180,7 +185,9 @@ const HistoryList = memo(function HistoryList({
                       )}
                     </View>
                     <Text style={[type.body, { color: theme.text }]} numberOfLines={expanded ? undefined : 2}>
-                      {e.values[firstField]}
+                      {units?.[firstField] !== undefined && firstNumber(e.values[firstField]) !== null
+                        ? formatStat(firstNumber(e.values[firstField]), units[firstField] || undefined)
+                        : e.values[firstField]}
                     </Text>
                     {!expanded && summary ? (
                       <Text style={[type.caption, { color: theme.muted }]} numberOfLines={1}>
@@ -278,6 +285,10 @@ export function SpecRenderer({
       ),
     [spec.components],
   );
+  const kinds = useMemo(
+    () => Object.fromEntries(spec.components.filter((c) => c.type === 'input' && c.kind && c.id).map((c) => [c.id!, c.kind!])),
+    [spec.components],
+  );
   const isChecklist = useCallback((id?: string) => !!id && byId.get(id)?.type === 'checklist', [byId]);
   const hasInput = fieldIds.some((id) => values[id]?.trim());
   /** Fills a prompt with what's typed, plus saved entries and the date for {entries}/{today_entries}/{today}. */
@@ -298,11 +309,13 @@ export function SpecRenderer({
       setBusy(c.id);
       setErrors((e) => ({ ...e, [c.id!]: '' }));
       try {
-        const result = await runAction(fill(c.prompt, vals), ai);
+        const target = c.fills ? byId.get(c.fills) : undefined;
+        // A number field takes a number: ask for just that, so "400 + 50 = 450" can't land as 400.
+        const ask = target?.kind === 'number' && !/just the number|only the number/i.test(c.prompt) ? `${c.prompt}\nReply with just the number.` : c.prompt;
+        const result = await runAction(fill(ask, vals), ai);
         const text = result.text.trim();
         const next = { ...vals, [c.id]: text };
         if (c.fills) {
-          const target = byId.get(c.fills);
           const n = target?.kind === 'number' ? firstNumber(text) : null;
           next[c.fills] = n !== null ? String(n) : text;
         }
@@ -319,22 +332,32 @@ export function SpecRenderer({
     [values, ai, fill, byId],
   );
 
+  const [saving, setSaving] = useState(false);
   const save = useCallback(async () => {
-    // AI blocks marked auto run first (e.g. "estimate calories" on save), if they haven't yet.
-    let vals = values;
-    for (const c of spec.components) {
-      if (c.type !== 'ai' || !c.auto || !c.id) continue;
-      const done = c.fills ? vals[c.fills]?.trim() : vals[c.id]?.trim();
-      if (!done && Object.values(vals).some((v) => v?.trim())) vals = await run(c, vals);
+    if (saving) return;
+    setSaving(true);
+    try {
+      // AI blocks marked auto run first (e.g. "estimate calories" on save), if they haven't yet and
+      // the fields they read have something in them. A failed run still saves what was typed.
+      let vals = values;
+      for (const c of spec.components) {
+        if (c.type !== 'ai' || !c.auto || !c.id) continue;
+        const done = c.fills ? vals[c.fills]?.trim() : vals[c.id]?.trim();
+        const refs = promptFields(c.prompt).filter((id) => byId.has(id));
+        const ready = refs.length ? refs.some((id) => vals[id]?.trim()) : Object.values(vals).some((v) => v?.trim());
+        if (!done && ready) vals = await run(c, vals);
+      }
+      const filled = Object.fromEntries(Object.entries(vals).filter(([, v]) => v?.trim()));
+      if (!Object.keys(filled).length) return;
+      setEntries(await addEntry(appId, filled));
+      setValues({});
+      setSources({});
+      setJustSaved(true);
+      setSaveCount((n) => n + 1);
+    } finally {
+      setSaving(false);
     }
-    const filled = Object.fromEntries(Object.entries(vals).filter(([, v]) => v?.trim()));
-    if (!Object.keys(filled).length) return;
-    setEntries(await addEntry(appId, filled));
-    setValues({});
-    setSources({});
-    setJustSaved(true);
-    setSaveCount((n) => n + 1);
-  }, [appId, values, spec.components, run]);
+  }, [appId, values, spec.components, run, saving, byId]);
 
   /**
    * Wraps a block with the tap-to-select affordance when the builder asks for it.
@@ -679,7 +702,14 @@ export function SpecRenderer({
       case 'save': {
         const node = (
           <View key="save" style={{ gap: space(2) }}>
-            <Button label={c.label ?? 'Save'} icon="checkmark" theme={theme} disabled={!hasInput} onPress={save} />
+            <Button
+              label={saving && busy ? 'Thinking…' : (c.label ?? 'Save')}
+              icon="checkmark"
+              theme={theme}
+              loading={saving}
+              disabled={!hasInput || saving || !!busy}
+              onPress={save}
+            />
             {justSaved && (
               <View style={[styles.row, { justifyContent: 'center' }]}>
                 <Icon name="checkmark-circle" size={16} color={theme.success} />
@@ -703,6 +733,7 @@ export function SpecRenderer({
             onChange={setEntries}
             byDay={c.groupBy === 'day'}
             units={units}
+            kinds={kinds}
             total={c.total ? { field: c.total, unit: byId.get(c.total)?.unit, checklist: isChecklist(c.total) } : undefined}
           />
         );
