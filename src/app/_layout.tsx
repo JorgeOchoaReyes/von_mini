@@ -14,6 +14,12 @@ import { loadSchemePref, useTheme } from '../ui/theme';
 // the system font.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+/**
+ * Home (the tabs) always sits under any screen, so a link opened while the app was closed (a
+ * shared app, a notification) still has somewhere to go back to.
+ */
+export const unstable_settings = { anchor: '(tabs)' };
+
 export default function RootLayout() {
   const theme = useTheme();
   const [fontsLoaded, fontError] = useFonts({ Bangers_400Regular });

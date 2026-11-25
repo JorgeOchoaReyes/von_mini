@@ -20,12 +20,17 @@ export async function sttSupport(): Promise<SttSupport> {
 
 export function listen({ onPartial, lang = 'en-US', offline }: ListenOptions): Listening {
   let text = '';
+  // Stopped before recognition began (e.g. during the permission prompt): never open the mic.
+  let cancelled = false;
+  let resolveEarly: ((t: string) => void) | null = null;
   const subs: { remove(): void }[] = [];
   const cleanup = () => subs.splice(0).forEach((s) => s.remove());
 
   const done = new Promise<string>((resolve, reject) => {
+    resolveEarly = resolve;
     void (async () => {
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (cancelled) return;
       if (!perm.granted) {
         reject(new Error('Microphone permission is needed to talk. You can still type.'));
         return;
@@ -51,6 +56,11 @@ export function listen({ onPartial, lang = 'en-US', offline }: ListenOptions): L
           resolve(text.trim());
         }),
       );
+      if (cancelled) {
+        cleanup();
+        return;
+      }
+      resolveEarly = null;
       ExpoSpeechRecognitionModule.start({
         lang,
         interimResults: true,
@@ -65,7 +75,17 @@ export function listen({ onPartial, lang = 'en-US', offline }: ListenOptions): L
     });
   });
 
-  return { done, stop: () => ExpoSpeechRecognitionModule.stop() };
+  return {
+    done,
+    stop: () => {
+      if (resolveEarly) {
+        // Not started yet: cancel the start and settle with nothing heard.
+        cancelled = true;
+        resolveEarly('');
+        resolveEarly = null;
+      } else ExpoSpeechRecognitionModule.stop();
+    },
+  };
 }
 
 function friendly(code: string, message: string) {

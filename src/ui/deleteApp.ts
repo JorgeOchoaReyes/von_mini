@@ -19,16 +19,13 @@ export const canDelete = (app: SavedApp) => !isStarter(app) || isChangedStarter(
 
 async function removeEverything(app: SavedApp) {
   await cancelRemindersForApp(app.id);
-  if (app.shareId) {
-    // Best-effort: the share link should not outlive the app. Loaded lazily (Firebase).
-    try {
-      const { unpublishApp } = await import('../share/share');
-      await unpublishApp(app.shareId);
-    } catch {
-      // Offline or signed out: the shared design stays; nothing else depends on it.
-    }
-  }
   await deleteApp(app.id);
+  if (app.shareId) {
+    // Best-effort and not awaited: the share link should not outlive the app, but offline the
+    // server never answers, and the delete mustn't wait for it. Loaded lazily (Firebase).
+    const shareId = app.shareId;
+    import('../share/share').then(({ unpublishApp }) => unpublishApp(shareId)).catch(() => undefined);
+  }
 }
 
 /** Asks for confirmation, deletes, then calls `onDone`. */

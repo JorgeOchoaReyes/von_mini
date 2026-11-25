@@ -11,6 +11,7 @@
  * Paths 1 and 2 work with no network and no Gemini Nano at all, because an app here is a small
  * JSON document rather than generated code.
  */
+import { cancelOrphanReminders } from '../../alerts/notifications';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -48,6 +49,9 @@ import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, type, useTheme } from '../../ui/theme';
 
 type Tab = 'preview' | 'chat' | 'history' | 'custom';
+
+/** Back, or Home when this screen was opened straight from a link with nothing under it. */
+const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
 /** How long to wait after the last keystroke in the inspector before writing a version. */
 const COMMIT_MS = 700;
@@ -119,6 +123,13 @@ export default function AppScreen() {
       alive = false;
     };
   }, [id, chatVersion]);
+
+  // A reminder block that's gone (removed, or undone by a chat edit or restore) stops reminding.
+  const reminderIds = app?.spec.components.filter((c) => c.type === 'reminder' && c.id).map((c) => c.id!).join('|');
+  useEffect(() => {
+    if (reminderIds === undefined) return;
+    void cancelOrphanReminders(id, reminderIds ? reminderIds.split('|') : []).catch(() => undefined);
+  }, [id, reminderIds]);
 
   // Leaving the screen must not lose the last keystroke.
   useEffect(() => () => void flush(), [flush]);
@@ -215,7 +226,7 @@ export default function AppScreen() {
   const remove = () => {
     if (!app) return;
     setActionsOpen(false);
-    confirmDeleteApp(app, () => router.back());
+    confirmDeleteApp(app, goBack);
   };
 
   const editorIndex = useMemo(() => {
@@ -460,7 +471,7 @@ export default function AppScreen() {
             },
           ]}
         >
-          <IconButton icon="chevron-back" label="Back" theme={appTheme} onPress={() => router.back()} />
+          <IconButton icon="chevron-back" label="Back" theme={appTheme} onPress={goBack} />
           <Text style={[type.label, { color: appTheme.text, flex: 1 }]} numberOfLines={1}>
             {app.spec.emoji} {app.spec.name}
           </Text>

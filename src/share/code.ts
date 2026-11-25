@@ -93,3 +93,12 @@ export function decodeApp(text: string): { spec: AppSpec; request: string } {
   if (d?.v !== 1 || !d.s) throw new Error('That share code is from a newer version of von mini. Update the app and try again.');
   return { spec: sanitizeSpec(d.s), request: typeof d.r === 'string' ? d.r : '' };
 }
+
+/**
+ * Finds the id in an older share link (`…/s/<firestoreId>`, made before share codes), so pasting
+ * or scanning one still opens it through the /s/[id] route.
+ */
+export function findLegacyShareId(text: string): string | null {
+  const m = text.match(/\/s\/([A-Za-z0-9_-]{6,64})(?![A-Za-z0-9_-])/);
+  return m && !m[1].startsWith('VM1') ? m[1] : null;
+}

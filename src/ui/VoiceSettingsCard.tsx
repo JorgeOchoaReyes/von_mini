@@ -61,7 +61,8 @@ export function VoiceSettingsCard({ theme }: { theme: Theme }) {
   };
 
   const shown = voices ? (showAll ? voices : voices.slice(0, 6)) : [];
-  const selected = settings.voice;
+  // A saved voice this phone doesn't have plays as the default, so show it that way.
+  const selected = voices?.length && settings.voice && !voices.some((v) => v.id === settings.voice) ? undefined : settings.voice;
 
   const row = (id: string | undefined, label: string, note?: string) => {
     const on = selected === id;

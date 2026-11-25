@@ -3,76 +3,124 @@
  * anything else gets a short note and scanning carries on. Works offline: the code carries the app.
  */
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRef, useState } from 'react';
-import { Linking, Modal, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { radius, space, type, type Theme } from '../ui/theme';
-import { decodeApp, findCode } from './code';
+import { decodeApp, findCode, findLegacyShareId } from './code';
 
-/** Whether this platform can scan: phones always; browsers only with the Barcode Detection API. */
-export const canScan = Platform.OS !== 'web' || (typeof window !== 'undefined' && 'BarcodeDetector' in window);
+/**
+ * Whether this platform can scan: phones always; browsers that can open a camera (expo-camera
+ * brings a barcode-detector polyfill where the browser has none, e.g. Safari and Firefox).
+ */
+export const canScan =
+  Platform.OS !== 'web' || (typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia);
+
+/** What a scanned QR code can open: a share code (the app itself) or an older Firestore link id. */
+export type ScanTarget = { code: string } | { legacyId: string };
 
 export function Scanner({
   visible,
   onClose,
-  onCode,
+  onScan,
   theme,
 }: {
   visible: boolean;
   onClose(): void;
-  /** Called once with a valid share code. */
-  onCode(code: string): void;
+  /** Called once with what the QR code opens. The scanner closes itself first. */
+  onScan(target: ScanTarget): void;
   theme: Theme;
 }) {
   const insets = useSafeAreaInsets();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [note, setNote] = useState<string | null>(null);
-  // The camera reports the same code many times a second; act on the first good one only.
+  // The camera reports the same code many times a second; act on the first good one only, and
+  // react to each bad one once (a Set, so two foreign codes in view don't buzz back and forth).
   const done = useRef(false);
-  const lastBad = useRef('');
+  const bad = useRef(new Set<string>());
+  const found = useRef<ScanTarget | null>(null);
+
+  // The permission may change outside the app (phone settings): read it again whenever the
+  // scanner opens and whenever the app comes back to the foreground while it's open.
+  useEffect(() => {
+    if (!visible) return;
+    void getPermission();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void getPermission();
+    });
+    return () => sub.remove();
+  }, [visible, getPermission]);
+
+  const reset = () => {
+    done.current = false;
+    found.current = null;
+    bad.current = new Set();
+    setNote(null);
+  };
+
+  const reject = (data: string, message: string) => {
+    bad.current.add(data);
+    haptics.error();
+    setNote(message);
+  };
 
   const onScanned = ({ data }: { data: string }) => {
-    if (done.current) return;
+    if (done.current || bad.current.has(data)) return;
     const code = findCode(data);
-    if (!code) {
-      if (lastBad.current !== data) {
-        lastBad.current = data;
-        haptics.error();
-        setNote('That QR code isn’t a von mini app. Try another.');
+    if (code) {
+      try {
+        decodeApp(code);
+      } catch (e) {
+        return reject(data, e instanceof Error ? e.message : String(e));
       }
-      return;
-    }
-    try {
-      decodeApp(code);
-    } catch (e) {
-      if (lastBad.current !== data) {
-        lastBad.current = data;
-        haptics.error();
-        setNote(e instanceof Error ? e.message : String(e));
-      }
-      return;
+      found.current = { code };
+    } else {
+      const legacyId = findLegacyShareId(data);
+      if (!legacyId) return reject(data, 'That QR code isn’t a von mini app. Try another.');
+      found.current = { legacyId };
     }
     done.current = true;
     haptics.success();
-    onCode(code);
+    // Close first; the parent navigates once this modal is fully gone (see onDismiss / below), so
+    // two modals never close in the same instant (that can leave one stuck on iOS).
+    onClose();
+    if (Platform.OS !== 'ios') hand();
+  };
+
+  /** Hands the scanned target over once the scanner is closed. */
+  const hand = () => {
+    const target = found.current;
+    found.current = null;
+    if (target) onScan(target);
   };
 
   const close = () => {
-    done.current = false;
-    lastBad.current = '';
-    setNote(null);
+    reset();
     onClose();
   };
 
+  const ask = async () => {
+    const r = await requestPermission();
+    if (!r.granted && Platform.OS === 'web') setNote('The browser blocked the camera. Allow it in this site’s settings (the icon next to the address), then try again.');
+  };
+
   const granted = permission?.granted;
+  // Browsers always report "can ask again", so a blocked camera on the web is just "denied".
+  const blocked = permission && !permission.granted && (Platform.OS === 'web' ? permission.status === 'denied' : !permission.canAskAgain);
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close} presentationStyle="fullScreen" onShow={() => {
-        done.current = false;
-      }}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={close}
+      presentationStyle="fullScreen"
+      onShow={reset}
+      // iOS: navigate only once the scanner is fully dismissed.
+      onDismiss={hand}
+    >
       <View style={[styles.screen, { paddingTop: insets.top + space(2), paddingBottom: insets.bottom + space(4) }]}>
         <View style={styles.header}>
           <Text style={[type.headline, { color: '#FFFFFF', flex: 1 }]}>Scan a shared app</Text>
@@ -100,16 +148,19 @@ export function Scanner({
             <Text style={[type.body, { color: '#D9D9E3', textAlign: 'center' }]}>
               The camera is only used to read QR codes of apps people share with you. Nothing is recorded or sent.
             </Text>
-            {permission && !permission.canAskAgain ? (
+            {blocked && Platform.OS !== 'web' ? (
               <Button label="Open phone settings" icon="settings-outline" theme={theme} onPress={() => void Linking.openSettings()} />
             ) : (
-              <Button label="Allow camera" icon="camera-outline" theme={theme} onPress={() => void requestPermission()} />
+              <Button label="Allow camera" icon="camera-outline" theme={theme} onPress={() => void ask()} />
             )}
           </View>
         )}
 
         <Text style={[type.body, styles.hint]}>
-          {note ?? 'Point at the QR code from “Share” in someone’s von mini app.'}
+          {note ??
+            (blocked && Platform.OS === 'web'
+              ? 'The browser blocked the camera. Allow it in this site’s settings, then try again.'
+              : 'Point at the QR code from “Share” in someone’s von mini app.')}
         </Text>
       </View>
     </Modal>

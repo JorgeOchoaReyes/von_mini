@@ -115,6 +115,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
         source: reply.source,
         text: reply.changes.join('\n'),
         prevSpec: app.spec,
+        nextSpec: reply.spec,
       });
     } else {
       await appendMessage(appId, { role: 'assistant', kind: 'answer', source: reply.source, text: reply.text });
@@ -138,9 +139,24 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
 
 /** Restores the app to how it was before an edit message. */
 export async function undoEdit(appId: string, msg: ChatMessage): Promise<void> {
-  if (msg.kind !== 'edit' || !msg.prevSpec || msg.undone) return;
+  if (msg.kind !== 'edit' || !msg.prevSpec || msg.undone || busy.has(appId)) return;
+  // Save any edits still pending on the app screen first, so they're seen (and never overwrite the undo).
+  await flushers.get(appId)?.();
   const app = await getApp(appId);
   if (!app) return;
+  // Undo only puts back what this edit changed. If the app changed since (a later edit, a manual
+  // change or a restore), going back would silently throw that work away.
+  const later = (await listMessages(appId)).some((m) => m.kind === 'edit' && !m.undone && m.at > msg.at);
+  const changed = msg.nextSpec ? JSON.stringify(app.spec) !== JSON.stringify(msg.nextSpec) : later;
+  if (changed) {
+    await appendMessage(appId, {
+      role: 'assistant',
+      kind: 'answer',
+      text: 'The app has changed since that edit, so I can’t undo it on its own. Undo the newer changes first, or restore an older version from History.',
+    });
+    emit();
+    return;
+  }
   await saveApp({ ...app, spec: msg.prevSpec });
   await pushVersion(appId, msg.prevSpec, ['Undid a chat edit.'], 'restore', app.builtWith, app.spec);
   await updateMessage(appId, msg.id, { undone: true });

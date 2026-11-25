@@ -8,7 +8,7 @@
  * background.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
   AppState,
@@ -75,6 +75,9 @@ function useFrames(step: (dt: number) => void, running: boolean) {
 
 type Input = 'left' | 'right' | 'up' | 'down' | 'tap' | 'drag';
 
+/** What a bordered board adds around its cells: the border on both sides plus 1px padding. */
+const BOARD_EDGE = 2 * stroke + 2;
+
 /**
  * Swipes, drags and taps on the board, as touch-responder props to spread on it.
  *   - `drag`: reported continuously with the finger's movement in pixels (paddle games);
@@ -116,8 +119,8 @@ function useControls(onInput: (i: Input, n?: number) => void, opts: { dragStep?:
       const t = touch.current;
       const dx = e.nativeEvent.pageX - t.x;
       const dy = e.nativeEvent.pageY - t.y;
-      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return onInput('tap', e.nativeEvent.locationX);
       if (t.dragged) return;
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return onInput('tap', e.nativeEvent.locationX);
       if (Math.abs(dy) > Math.abs(dx)) return onInput(dy > 0 ? 'down' : 'up');
       onInput(dx > 0 ? 'right' : 'left');
     },
@@ -179,7 +182,7 @@ const fit = (width: number, height: number, aspect: number, maxW = 440) => {
 function BlocksGame(p: GameProps) {
   const { theme, speed, running, width, height } = p;
   const [s, setS] = useState(() => G.newBlocks());
-  const cell = Math.floor(Math.min(width / G.BLOCKS_W, (height - 30) / G.BLOCKS_H));
+  const cell = Math.floor(Math.min((width - BOARD_EDGE) / G.BLOCKS_W, (height - 36) / G.BLOCKS_H));
   const step = useCallback((dt: number) => setS((x) => G.blocksTick(x, dt, speed)), [speed]);
   useFrames(step, running && !s.over);
   useReport(s, p);
@@ -193,37 +196,25 @@ function BlocksGame(p: GameProps) {
     },
     [running],
   );
-  const controls = useControls(input, { dragStep: cell * 0.9 });
+  const controls = useControls(input, { dragStep: Math.max(cell * 0.9, 14) });
   useKeys(input, running);
 
-  // What's on screen: the board, the falling piece, and a faint guide where it will land.
-  const grid = [...s.board];
-  const paint = (y0: number, v: number) =>
-    s.piece.shape.forEach((row, r) =>
-      row.forEach((on, c) => {
-        const y = y0 + r;
-        if (on && y >= 0 && !grid[y * G.BLOCKS_W + s.piece.x + c]) grid[y * G.BLOCKS_W + s.piece.x + c] = v;
-      }),
-    );
-  paint(G.ghostY(s), -1);
-  paint(s.piece.y, s.piece.color);
-
-  return (
-    <View style={{ alignItems: 'center', gap: space(2) }}>
-      <View style={[styles.row, { gap: space(4) }]}>
-        <Text style={[type.caption, { color: theme.muted }]}>LINES {s.lines}</Text>
-        <View style={[styles.row, { gap: 2 }]}>
-          <Text style={[type.caption, { color: theme.muted }]}>NEXT </Text>
-          {G.SHAPES[s.next].map((row, r) => (
-            <View key={r}>
-              {row.map((v, c) => (
-                <View key={c} style={{ width: 7, height: 7, margin: 0.5, backgroundColor: v ? BLOCK_COLORS[s.next] : 'transparent' }} />
-              ))}
-            </View>
-          ))}
-        </View>
-      </View>
-      <View {...controls} accessibilityLabel="Falling blocks board" style={[styles.board, { width: cell * G.BLOCKS_W + 4, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+  // What's on screen: the board, the falling piece, and a faint guide where it will land. Only
+  // rebuilt when the board or the piece changes, not on every frame the piece just hangs there.
+  const { board, piece } = s;
+  const cells = useMemo(() => {
+    const grid = [...board];
+    const paint = (y0: number, v: number) =>
+      piece.shape.forEach((row, r) =>
+        row.forEach((on, c) => {
+          const y = y0 + r;
+          if (on && y >= 0 && !grid[y * G.BLOCKS_W + piece.x + c]) grid[y * G.BLOCKS_W + piece.x + c] = v;
+        }),
+      );
+    paint(G.ghostY({ ...s, board, piece }), -1);
+    paint(piece.y, piece.color);
+    return (
+      <>
         {Array.from({ length: G.BLOCKS_H }, (_, y) => (
           <View key={y} style={{ flexDirection: 'row' }}>
             {Array.from({ length: G.BLOCKS_W }, (_, x) => {
@@ -245,6 +236,28 @@ function BlocksGame(p: GameProps) {
             })}
           </View>
         ))}
+      </>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- s only feeds the guide, which board and piece decide
+  }, [board, piece, cell, theme.accent]);
+
+  return (
+    <View style={{ alignItems: 'center', gap: space(2) }}>
+      <View style={[styles.row, { gap: space(4) }]}>
+        <Text style={[type.caption, { color: theme.muted }]}>LINES {s.lines}</Text>
+        <View style={[styles.row, { gap: 2 }]}>
+          <Text style={[type.caption, { color: theme.muted }]}>NEXT </Text>
+          {G.SHAPES[s.next].map((row, r) => (
+            <View key={r}>
+              {row.map((v, c) => (
+                <View key={c} style={{ width: 7, height: 7, margin: 0.5, backgroundColor: v ? BLOCK_COLORS[s.next] : 'transparent' }} />
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+      <View {...controls} accessibilityLabel="Falling blocks board" style={[styles.board, { width: cell * G.BLOCKS_W + BOARD_EDGE, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+        {cells}
       </View>
     </View>
   );
@@ -315,7 +328,7 @@ function SnakeGame(p: GameProps) {
   const size = cell * G.SNAKE_N;
 
   return (
-    <View {...controls} accessibilityLabel="Snake board" style={[styles.board, { width: size + 4, height: size + 4, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+    <View {...controls} accessibilityLabel="Snake board" style={[styles.board, { width: size + BOARD_EDGE, height: size + BOARD_EDGE, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
       <Text pointerEvents="none" style={[styles.sprite, { fontSize: cell * 0.85, left: s.food[0] * cell, top: s.food[1] * cell - cell * 0.1, width: cell, textAlign: 'center' }]}>
         {item}
       </Text>
@@ -548,12 +561,14 @@ function WhackGame(p: GameProps) {
   return (
     <View accessibilityLabel="Whack board" style={[styles.whack, { width: side, height: side }]}>
       {s.holes.map((hole, i) => (
-        // A raw touch responder, not a Pressable: the board re-renders every frame, and a Pressable
-        // can lose a press that spans a re-render. The hit lands the moment the finger goes down.
+        // Raw touches, not a Pressable: the board re-renders every frame, and a Pressable can lose a
+        // press that spans a re-render. The hit lands the moment the finger goes down.
         <View
           key={i}
-          onStartShouldSetResponder={() => running}
-          onResponderGrant={() => setS((x) => G.whackHit(x, i))}
+          {...(Platform.OS === 'web'
+            ? { onStartShouldSetResponder: () => running, onResponderGrant: () => setS((x) => G.whackHit(x, i)) }
+            : // On phones every finger counts (two thumbs on two holes): touches aren't one-at-a-time like a responder.
+              { onTouchStart: () => running && setS((x) => G.whackHit(x, i)) })}
           accessibilityRole="button"
           accessibilityLabel={hole.kind === 'none' ? `Hole ${i + 1}, empty` : `Hole ${i + 1}, ${hole.kind === 'bad' ? 'bomb' : 'target'}`}
           style={{ width: cell, height: cell, padding: 6 }}
@@ -711,7 +726,7 @@ export function GamePlayer({
       // A run that won't make the table is saved straight away; a top-five one waits for initials.
       if (!ask) {
         saved.current = true;
-        void onFinish(s);
+        void Promise.resolve(onFinish(s)).catch(() => undefined);
       }
     },
     [best, onFinish, topScores],
@@ -723,7 +738,7 @@ export function GamePlayer({
     saved.current = true;
     const by = initials.trim().toUpperCase().slice(0, 3) || undefined;
     if (by) void AsyncStorage.setItem(INITIALS_KEY, by).catch(() => undefined);
-    void onFinish(final.score, final.ask ? by : undefined);
+    void Promise.resolve(onFinish(final.score, final.ask ? by : undefined)).catch(() => undefined);
     setFinal({ ...final, ask: false });
   };
 
@@ -817,7 +832,9 @@ export function GamePlayer({
               style={styles.overlay}
               onPress={() => {
                 haptics.light();
-                setPhase(phase === 'paused' ? 'playing' : 'countdown');
+                // Resuming counts down too, so play never restarts under a finger that's still lifting.
+                setCount(3);
+                setPhase('countdown');
               }}
               accessibilityRole="button"
               accessibilityLabel={phase === 'paused' ? 'Resume' : 'Start'}

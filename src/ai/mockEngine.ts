@@ -253,12 +253,21 @@ const countCall = () => {
   g.__mockCalls = (g.__mockCalls ?? 0) + 1;
 };
 
+/**
+ * Tests set `__mockNoNano` to act like a phone without Gemini Nano: the on-device model is
+ * unavailable, so on-device-only requests (offline, private mode) fail as they would there.
+ */
+const noNano = () => !!(globalThis as { __mockNoNano?: boolean }).__mockNoNano;
+const deviceCheck = (options: GenerateOptions) => {
+  if (noNano() && options.mode === 'only_on_device') throw new Error('On-device AI isn’t available on this phone (mock).');
+};
+
 export const mockEngine: AIEngine = {
   runtime: 'none',
   streaming: true,
 
   async status(): Promise<DeviceStatus> {
-    return 'available';
+    return noNano() ? 'unavailable' : 'available';
   },
 
   async download(): Promise<DeviceStatus> {
@@ -269,6 +278,7 @@ export const mockEngine: AIEngine = {
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
     countCall();
     await sleep(options.json ? 220 : 180);
+    deviceCheck(options);
     // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     return { text: respond(prompt, options), source: 'on_device' };
@@ -276,6 +286,7 @@ export const mockEngine: AIEngine = {
 
   async *stream(prompt: string, options: GenerateOptions): AsyncIterable<GenerateChunk> {
     countCall();
+    deviceCheck(options);
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds

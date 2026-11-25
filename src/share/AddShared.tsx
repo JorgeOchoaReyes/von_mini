@@ -10,8 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, IconButton } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { radius, space, stroke, type, type Theme } from '../ui/theme';
-import { decodeApp, findCode } from './code';
-import { canScan, Scanner } from './Scanner';
+import { decodeApp, findCode, findLegacyShareId } from './code';
+import { canScan, Scanner, type ScanTarget } from './Scanner';
 
 export function AddShared({ visible, onClose, theme }: { visible: boolean; onClose(): void; theme: Theme }) {
   const insets = useSafeAreaInsets();
@@ -19,17 +19,20 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
 
-  /** Opens a shared app's preview from its code. */
-  const openCode = (code: string) => {
+  /** Opens a shared app's preview: from its share code, or an older link's id (loaded from Firestore). */
+  const openTarget = (target: ScanTarget) => {
     setText('');
     setError(null);
-    setScanning(false);
     onClose();
-    router.push({ pathname: '/s/[id]', params: { id: code } });
+    router.push({ pathname: '/s/[id]', params: { id: 'code' in target ? target.code : target.legacyId } });
   };
 
   const open = () => {
     const code = findCode(text);
+    if (!code) {
+      const legacyId = findLegacyShareId(text);
+      if (legacyId) return openTarget({ legacyId });
+    }
     try {
       decodeApp(text); // check it before leaving, so a bad paste gets an answer right here
     } catch (e) {
@@ -37,7 +40,7 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
       setError(e instanceof Error ? e.message : String(e));
       return;
     }
-    openCode(code!);
+    openTarget({ code: code! });
   };
 
   return (
@@ -74,7 +77,7 @@ export function AddShared({ visible, onClose, theme }: { visible: boolean; onClo
         {error && <Text style={[type.caption, { color: theme.danger }]}>{error}</Text>}
         <Button label="Open" icon="arrow-forward" variant={canScan ? 'secondary' : 'primary'} theme={theme} disabled={!text.trim()} onPress={open} />
       </View>
-      {canScan && <Scanner visible={scanning} onClose={() => setScanning(false)} onCode={openCode} theme={theme} />}
+      {canScan && <Scanner visible={scanning} onClose={() => setScanning(false)} onScan={openTarget} theme={theme} />}
     </Modal>
   );
 }

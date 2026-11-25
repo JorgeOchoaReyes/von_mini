@@ -45,6 +45,14 @@ export function firstNumber(text: string | undefined): number | null {
 
 const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
 const DAY = 24 * 60 * 60 * 1000;
+/**
+ * Midnight `k` calendar days before the day of `t`. Steps by the calendar, not by 24 hours, so
+ * days stay on midnight across daylight-saving changes (when a day is 23 or 25 hours long).
+ */
+const daysBefore = (t: number, k: number) => {
+  const d = new Date(t);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - k).getTime();
+};
 const startOfDay = (t: number) => {
   const d = new Date(t);
   d.setHours(0, 0, 0, 0);
@@ -71,12 +79,11 @@ export function entryNumber(e: Entry, field: string | undefined, checklist = fal
 /** Days in a row, ending today (or yesterday, until today is logged), with a qualifying entry. */
 export function streak(entries: Entry[], field: string | undefined, now = Date.now()): number {
   const days = new Set(entries.filter((e) => !field || e.values[field]?.trim()).map((e) => startOfDay(e.at)));
-  let day = startOfDay(now);
-  if (!days.has(day)) day -= DAY;
+  let back = days.has(startOfDay(now)) ? 0 : 1;
   let n = 0;
-  while (days.has(day)) {
+  while (days.has(daysBefore(now, back))) {
     n++;
-    day -= DAY;
+    back++;
   }
   return n;
 }
@@ -84,7 +91,7 @@ export function streak(entries: Entry[], field: string | undefined, now = Date.n
 /** "week" is the last 7 calendar days including today, the same days a 7-day chart shows. */
 export function inRange(at: number, range: StatRange, now = Date.now()): boolean {
   if (range === 'today') return sameDay(at, now);
-  if (range === 'week') return at >= startOfDay(now) - 6 * DAY && at <= now + DAY;
+  if (range === 'week') return at >= daysBefore(now, 6) && at <= now + DAY;
   return true;
 }
 
@@ -134,9 +141,8 @@ export function daySeries(
   checklist = false,
 ): { day: number; value: number | null }[] {
   const op = (c.op ?? 'sum') as StatOp;
-  const today = startOfDay(now);
   return Array.from({ length: days }, (_, i) => {
-    const day = today - (days - 1 - i) * DAY;
+    const day = daysBefore(now, days - 1 - i);
     const inDay = entries.filter((e) => startOfDay(e.at) === day);
     if (op === 'count' || !c.field) return { day, value: inDay.length || null };
     const nums = inDay.map((e) => entryNumber(e, c.field, checklist)).filter((x): x is number => x !== null);

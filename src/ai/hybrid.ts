@@ -49,9 +49,7 @@ export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.p
  */
 export function appModeProblem(ctx: RouteContext): string | null {
   const nano = ctx.deviceStatus === 'available';
-  if (local(ctx)) {
-    return nano ? null : 'Private mode (or no connection) keeps AI on this device, but this device can’t run Gemini Nano.';
-  }
+  if (local(ctx)) return localProblem(ctx);
   if (ctx.appMode === 'device' && !nano) {
     return 'This app is set to On-device, but this device can’t run Gemini Nano. Choose Auto or Cloud.';
   }
@@ -90,7 +88,24 @@ async function generateSpec(prompt: string, mode: InferenceMode) {
   }
 }
 
+/**
+ * Why AI can't run at all right now, in plain words, or null: offline or in private mode, every
+ * request must stay on the phone, and this phone has no on-device model. Checked before a build,
+ * an edit or a chat turn, so the answer is a clear sentence rather than an engine error.
+ */
+export function localProblem(ctx: RouteContext): string | null {
+  if (!local(ctx) || ctx.deviceStatus === 'available') return null;
+  if (!ctx.online) return 'You’re offline, and this phone can’t run AI on its own. Connect to build or change apps. Your apps, saved data and games still work offline.';
+  return 'Private mode keeps AI on this phone, but this phone can’t run Gemini Nano. Turn off Private mode in Settings to use AI.';
+}
+
+function checkLocal(ctx: RouteContext) {
+  const problem = localProblem(ctx);
+  if (problem) throw new Error(problem);
+}
+
 export async function buildApp(request: string, ctx: RouteContext): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpec(specPrompt(request), modeFor('build', ctx));
 }
 
@@ -328,6 +343,7 @@ export async function buildAppProgressive(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
 }
 
@@ -338,6 +354,7 @@ export async function editAppProgressive(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpecProgressive(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx), 'edit', onEvent);
 }
 
@@ -346,6 +363,7 @@ export async function editApp(
   change: string,
   ctx: RouteContext,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpec(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx));
 }
 
@@ -413,6 +431,7 @@ export async function chatAboutApp(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void = () => undefined,
 ): Promise<ChatReply> {
+  checkLocal(ctx);
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const turn = await withDeviceFallback(modeFor('edit', ctx), onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
   if (turn.app) {

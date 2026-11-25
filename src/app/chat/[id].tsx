@@ -48,8 +48,16 @@ export default function ChatScreen() {
   // Voice conversation: after a spoken turn and its reply, listen again until stopped.
   const talking = useRef(false);
   const convoRef = useRef<Conversation | null>(null);
+  // Which send owns the conversation: a send that was stopped and then overtaken by a newer one
+  // must not write its leftovers over the newer turn.
+  const owner = useRef(0);
+  // The user typed while listening: their text wins over the transcript.
+  const typedOver = useRef(false);
 
-  const mic = useListener(setDraft);
+  // Only a live voice conversation writes the transcript into the box; late results don't.
+  const mic = useListener((t) => {
+    if (talking.current) setDraft(t);
+  });
 
   useEffect(() => {
     let alive = true;
@@ -81,7 +89,7 @@ export default function ChatScreen() {
     const next = { ...c, turns };
     convoRef.current = next;
     setConvo(next);
-    if (persist) void saveConversation(next);
+    if (persist) saveConversation(next).catch(() => undefined);
     setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 30);
   }, []);
 
@@ -90,13 +98,19 @@ export default function ChatScreen() {
     async (text: string, spoken: boolean): Promise<boolean> => {
       const message = text.trim();
       const c = convoRef.current;
-      if (!message || !c) return false;
+      // One reply at a time (Enter on the web can fire while a reply is still coming).
+      if (!message || !c || signal.current) return false;
       haptics.light();
       setDraft('');
       const history: ChatTurn[] = [...c.turns.filter((t) => !t.error), { role: 'user', text: message, at: Date.now() }];
-      update([...history, { role: 'assistant', text: '', at: Date.now() }], true);
+      // Show a typing bubble, but store only the message: an empty reply never gets saved.
+      update([...history, { role: 'assistant', text: '', at: Date.now() }]);
+      saveConversation({ ...c, turns: history }).catch(() => undefined);
       const s = { aborted: false };
       signal.current = s;
+      const me = ++owner.current;
+      const mine = () => owner.current === me;
+      let partial = '';
       setPhase('thinking');
       try {
         const r = await voiceReply(history, {
@@ -107,23 +121,26 @@ export default function ChatScreen() {
           signal: s,
           onText: (t) => {
             if (s.aborted) return;
+            partial = t;
             setPhase(spoken || readAloud ? 'speaking' : 'thinking');
             update([...history, { role: 'assistant', text: t, at: Date.now() }]);
           },
         });
         if (s.aborted) {
-          update([...history, { role: 'assistant', text: convoRef.current?.turns.at(-1)?.text || '(stopped)', at: Date.now() }], true);
+          // Keep what was said before Stop; a reply cut off before any words is dropped.
+          if (mine()) update(partial.trim() ? [...history, { role: 'assistant', text: partial, at: Date.now() }] : history, true);
           return false;
         }
         update([...history, { role: 'assistant', text: r.text || '…', at: Date.now(), source: r.source }], true);
         return true;
       } catch (e) {
+        if (!mine()) return false;
         update([...history, { role: 'assistant', text: e instanceof Error ? e.message : String(e), at: Date.now(), error: true }], true);
         haptics.error();
         return false;
       } finally {
         if (signal.current === s) signal.current = null;
-        setPhase('idle');
+        if (mine()) setPhase('idle');
       }
     },
     [ai, readAloud, update],
@@ -137,23 +154,31 @@ export default function ChatScreen() {
       return;
     }
     talking.current = true;
+    typedOver.current = false;
     haptics.medium();
     while (talking.current) {
       setPhase('listening');
       const said = (await mic.start()).trim();
       setPhase('idle');
-      if (!said || !talking.current) break;
+      if (!said) break;
+      if (!talking.current) {
+        // Stopped by the mic button: leave what was heard in the box to edit or send. If the
+        // user started typing instead, keep their text.
+        if (!typedOver.current) setDraft(said);
+        break;
+      }
       const ok = await send(said, true);
       if (!ok) break;
     }
     talking.current = false;
-    setDraft('');
   }, [mic, phase, send]);
 
   const stop = () => {
     talking.current = false;
     mic.stop();
     if (signal.current) signal.current.aborted = true;
+    // Free the box for the next message right away; the stopped send cleans up after itself.
+    signal.current = null;
     stopSpeaking();
     setPhase('idle');
   };
@@ -253,6 +278,7 @@ export default function ChatScreen() {
               setDraft(v);
               // Typing takes over from a voice conversation.
               if (phase === 'listening') {
+                typedOver.current = true;
                 talking.current = false;
                 mic.stop();
               }

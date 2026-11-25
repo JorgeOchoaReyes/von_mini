@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppAI } from '../ai/appMode';
@@ -321,12 +321,14 @@ export function SpecRenderer({
         const ask = target?.kind === 'number' && !/just the number|only the number/i.test(c.prompt) ? `${c.prompt}\nReply with just the number.` : c.prompt;
         const result = await runAction(fill(ask, vals), ai);
         const text = result.text.trim();
-        const next = { ...vals, [c.id]: text };
+        const answer: Record<string, string> = { [c.id]: text };
         if (c.fills) {
           const n = target?.kind === 'number' ? firstNumber(text) : null;
-          next[c.fills] = n !== null ? String(n) : text;
+          answer[c.fills] = n !== null ? String(n) : text;
         }
-        setValues((s) => ({ ...s, ...next }));
+        const next = { ...vals, ...answer };
+        // Merge only the answer: anything typed while the AI was thinking stays.
+        setValues((s) => ({ ...s, ...answer }));
         setSources((s) => ({ ...s, [c.id!]: result.source }));
         return next;
       } catch (e) {
@@ -340,6 +342,11 @@ export function SpecRenderer({
   );
 
   const [saving, setSaving] = useState(false);
+  // The form as it is right now, for a save that waited on AI and must not drop later typing.
+  const latest = useRef(values);
+  useEffect(() => {
+    latest.current = values;
+  }, [values]);
   const save = useCallback(async () => {
     if (saving) return;
     setSaving(true);
@@ -347,13 +354,20 @@ export function SpecRenderer({
       // AI blocks marked auto run first (e.g. "estimate calories" on save), if they haven't yet and
       // the fields they read have something in them. A failed run still saves what was typed.
       let vals = values;
+      const answers: Record<string, string> = {};
       for (const c of spec.components) {
         if (c.type !== 'ai' || !c.auto || !c.id) continue;
         const done = c.fills ? vals[c.fills]?.trim() : vals[c.id]?.trim();
         const refs = promptFields(c.prompt).filter((id) => byId.has(id));
         const ready = refs.length ? refs.some((id) => vals[id]?.trim()) : Object.values(vals).some((v) => v?.trim());
-        if (!done && ready) vals = await run(c, vals);
+        if (!done && ready) {
+          const before = vals;
+          vals = await run(c, vals);
+          for (const k of Object.keys(vals)) if (vals[k] !== before[k]) answers[k] = vals[k];
+        }
       }
+      // Save what's in the form now (it may have been edited while the AI ran), plus the answers.
+      if (Object.keys(answers).length) vals = { ...latest.current, ...answers };
       const filled = Object.fromEntries(Object.entries(vals).filter(([, v]) => v?.trim()));
       if (!Object.keys(filled).length) return;
       setEntries(await addEntry(appId, filled));

@@ -1,3 +1,4 @@
+import { DATA_TOKENS } from './stats';
 import { ACCENTS, COMPONENT_TYPES, type AppSpec, type SpecComponent } from './types';
 
 const MAX_COMPONENTS = 12;
@@ -85,7 +86,8 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'st
 export function sanitizeSpec(raw: unknown): AppSpec {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid app description.');
   const r = raw as Record<string, unknown>;
-  const used = new Set<string>();
+  // {today}, {entries}… read saved data, so no field may take those names.
+  const used = new Set<string>(DATA_TOKENS);
   const uniqueId = (base: string) => {
     let id = slug(base);
     for (let i = 2; used.has(id); i++) id = `${slug(base)}_${i}`;

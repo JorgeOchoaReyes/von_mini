@@ -149,6 +149,16 @@ export async function cancelRemindersForApp(appId: string): Promise<void> {
 }
 
 /**
+ * Cancels reminders of blocks an app no longer has (removed in the editor, by a chat edit or a
+ * restore), so a deleted reminder block never keeps firing.
+ */
+export async function cancelOrphanReminders(appId: string, blockIds: string[]): Promise<void> {
+  const prefix = storeKey(`${appId}:`);
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(prefix) && !blockIds.includes(k.slice(prefix.length)));
+  for (const k of keys) await cancelReminders(k.slice(storeKey('').length));
+}
+
+/**
  * Shows a notification right away, but only when von mini isn't on screen: in the foreground the
  * UI already shows the result.
  */
@@ -188,7 +198,10 @@ export function initAlerts(openUrl: (url: string) => void): () => void {
     }),
   });
   const open = (r: Notifications.NotificationResponse | null) => {
-    const url = r?.notification.request.content.data?.url;
+    if (!r || r.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    // Handled once: a later relaunch mustn't open the same notification's app again.
+    Notifications.clearLastNotificationResponse();
+    const url = r.notification.request.content.data?.url;
     if (typeof url === 'string' && url.startsWith('/')) openUrl(url);
   };
   // Opened from a notification while the app was closed.
