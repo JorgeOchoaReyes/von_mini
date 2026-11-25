@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
 import { APP_AI_MODES, AppAiModeProvider, type AppAiMode } from '../../ai/appMode';
-import { appModeProblem, buildCustomHtml } from '../../ai/hybrid';
+import { appModeProblem } from '../../ai/hybrid';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { ShareSheet } from '../../share/ShareSheet';
 import { OfflineBadge } from '../../ui/OfflineBadge';
@@ -78,7 +78,6 @@ export default function AppScreen() {
   const [sharing, setSharing] = useState(false);
   const rc = useRemoteConfig();
   const [lastChange, setLastChange] = useState<{ changes: string[]; prev: AppSpec } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const appRef = useRef<SavedApp | null>(null);
@@ -206,22 +205,24 @@ export default function AppScreen() {
     notifyAppsChanged();
   }, []);
 
+  /**
+   * "Make it custom" / "Rewrite": gives the design a brief (or keeps its own) and writes the
+   * custom version in the background, like any other code app. It opens when ready.
+   */
   const makeCustom = async () => {
     if (!app) return;
-    setBusy(true);
-    setError(null);
     setActionsOpen(false);
-    try {
-      const html = await buildCustomHtml(app.request, ai, app.spec);
-      const next = { ...app, html };
-      await saveApp(next);
-      setApp(next);
-      setTab('custom');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    setError(null);
+    await flush();
+    const current = (await getApp(app.id)) ?? app;
+    const brief =
+      current.spec.code ??
+      `A richer custom version of “${current.spec.name}”: keep its purpose, fields and features, with a more polished, interactive design.`;
+    const next: SavedApp = { ...current, spec: { ...current.spec, code: brief }, htmlFor: undefined };
+    await saveApp(next);
+    if (!current.spec.code) await pushVersion(next.id, next.spec, ['Asked for a custom version in code.'], 'manual', next.builtWith, current.spec);
+    setApp(next);
+    void writeCustom(next.id, ai);
   };
 
   /** Opens the QR / link sheet, after saving pending inspector edits so it shares the latest design. */
@@ -395,10 +396,10 @@ export default function AppScreen() {
           <Card theme={appTheme} style={{ gap: space(3) }}>
             <ActionRow
               icon="color-wand-outline"
-              title={app.html ? 'Regenerate the custom version' : 'Make it custom'}
+              title={app.html ? 'Rewrite the custom version' : 'Write it as code'}
               body={
                 canCustom
-                  ? 'Gemini writes a fully custom design. Its AI still runs on-device.'
+                  ? 'Gemini writes it as a custom app in code, in the background. Its AI still runs on-device.'
                   : ai.locked
                     ? 'Needs the cloud; this build is on-device only.'
                     : 'Needs the cloud. Go online and turn off private mode.'
@@ -406,7 +407,7 @@ export default function AppScreen() {
               onPress={makeCustom}
               theme={appTheme}
               disabled={!canCustom}
-              loading={busy}
+              loading={custom.kind === 'writing'}
             />
             {rc.bool('sharing') && (
               <ActionRow

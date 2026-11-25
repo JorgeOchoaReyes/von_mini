@@ -15,6 +15,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /timer|stopwatch|pomodoro|calculator|converter|kanban/i,
+    json: `{"name":"Focus Timer","emoji":"⏱️","accent":"blue","description":"Focus in sprints and log each session.","code":"A pomodoro timer: a big 25:00 countdown with start, pause and reset, a 5-minute break after each sprint, and a count of sprints done today saved with vonmini.store.","components":[
+      {"type":"input","id":"task","label":"What are you focusing on?","placeholder":"Write the report"},{"type":"input","id":"minutes","label":"Minutes","kind":"number","unit":"min"},{"type":"stat","id":"total","label":"Focused today","field":"minutes","op":"sum","range":"today","unit":"min"},{"type":"save","label":"Log session"},{"type":"history","label":"Sessions","groupBy":"day"}]}`,
+  },
+  {
     match: /memory|matching|chess|checkers|tic.?tac|quiz|drawing|card game|board game/i,
     json: `{"name":"Match Up","emoji":"🃏","accent":"teal","description":"Flip cards, find pairs, beat your best time.","code":"A memory game: 16 face-down emoji cards in a 4x4 grid. Tap two to flip; a pair stays up. Score is 100 minus moves; best scores saved.","components":[
       {"type":"game","id":"match","label":"Match Up","game":"whack","item":"🃏"},{"type":"stat","id":"best","label":"Best","field":"match","op":"max","range":"all"},{"type":"history","label":"Scores"}]}`,
