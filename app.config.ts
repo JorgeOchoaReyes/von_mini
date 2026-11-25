@@ -8,15 +8,16 @@ const googleServicesFile =
   process.env.GOOGLE_SERVICES_JSON ?? (existsSync('./google-services.json') ? './google-services.json' : undefined);
 
 /**
- * The EAS project this app belongs to. `npx eas-cli@latest init` prints it; paste it here (it is
- * not a secret). Over-the-air updates are only configured once it is set.
+ * The EAS project this app belongs to (expo.dev/accounts/jorgeochoareyes/projects/von-mini). Not a
+ * secret. Over-the-air updates are configured from it; EAS_PROJECT_ID overrides it, e.g. for a fork.
  */
-const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? '';
+const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? '24c573fb-3d3d-41ae-9c42-c97c7c6d85f1';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'von mini',
   slug: 'von-mini',
+  owner: 'jorgeochoareyes',
   scheme: 'vonmini',
   version: '0.1.0',
   orientation: 'portrait',

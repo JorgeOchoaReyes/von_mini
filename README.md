@@ -243,6 +243,34 @@ The runtime version uses Expo's **fingerprint** policy, so any native change (th
 only delivered to builds with a matching runtime, so after a native change, make a new APK; an old
 one will never receive JavaScript it can't run.
 
+### Automated with GitHub Actions
+
+| Workflow | When | What |
+|---|---|---|
+| [`ci.yml`](.github/workflows/ci.yml) | every pull request and push to `master` | typecheck, lint, web build (no secrets) |
+| [`eas.yml`](.github/workflows/eas.yml) | push to `master` | OTA update to the `preview` channel |
+| | **Actions → EAS → Run workflow** | OTA update, APK build, or both, for `preview` or `production` |
+| | push a tag like `v1.0.0` | APK build |
+
+An APK build waits for EAS, then attaches the `.apk` to the workflow run and links its install
+page (with a QR code) in the run summary. Secrets live only in GitHub (set them with
+`gh secret set`), and the workflow writes them to files at run time; nothing is stored in EAS:
+
+| Secret | Contents |
+|---|---|
+| `EXPO_TOKEN` | an access token from expo.dev → Settings → Access tokens |
+| `GOOGLE_SERVICES_JSON` | the contents of `google-services.json` |
+| `EXPO_PUBLIC_ENV` | the `EXPO_PUBLIC_*` lines of a `.env` file (Firebase web config, etc.) |
+
+`google-services.json` and `.env` stay git-ignored; [`.easignore`](.easignore) lets EAS upload the
+copies the workflow writes. Don't put the App Check debug token in `EXPO_PUBLIC_ENV`: every
+`EXPO_PUBLIC_*` value is compiled into the app.
+
+`master` is protected by a ruleset: changes land only through pull requests with an approving
+review, and force pushes and branch deletion are blocked. GitHub doesn't let anyone approve their
+own pull request, so repository admins may bypass the review requirement, but only from a pull
+request, never with a direct push.
+
 ## Testing it
 
 1. Open a **built-in starter app** (Mood Journal, Tone Fixer, Meeting Notes, Flashcards, Habit Tracker, Expense Notes, Recipe Scaler, Workout Log). They work immediately.
