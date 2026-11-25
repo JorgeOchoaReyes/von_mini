@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAI } from '../ai/AIContext';
 import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../ai/hybrid';
 import { STARTERS } from '../spec/starters';
+import { MicButton } from '../voice/MicButton';
 import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../storage/store';
 import {
   Button,
@@ -201,6 +202,10 @@ export default function Home() {
               busy={!!building}
               minHeight={64}
               sendLabel="Build app"
+              accessory={
+                // Say the idea instead of typing it; the app is built as soon as you stop talking.
+                <MicButton theme={theme} size={40} label="Describe your app out loud" onPartial={setRequest} onFinal={(t) => build(t)} />
+              }
             />
             {/* Scrolling on phones keeps the hero short; wrapping on wide screens uses the space. */}
             <ScrollView

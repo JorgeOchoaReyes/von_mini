@@ -32,6 +32,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-status-bar',
     // Gemini Nano on Android (AICore / ML Kit GenAI) requires API 26+.
     ['expo-build-properties', { android: { minSdkVersion: 26 } }],
+    // Voice chat: microphone + speech recognition permissions, and visibility of the speech
+    // services (Android System Intelligence hosts the on-device recognizer).
+    [
+      'expo-speech-recognition',
+      {
+        microphonePermission: 'von mini listens when you tap the microphone, so you can talk to your apps.',
+        speechRecognitionPermission: 'Speech is turned into text on your device so you can talk to your apps.',
+        androidSpeechServicePackages: ['com.google.android.as', 'com.google.android.googlequicksearchbox'],
+      },
+    ],
   ],
   experiments: { typedRoutes: true },
 });

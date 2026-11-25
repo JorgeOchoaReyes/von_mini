@@ -110,9 +110,16 @@ is being built, is immediately usable, and is saved on your device.
     its saved data.
   Every change produces a **plain-words summary of what changed** and a **version history** where
   any earlier version can be restored with one tap. All of this works offline on Nano.
-- **Eight ready-made apps** ship with it (Mood Journal, Tone Fixer, Meeting Notes, Flashcards,
-  Habit Tracker, Expense Notes, Recipe Scaler, Workout Log) so you can see the whole thing work
-  before you build anything.
+- **Talk to it.** Voice is a cascade of three on-device steps: speech-to-text (the platform
+  recognizer, kept on the device), Gemini Nano through Firebase AI Logic (streamed), and
+  text-to-speech with the device's own voice, a sentence at a time while Nano is still writing.
+  Say *"make me an app to help me practice tough interview questions"* and you get an app with a
+  spoken mock interview: it asks a hard question, you answer out loud, it gives feedback and asks
+  the next one — in airplane mode. Every text field takes dictation, and you can build and edit
+  apps by voice too.
+- **Nine ready-made apps** ship with it (Interview Coach, Mood Journal, Tone Fixer, Meeting Notes,
+  Flashcards, Habit Tracker, Expense Notes, Recipe Scaler, Workout Log) so you can see the whole
+  thing work before you build anything.
 - **Make it custom ✨** (online only) asks Gemini in the cloud for a fully custom single-file HTML
   version of the app, which runs in a sandbox whose `vonmini` bridge still routes AI through
   Firebase AI Logic on-device and stores data locally.
@@ -195,7 +202,7 @@ Private modes never touch the cloud, so they need no App Check at all.
 
 ### Accomplishments we're proud of
 
-- A builder that **builds apps offline, on the device, and they work** — eight of them ship ready
+- A builder that **builds apps offline, on the device, and they work** — nine of them ship ready
   to use.
 - An editing experience that is genuinely better than regenerating: tap-to-select blocks,
   quick-edit chips, natural-language patches, a "what changed" summary after every change, and a
@@ -236,7 +243,7 @@ AICore · Kotlin (Expo Modules API)
 
 ## 3. Demo video — script and shot list
 
-**Target length 2:35.** Everything is shot on a phone-sized Android device or Chrome; the
+**Target length 2:50.** Everything is shot on a phone-sized Android device or Chrome; the
 recording must show the app actually working.
 
 | # | Time | Shot | What is said |
@@ -248,14 +255,14 @@ recording must show the app actually working.
 | 5 | 1:10–1:35 | Open the journal. **Tap a block** in the preview, edit its label in the docked inspector, close. Then tap a quick-edit chip. Show the **"What changed"** card. | "Editing is where we spent most of our time. Tap any block to select it and edit it directly — no regeneration, no waiting, and your entries stay put." |
 | 6 | 1:35–1:55 | Type *"add a field for how much sleep I got"* in the chat tab. Show the streaming reply, the patched preview, and the change summary. Then open **History** and restore the previous version. | "Or just say what you want. The model patches the app's spec instead of rebuilding it, so it keeps its identity. Every change is summarised in plain words, and every version is one tap away." |
 | 7 | 1:55–2:15 | Home → **Settings**: show the status card, the on-device model picker (`Gemini Nano 4`), and the routing table. | "You can see and choose what runs where: which Nano build is loaded, and exactly which tasks go on-device, which go to the cloud, and which are private-only." |
-| 8 | 2:15–2:35 | The ready-made app gallery; open one, use it. End on the home screen. | "Eight apps ship ready to use, and everything you build is yours, on your device, and free to run — because on-device inference costs nothing. That's von mini." |
+| 8 | 2:15–2:50 | Still in airplane mode: tap the home mic and say *"make me an app to help me practice tough interview questions"*. In the built app, tap the big mic, answer the interviewer out loud, let it reply and ask the next question. End on the home screen. | "And you can just talk to it. Speech-to-text, Gemini Nano and the voice are all on the phone, so this mock interview works with no network at all — and everything you build is yours, on your device, and free to run. That's von mini." |
 
 **Recording notes**
 
 - Record the Android device for shots 1–7 (it is the platform where Gemini Nano 4 is fully
   supported); a Chrome capture of the same flows is a fine substitute if no Nano-capable device is
   available, and the on-device badge still applies.
-- Turn airplane mode on *before* shot 4 and leave it on for shots 4–6 so the offline claim is
+- Turn airplane mode on *before* shot 4 and leave it on for shots 4–8 so the offline claim is
   visibly true on camera.
 - Keep the ✨ AI buttons and the inference badge in frame — they are the evidence for the
   technological-implementation criterion.
@@ -345,7 +352,11 @@ Built during the period, in order:
   `pushVersion`/`restoreVersion`).
 - **Gemini Nano 4.** Runtime model selection (`src/ai/deviceModel.ts`), model warm-up, streaming
   on both platforms, and honest status reporting.
-- **Eight ready-made offline apps** (`src/spec/starters.ts`).
+- **Nine ready-made offline apps** (`src/spec/starters.ts`).
+- **Voice.** An on-device speech-to-text → Gemini Nano → text-to-speech cascade (`src/voice/`):
+  a `voice` block for spoken conversations (hands-free, sentence-by-sentence speech while Nano
+  streams), dictation on every field, building and editing by voice, and `vonmini.listen / speak /
+  converse` for custom HTML apps.
 - **Performance work** with measured before/after numbers (section 6).
 
 The work for this submission is on the `lark/hackathon-buildout` branch; `git log
@@ -363,7 +374,7 @@ origin/master..HEAD` is the record.
 | Text description: how Firebase AI Logic is used, features, value proposition | §2 of this file; "How it uses Firebase AI Logic" in `README.md` |
 | Public repo, open-source license detectable at the top | `LICENSE` (Apache-2.0); the repo is public |
 | Repo contains everything needed to run it, with instructions | `README.md` → Setup; `.env.example`; `package.json` scripts |
-| Demonstration video ≤ 3 min, public on YouTube, English | §3 script (2:35 target). **Human step:** record, upload, paste the link into the Devpost form |
+| Demonstration video ≤ 3 min, public on YouTube, English | §3 script (2:50 target). **Human step:** record, upload, paste the link into the Devpost form |
 | URL to the project for judging and testing | **Human step:** `npm run export:web` produces a static build in `dist/` (see "Hosting" below); paste the hosted URL into the form |
 | No production keys, secrets, or PII in the repo/form/instructions | `.env.local` and `google-services.json` are git-ignored and never committed (verified with `git check-ignore`); no key values appear in any doc, screenshot, or the PR |
 | New project: everything built during the period | §5; first commit 2026-11-22, all 14 commits inside the submission window |
@@ -374,8 +385,8 @@ origin/master..HEAD` is the record.
 | Criterion | Evidence |
 |---|---|
 | **Technological Implementation** — how well built, how effectively it uses hybrid inference | Explicit `InferenceMode` routing per task (`src/ai/hybrid.ts`); `InferenceSource` reported and shown as a badge on every response; two platforms behind one router (`engineSelect.ts`, `modules/nano-bridge`); Gemini Nano 4 selectable at runtime with warm-up and streaming; JSON-spec approach with validation/repair (`src/spec/validate.ts`) so a small model is dependable; `npx tsc --noEmit`, `npx expo lint` and `npx expo-doctor` (20/20) all clean |
-| **Design** — a complete, coherent product experience | Prompt-first home, live build progress, two-pane builder, tap-to-edit inspector, change summaries, version history, settings, dark mode, design tokens (`src/ui/theme.ts`), motion (`src/ui/motion.tsx`), haptics; screenshots in `docs/screenshots/`; eight apps that work the moment you open them |
-| **Potential Impact** — credible case for a real audience | The apps people most want help with (journals, health notes, money, private messages) are exactly the ones that cannot go to a server. von mini makes the private, free, offline version the default: no per-request cost, no account, works in airplane mode. Eight ready-made apps make the case concrete. |
+| **Design** — a complete, coherent product experience | Prompt-first home, live build progress, two-pane builder, tap-to-edit inspector, change summaries, version history, settings, dark mode, design tokens (`src/ui/theme.ts`), motion (`src/ui/motion.tsx`), haptics; screenshots in `docs/screenshots/`; nine apps that work the moment you open them |
+| **Potential Impact** — credible case for a real audience | The apps people most want help with (journals, health notes, money, private messages) are exactly the ones that cannot go to a server. von mini makes the private, free, offline version the default: no per-request cost, no account, works in airplane mode. Nine ready-made apps make the case concrete, and voice practice (interviews, hard conversations) is something people would never want to send to a server. |
 | **Quality of the Idea** — creative, non-obvious, real understanding | An app *builder* whose built apps inherit the hybrid contract — and whose editing model treats a change as a diff against a validated spec rather than a regeneration, so privacy, data and layout survive the edit. The on-device constraint is used as a design tool (structured output, deterministic patches) rather than hidden. |
 
 ### Verification run for this submission

@@ -2,13 +2,16 @@
  * The `vonmini` API that custom HTML apps can call. The app runs sandboxed (WebView / iframe)
  * and talks to the host only through postMessage; the host decides how each call is served.
  */
-import { runAction, type RouteContext } from '../ai/hybrid';
+import { local, runAction, type RouteContext } from '../ai/hybrid';
 import { kvGet, kvSet } from '../storage/store';
+import { voiceReply, type Turn } from '../voice/cascade';
+import { listen } from '../voice/stt';
+import { speak, stopSpeaking } from '../voice/tts';
 
 export interface BridgeRequest {
   __vm: true;
   id: number;
-  method: 'ai' | 'store.get' | 'store.set';
+  method: 'ai' | 'store.get' | 'store.set' | 'listen' | 'speak' | 'stopSpeaking' | 'converse';
   args: unknown[];
 }
 
@@ -26,6 +29,29 @@ export async function handleBridge(
       case 'ai': {
         const prompt = String(req.args[0] ?? '').slice(0, 4000);
         return { ok: true, value: (await runAction(prompt, ctx)).text };
+      }
+      // Voice: the sandboxed app can't reach the microphone or speech engine itself, so the host
+      // runs speech-to-text and text-to-speech on its behalf (on-device where possible).
+      case 'listen':
+        return { ok: true, value: await listen({ offline: local(ctx) }).done };
+      case 'speak':
+        await speak(String(req.args[0] ?? '').slice(0, 2000));
+        return { ok: true, value: null };
+      case 'stopSpeaking':
+        stopSpeaking();
+        return { ok: true, value: null };
+      case 'converse': {
+        // One spoken turn: Gemini Nano replies in character and the reply is spoken while it streams.
+        const persona = String(req.args[0] ?? '').slice(0, 1000);
+        const history = (Array.isArray(req.args[1]) ? req.args[1] : [])
+          .filter((t): t is Turn => !!t && typeof t === 'object' && typeof (t as Turn).text === 'string')
+          .map((t) => ({ role: t.role === 'assistant' ? ('assistant' as const) : ('user' as const), text: t.text.slice(0, 2000) }))
+          .slice(-12);
+        if (!history.length || history[history.length - 1].role !== 'user') {
+          return { ok: false, error: 'converse() needs a history that ends with the user turn.' };
+        }
+        const speakIt = req.args[2] !== false;
+        return { ok: true, value: (await voiceReply(history, { persona, ctx, speak: speakIt })).text };
       }
       case 'store.get':
         return { ok: true, value: await kvGet(appId, String(req.args[0])) };
@@ -59,6 +85,10 @@ export const bridgeScript = (post: string) => `
   };
   window.vonmini = {
     ai: function(prompt){ return call('ai', [prompt]); },
+    listen: function(){ return call('listen', []); },
+    speak: function(text){ return call('speak', [String(text)]); },
+    stopSpeaking: function(){ return call('stopSpeaking', []); },
+    converse: function(persona, history, speakIt){ return call('converse', [persona, history, speakIt !== false]); },
     store: {
       get: function(k){ return call('store.get', [k]); },
       set: function(k, v){ return call('store.set', [k, v]); }

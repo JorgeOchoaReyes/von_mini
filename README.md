@@ -54,9 +54,46 @@ When online, **"Make it custom ✨"** asks Gemini in the cloud for a fully custo
 await vonmini.ai('Summarize: ...')     // runs PREFER_ON_DEVICE through Firebase AI Logic
 await vonmini.store.set('key', value)  // device-local storage
 await vonmini.store.get('key')
+await vonmini.listen()                 // speech-to-text, on-device where supported
+await vonmini.speak('Hello')           // text-to-speech with the device's own voice
+await vonmini.converse(persona, turns) // one spoken AI turn: Nano replies, spoken as it streams
 ```
 
 So even cloud-written apps keep their AI and their data on the device.
+
+## Voice: talk to your apps
+
+Every app can be used by voice, and you can build and edit apps by voice. It is a **cascade** of
+three on-device steps, so it keeps working in airplane mode:
+
+1. **Speech-to-text.** The platform recognizer, asked to stay on the device: Android's
+   `SpeechRecognizer` with `requiresOnDeviceRecognition` (through `expo-speech-recognition`), and
+   Chrome's Web Speech API with `processLocally` where the browser supports it
+   ([`src/voice/stt.ts`](src/voice/stt.ts), [`src/voice/stt.web.ts`](src/voice/stt.web.ts)).
+2. **Gemini Nano** writes the reply through Firebase AI Logic (`PREFER_ON_DEVICE`, or
+   `ONLY_ON_DEVICE` offline / in private mode), **streamed**
+   ([`src/voice/cascade.ts`](src/voice/cascade.ts)).
+3. **Text-to-speech** with the device's own voices (`expo-speech`; on the web a local voice is
+   chosen explicitly). Each sentence is spoken **as soon as it is complete**, while Nano is still
+   writing the rest, so a slow on-device model still answers quickly
+   ([`src/voice/tts.ts`](src/voice/tts.ts)).
+
+Where it shows up:
+
+- **A `voice` block** in app specs: a spoken conversation with a role the app defines (e.g. *"a
+  tough interviewer for a {role} job"*). Tap to talk, the AI answers out loud, hands-free mode
+  listens again after each reply, and you can always type instead. The transcript is saved like
+  any other field. Ask for *"an app to help me practice tough interview questions"* and you get
+  one; **Interview Coach** ships ready-made.
+- **A mic on every text field** of a generated app, for dictation.
+- **Building and editing by voice:** the mic in the home prompt builds the app as soon as you stop
+  talking, and a spoken message in the Edit chat gets a spoken reply.
+- **Custom HTML apps** get `vonmini.listen / speak / converse`. The sandboxed iframe can't reach
+  the microphone itself, so the host runs speech on its behalf.
+
+If on-device recognition isn't available (older phones, or a browser without it), recognition uses
+the platform's default recognizer when online, and offline the conversation falls back to typing;
+replies are still spoken.
 
 ## Editing an app
 

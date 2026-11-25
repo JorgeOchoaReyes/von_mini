@@ -15,6 +15,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /interview|tough question|practi[cs]e|rehears|role.?play|speak|voice|talk/i,
+    json: `{"name":"Interview Coach","emoji":"🎙️","accent":"blue","description":"Rehearse hard questions out loud and get honest feedback.","components":[
+      {"type":"input","id":"role","label":"What role is it for?","placeholder":"Product manager"},
+      {"type":"choice","id":"style","label":"How tough?","options":["Friendly","Realistic","Grill me"]},
+      {"type":"voice","id":"practice","label":"Mock interview","prompt":"You are an interviewer for a {role} role. Style: {style}. Ask one tough question at a time and give one sentence of feedback after each answer.","text":"Let's begin. Tell me about a decision you made that turned out to be wrong."},
+      {"type":"ai","id":"review","label":"Review my answers","prompt":"Here is an interview transcript: {practice}. In at most 5 lines starting with \\"- \\", say what went well and what to improve."},
+      {"type":"save","label":"Save session"},{"type":"history","label":"Past sessions"}]}`,
+  },
+  {
     match: /water|hydrat|drink/i,
     json: `{"name":"Water Tracker","emoji":"💧","accent":"blue","description":"Log every glass and get a nudge when you fall behind.","components":[
       {"type":"choice","id":"amount","label":"How much did you drink?","options":["A glass","A bottle","A lot"]},
@@ -146,6 +155,13 @@ function editSpec(currentJson: string, change: string): string {
 
 const EDIT_PREFIX = 'Current app JSON:';
 
+/** Canned interviewer turns so the voice chat can be exercised without a model. */
+const MOCK_INTERVIEW = [
+  'Good, you owned the mistake instead of blaming others. Next: why are you leaving your current job?',
+  'That was honest but a bit long; lead with the reason in one sentence. Now, tell me about a conflict with a teammate.',
+  'Nice use of a concrete example. Last one: what would your first ninety days here look like?',
+];
+
 export const mockEngine: AIEngine = {
   runtime: 'none',
   streaming: true,
@@ -179,6 +195,10 @@ export const mockEngine: AIEngine = {
 
 function respond(prompt: string, options: GenerateOptions): string {
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
+  if (options.system?.includes('talking out loud')) {
+    const turns = (prompt.match(/^User:/gm) ?? []).length;
+    return MOCK_INTERVIEW[(turns - 1) % MOCK_INTERVIEW.length];
+  }
   if (prompt.startsWith(EDIT_PREFIX)) {
     const json = prompt.slice(EDIT_PREFIX.length, prompt.indexOf('\n\nApply this change'));
     const change = prompt.slice(prompt.indexOf('return the full updated JSON: "') + 30).replace(/"\s*$/, '');

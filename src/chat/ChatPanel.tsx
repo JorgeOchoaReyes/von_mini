@@ -17,6 +17,8 @@ import { listMessages, type ChatMessage } from '../storage/store';
 import { Chip, Composer, Icon, SourceBadge, StepList, TypingDots, type IconName } from '../ui/components';
 import { FadeUp } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
+import { MicButton } from '../voice/MicButton';
+import { speak, stopSpeaking } from '../voice/tts';
 import { chatSteps, isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
@@ -123,12 +125,31 @@ export function ChatPanel({
     };
   }, [appId, version]);
 
-  const send = (text: string) => {
+  /**
+   * Set when a message was spoken: the reply to it is read aloud, so editing an app can be a
+   * spoken back-and-forth (speech-to-text → Gemini → text-to-speech). Holds the index the
+   * spoken message will take in the thread; the first assistant message after it is spoken.
+   */
+  const speakReplyAfter = useRef<number | null>(null);
+
+  const send = (text: string, spoken = false) => {
     if (!text.trim() || busy) return;
     setDraft('');
+    speakReplyAfter.current = spoken ? messages.length : null;
     // Not awaited: the job keeps running even if this screen closes.
     sendMessage(appId, text, ai);
   };
+
+  useEffect(() => {
+    const since = speakReplyAfter.current;
+    if (since == null) return;
+    const reply = messages.slice(since + 1).find((m) => m.role === 'assistant');
+    if (!reply) return;
+    speakReplyAfter.current = null;
+    void speak(reply.kind === 'edit' ? `Done. ${reply.text}` : reply.text);
+  }, [messages]);
+
+  useEffect(() => () => stopSpeaking(), []);
 
   const local = ai.privateMode || !ai.online;
 
@@ -281,6 +302,14 @@ export function ChatPanel({
           placeholder="Ask or describe a change…"
           theme={theme}
           busy={busy}
+          accessory={
+            <MicButton
+              theme={theme}
+              label="Say a change or a question"
+              onPartial={setDraft}
+              onFinal={(t) => send(t, true)}
+            />
+          }
         />
       </View>
     </KeyboardAvoidingView>

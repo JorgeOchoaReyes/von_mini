@@ -13,6 +13,7 @@ import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
 import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
 import { ProgressBar } from '../ui/motion';
 import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+import { useSttSupport } from '../voice/useVoice';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -32,6 +33,7 @@ export default function Settings() {
   const ai = useAI();
   const theme = useTheme();
   const onDevice = ai.deviceStatus === 'available';
+  const stt = useSttSupport();
 
   return (
     <>
@@ -96,6 +98,28 @@ export default function Settings() {
             {DEVICE_MODELS.find((m) => m.value === ai.deviceModel)?.detail} Applies to Android builds that use the AI Core
             runtime; on the web the browser decides which Nano build to load.
           </Text>
+        </Card>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.headline, { color: theme.text }]}>Voice</Text>
+          <Row
+            icon="mic-outline"
+            title={
+              !stt ? 'Checking speech recognition…' : !stt.available ? 'Speech recognition is not available here' : stt.onDevice ? 'Speech recognition runs on this device' : 'Speech recognition needs a connection here'
+            }
+            body={
+              stt?.onDevice
+                ? 'What you say is turned into text locally, so voice chats work offline.'
+                : 'Voice chats still work: type your side when offline, and replies are spoken by the device.'
+            }
+            theme={theme}
+          />
+          <Row
+            icon="volume-high-outline"
+            title="Replies are spoken by the device's own voice"
+            body="Speech is generated locally, a sentence at a time while Gemini Nano is still writing."
+            theme={theme}
+          />
         </Card>
 
         <Card theme={theme} style={{ gap: space(3) }}>

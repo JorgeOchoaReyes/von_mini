@@ -431,6 +431,7 @@ export function Composer({
   minHeight = 48,
   sendLabel = 'Send',
   autoFocus,
+  accessory,
 }: {
   value: string;
   onChange(v: string): void;
@@ -441,6 +442,8 @@ export function Composer({
   minHeight?: number;
   sendLabel?: string;
   autoFocus?: boolean;
+  /** Extra control shown next to the send button, e.g. a microphone. */
+  accessory?: ReactNode;
 }) {
   const can = !!value.trim() && !busy;
   return (
@@ -463,6 +466,7 @@ export function Composer({
         }}
         style={[styles.composerInput, type.body, { color: theme.text, minHeight }]}
       />
+      {accessory}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={sendLabel}

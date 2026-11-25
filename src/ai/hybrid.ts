@@ -34,7 +34,8 @@ export interface RouteContext {
   privateMode: boolean;
 }
 
-const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
+/** True when every request must stay on the device (offline, private mode, or an offline build). */
+export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.privateMode;
 
 export function modeFor(task: 'build' | 'edit' | 'action', ctx: RouteContext): InferenceMode {
   if (local(ctx)) return 'only_on_device';

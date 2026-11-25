@@ -6,6 +6,7 @@ const KIND: Record<SpecComponent['type'], string> = {
   input: 'field',
   choice: 'choice',
   ai: 'AI button',
+  voice: 'voice chat',
   save: 'save button',
   history: 'history list',
 };
@@ -34,6 +35,7 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     if (old.type !== c.type) out.push(`Turned “${nameOf(old)}” into a ${KIND[c.type]}.`);
     else if ((old.label ?? old.text) !== (c.label ?? c.text)) out.push(`Renamed “${nameOf(old)}” to “${nameOf(c)}”.`);
     if (old.prompt !== c.prompt && c.prompt) out.push(`Changed what “${nameOf(c)}” asks the AI.`);
+    if (c.type === 'voice' && old.type === 'voice' && old.text !== c.text) out.push(`Changed how “${nameOf(c)}” opens.`);
     if (JSON.stringify(old.options) !== JSON.stringify(c.options) && c.options) {
       out.push(`Updated the options for “${nameOf(c)}”.`);
     }
