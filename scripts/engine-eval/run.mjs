@@ -146,7 +146,14 @@ for (const [i, d] of designs.entries()) {
   }
   const errors = viewErrors.slice(before);
   const issues = [...(shown ? [] : ['app did not show']), ...errors.map((e) => `error: ${e.slice(0, 160)}`)];
-  if (issues.length) console.log(`FAIL render  ${d.label.slice(0, 70)}  ⚠ ${issues.join('; ')}`);
+  if (issues.length) {
+    console.log(`FAIL render  ${d.label.slice(0, 70)}  ⚠ ${issues.join('; ')}`);
+    // Enough to reproduce it: what the screen showed, and the design itself.
+    const shownText = await viewer.locator('body').innerText().catch(() => '');
+    console.log(`  screen: ${shownText.replace(/\s+/g, ' ').slice(0, 400)}`);
+    console.log(`  design: ${JSON.stringify(d.spec)}`);
+    await viewer.screenshot({ path: join(outDir, `render-fail-${i}.png`) }).catch(() => undefined);
+  }
   rendered.push({ label: d.label, ok: !issues.length, issues: [] , error: issues.join('; ') || undefined });
 }
 console.log(`Rendered ${rendered.filter((r) => r.ok).length}/${rendered.length} cleanly.`);
