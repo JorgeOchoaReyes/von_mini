@@ -24,19 +24,21 @@ import {
   setPrompt,
   setAccent,
   setText,
+  setTimes,
   toggleMultiline,
 } from '../spec/edit';
 import { ACCENTS, type Accent, type AppSpec, type ComponentType } from '../spec/types';
 import { Button, Card, Chip, Icon, IconButton, type IconName } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { FadeUp } from '../ui/motion';
-import { ACCENT_COLORS, alpha, radius, space, type, useTheme } from '../ui/theme';
+import { stroke, ACCENT_COLORS, alpha, radius, space, type, useTheme } from '../ui/theme';
 
 const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'input', label: 'Text field', icon: 'create-outline' },
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
   { type: 'voice', label: 'Voice chat', icon: 'mic-outline' },
+  { type: 'reminder', label: 'Reminders', icon: 'alarm-outline' },
   { type: 'heading', label: 'Heading', icon: 'text-outline' },
   { type: 'text', label: 'Paragraph', icon: 'reorder-four-outline' },
 ];
@@ -226,6 +228,25 @@ function BlockFields({
         </>
       )}
 
+      {c.type === 'reminder' && (
+        <>
+          <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the reminder to “${v}”.`)} theme={theme} />
+          <Field
+            label="Notification message"
+            value={c.text ?? ''}
+            onChange={(v) => emit(setText(spec, index, v), 'Changed the reminder message.')}
+            theme={theme}
+          />
+          <Field
+            label="Times"
+            value={(c.times ?? []).join(', ')}
+            onChange={(v) => emit(setTimes(spec, index, v), 'Changed the reminder times.')}
+            hint="Daily, 24-hour or am/pm, separated by commas: 8:00, 1pm, 19:30. Up to 6."
+            theme={theme}
+          />
+        </>
+      )}
+
       {(c.type === 'heading' || c.type === 'text') && (
         <Field
           label="Text"
@@ -354,7 +375,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2), flexWrap: 'wrap' },
   input: { borderRadius: radius.md, paddingHorizontal: space(3), paddingVertical: space(2) },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  check: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 20, height: 20, borderRadius: 6, borderWidth: stroke, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 32, height: 32, borderRadius: radius.pill, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderRadius: radius.md },
 });

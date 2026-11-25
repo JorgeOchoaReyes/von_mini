@@ -11,7 +11,7 @@
  * the tap-to-edit UI and the quick-edit chips.
  */
 import { ACCENTS, COMPONENT_TYPES, type Accent, type AppSpec, type ComponentType, type SpecComponent } from './types';
-import { normalizeLayout } from './validate';
+import { normalizeLayout, normalizeTimes } from './validate';
 
 export const componentTitle = (c: SpecComponent, index: number) =>
   c.label ?? c.text ?? c.id ?? `${c.type} ${index + 1}`;
@@ -53,9 +53,20 @@ export function setLabel(spec: AppSpec, index: number, label: string): AppSpec {
 export function setText(spec: AppSpec, index: number, text: string): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || (c.type !== 'heading' && c.type !== 'text' && c.type !== 'voice')) return spec;
+  if (!c || (c.type !== 'heading' && c.type !== 'text' && c.type !== 'voice' && c.type !== 'reminder')) return spec;
   // A voice chat's opening line may be cleared (the user then speaks first).
-  c.text = c.type === 'voice' ? text.trim().slice(0, 240) || undefined : text.trim().slice(0, 400) || c.text;
+  if (c.type === 'voice') c.text = text.trim().slice(0, 240) || undefined;
+  else if (c.type === 'reminder') c.text = text.trim().slice(0, 120) || c.text;
+  else c.text = text.trim().slice(0, 400) || c.text;
+  return next;
+}
+
+/** Sets a reminder block's daily times from free text like "8:00, 1pm, 19:30". */
+export function setTimes(spec: AppSpec, index: number, raw: string): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'reminder') return spec;
+  c.times = normalizeTimes(raw);
   return next;
 }
 
@@ -114,7 +125,9 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
   if (!COMPONENT_TYPES.includes(type)) return spec;
   const next = clone(spec);
   if (next.components.length >= 12) return spec;
-  if ((type === 'save' || type === 'history') && next.components.some((c) => c.type === type)) return spec;
+  if ((type === 'save' || type === 'history' || type === 'reminder') && next.components.some((c) => c.type === type)) {
+    return spec;
+  }
 
   switch (type) {
     case 'input':
@@ -138,6 +151,15 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
         label: 'Talk it through',
         prompt: 'You are a warm, curious coach. Help the user think out loud about what they typed.',
         text: 'Hi! What would you like to talk through?',
+      });
+      break;
+    case 'reminder':
+      next.components.push({
+        type,
+        id: uniqueId(next, 'reminder'),
+        label: 'Daily reminders',
+        text: `Time to open ${next.name}.`,
+        times: ['09:00', '20:00'],
       });
       break;
     case 'heading':
@@ -245,6 +267,9 @@ export function quickEdits(spec: AppSpec): QuickEdit[] {
         ),
       }),
     });
+  }
+  if (!has('reminder') && spec.components.length < 12) {
+    out.push({ label: 'Add daily reminders', apply: (s) => addComponent(s, 'reminder') });
   }
   if (!has('voice') && spec.components.length < 12) {
     out.push({ label: 'Add a voice chat', apply: (s) => addComponent(s, 'voice') });

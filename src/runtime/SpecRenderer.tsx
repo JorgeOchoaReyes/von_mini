@@ -7,12 +7,13 @@ import type { InferenceSource } from '../ai/types';
 import { componentKey } from '../spec/edit';
 import { MicButton } from '../voice/MicButton';
 import { VoiceChat } from '../voice/VoiceChat';
+import { ReminderBlock } from '../alerts/ReminderBlock';
 import type { AppSpec, SpecComponent } from '../spec/types';
 import { fillTemplate } from '../spec/validate';
 import { addEntry, deleteEntry, listEntries, type Entry } from '../storage/store';
 import { Button, Card, Chip, EmptyState, Icon, IconButton, SourceBadge, relativeTime } from '../ui/components';
 import { FadeUp } from '../ui/motion';
-import { radius, space, type, useTheme, type Theme } from '../ui/theme';
+import { stroke, radius, space, type, useTheme, type Theme } from '../ui/theme';
 
 /** Groups consecutive form fields so they render in one card, like a real form. */
 function sections(components: SpecComponent[]) {
@@ -423,6 +424,10 @@ export function SpecRenderer({
         );
         return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
       }
+      case 'reminder': {
+        const node = <ReminderBlock key={c.id} appId={appId} appName={spec.name} appEmoji={spec.emoji} c={c} theme={theme} />;
+        return selectable ? selectable_(c, i, node, c.label, 'corner') : node;
+      }
       case 'save': {
         const node = (
           <View key="save" style={{ gap: space(2) }}>
@@ -494,7 +499,7 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', gap: space(2), alignItems: 'flex-start' },
   bulletDot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },
   selectable: {
-    borderWidth: 1,
+    borderWidth: stroke,
     borderStyle: 'dashed',
     borderColor: 'transparent',
     borderRadius: radius.md,
@@ -521,7 +526,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,

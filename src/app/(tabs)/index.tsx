@@ -1,30 +1,37 @@
-import { router, Stack, useFocusEffect } from 'expo-router';
-import { memo, useCallback, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Image, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAI } from '../ai/AIContext';
-import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../ai/hybrid';
-import { STARTERS } from '../spec/starters';
-import { MicButton } from '../voice/MicButton';
-import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../storage/store';
+import { useAI } from '../../ai/AIContext';
+import { buildAppProgressive, modeFor, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
+import { ensureAlertPermission, notifyIfInBackground } from '../../alerts/notifications';
+import { STARTERS } from '../../spec/starters';
+import { MicButton } from '../../voice/MicButton';
+import { listApps, newId, pushVersion, saveApp, type SavedApp } from '../../storage/store';
 import {
   Button,
+  Caption,
   Card,
   Chip,
   Composer,
-  Gradient,
+  EmptyState,
   Icon,
+  IconButton,
   ModePill,
-  SectionHeader,
+  Segmented,
   SourceBadge,
   SpecSkeleton,
   StepList,
   type IconName,
-} from '../ui/components';
-import { haptics } from '../ui/haptics';
-import { Drift, FadeUp, Pulse, usePressScale } from '../ui/motion';
-import { ACCENT_COLORS, alpha, MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
+} from '../../ui/components';
+import { haptics } from '../../ui/haptics';
+import { Halftone } from '../../ui/Halftone';
+import { Drift, FadeUp, Pulse, usePressScale } from '../../ui/motion';
+import { stroke, ACCENT_COLORS, alpha, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme } from '../../ui/theme';
+
+/** Which shelf of the app gallery is showing. */
+type Shelf = 'mine' | 'ready';
 
 const IDEAS: { label: string; icon: IconName; prompt: string }[] = [
   { label: 'Interview practice', icon: 'mic-outline', prompt: 'Help me practice answering tough interview questions out loud' },
@@ -112,6 +119,12 @@ export default function Home() {
     } else if (e.type === 'peek') setPeek(e.peek);
     else if (e.type === 'partial') setPartial(e.text);
     else if (e.type === 'retry') setRetrying(true);
+    else if (e.type === 'fallback') {
+      // Start the visible pipeline over, headed by why it switched.
+      setSteps([{ id: 'fallback', label: 'Cloud is busy, so Gemini Nano is designing it on this device', state: 'done' }]);
+      setPeek(null);
+      setPartial('');
+    }
   }, []);
 
   const build = async (text: string) => {
@@ -126,6 +139,8 @@ export default function Home() {
     setPartial('');
     setRetrying(false);
     builtRef.current = false;
+    // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
+    void ensureAlertPermission().catch(() => false);
     try {
       const { spec, source } = await buildAppProgressive(value, ai, onEvent);
       const app: SavedApp = {
@@ -141,10 +156,17 @@ export default function Home() {
       builtRef.current = true;
       haptics.success();
       setRequest('');
+      void notifyIfInBackground({
+        title: `${spec.emoji} ${spec.name} is ready`,
+        body: 'Your app is built. Tap to open it.',
+        url: `/app/${app.id}`,
+      });
       router.push({ pathname: '/app/[id]', params: { id: app.id } });
     } catch (e) {
       haptics.error();
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      void notifyIfInBackground({ title: 'Couldn’t build your app', body: message.slice(0, 140), url: '/' });
     } finally {
       setBuilding(null);
       setSteps([]);
@@ -154,27 +176,51 @@ export default function Home() {
   };
 
   const openApp = useCallback((id: string) => router.push({ pathname: '/app/[id]', params: { id } }), []);
-  const mine = apps.filter((a) => !STARTERS.some((s) => s.id === a.id));
+  const schemePref = useSchemePref();
+  const isStarter = (a: SavedApp) => STARTERS.some((s) => s.id === a.id);
+  const mine = apps.filter((a) => !isStarter(a));
+  const ready = apps.filter(isStarter);
+  // Show your own apps once you have some; until then, the ready-made shelf.
+  const [shelfChoice, setShelfChoice] = useState<Shelf | null>(null);
+  const shelf: Shelf = shelfChoice ?? (mine.length ? 'mine' : 'ready');
+  const shown = shelf === 'mine' ? mine : ready;
+
+  // The bottom bar's voice button sends what was said here to build it (params.at keeps a repeat
+  // of the same request from being ignored).
+  const params = useLocalSearchParams<{ build?: string; at?: string }>();
+  const buildRef = useRef(build);
+  useEffect(() => {
+    buildRef.current = build;
+  });
+  useEffect(() => {
+    if (!params.build || !params.at) return;
+    void buildRef.current(params.build);
+  }, [params.at, params.build]);
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         style={{ backgroundColor: theme.bg }}
         contentContainerStyle={[
           styles.page,
-          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: insets.bottom + space(10) },
+          { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4), paddingBottom: space(8) },
         ]}
         keyboardShouldPersistTaps="handled"
       >
         <FadeUp style={styles.brandRow} distance={6}>
           <View style={styles.brand}>
-            <Gradient theme={theme} style={styles.logo}>
-              <Text style={styles.logoText}>v</Text>
-            </Gradient>
-            <Text style={[type.headline, { color: theme.text }]}>von mini</Text>
+            <Image source={require('../../../assets/logo.png')} style={styles.logo} accessibilityIgnoresInvertColors />
+            <Text style={[type.title, { color: theme.text }]}>von mini</Text>
           </View>
           <View style={{ flex: 1 }} />
+          {/* One tap cycles the look: follow the system, light (paper), dark (night comic). */}
+          <IconButton
+            icon={schemePref === 'system' ? 'contrast-outline' : schemePref === 'light' ? 'sunny-outline' : 'moon-outline'}
+            label={`Appearance: ${schemePref}. Tap to change`}
+            theme={theme}
+            color={theme.text}
+            onPress={() => setSchemePref(schemePref === 'system' ? 'light' : schemePref === 'light' ? 'dark' : 'system')}
+          />
           <ModePill
             status={ai.deviceStatus}
             online={ai.online}
@@ -187,8 +233,10 @@ export default function Home() {
         {/* Prompt-first hero: the whole product starts here. */}
         <FadeUp delay={40}>
           <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border, boxShadow: theme.shadow }]}>
-            {/* The soft wash drifts slowly, so the screen feels alive while you think. */}
-            <Drift style={[styles.heroWash, { backgroundColor: theme.accentSoft }]} range={22} duration={11000} />
+            {/* Ben-Day dots in the panel corner, drifting slightly: comic shading, kept off the text. */}
+            <Drift style={styles.heroDots} range={6} duration={12000}>
+              <Halftone color={theme.accentAlt} cols={11} rows={8} spacing={15} maxDot={10} from="top-right" />
+            </Drift>
             <View style={{ gap: space(2) }}>
               <Text style={[type.display, { color: theme.text }]}>What do you want to build?</Text>
               <Text style={[type.body, { color: theme.muted }]}>
@@ -228,14 +276,12 @@ export default function Home() {
                 />
               ))}
             </ScrollView>
-            <View style={styles.row}>
-              <Icon name={onDevice ? 'phone-portrait-outline' : 'git-compare-outline'} size={14} color={theme.subtle} />
-              <Text style={[type.caption, { color: theme.subtle, flex: 1 }]}>
-                {onDevice
-                  ? 'Built on-device with Gemini Nano — works in airplane mode.'
-                  : 'Gemini designs it, with Gemini Nano as the offline fallback.'}
-              </Text>
-            </View>
+            {/* A comic caption box: the narrator's note on how this gets built. */}
+            <Caption theme={theme} icon={onDevice ? 'phone-portrait-outline' : 'git-compare-outline'}>
+              {onDevice
+                ? 'Built on-device with Gemini Nano. Works in airplane mode.'
+                : 'Gemini designs it, with Gemini Nano as the offline fallback.'}
+            </Caption>
           </View>
         </FadeUp>
 
@@ -304,7 +350,7 @@ export default function Home() {
                 ['pricetag-outline', 'On-device inference costs nothing, so your apps are free to run.'],
               ].map(([icon, text]) => (
                 <View key={text} style={styles.row}>
-                  <Icon name={icon as IconName} size={16} color={theme.accent} />
+                  <Icon name={icon as IconName} size={16} color={theme.text} />
                   <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{text}</Text>
                 </View>
               ))}
@@ -312,17 +358,34 @@ export default function Home() {
           </FadeUp>
         )}
 
-        <SectionHeader
-          title={mine.length ? 'Your apps' : 'Start with a ready-made app'}
-          theme={theme}
-          right={<Text style={[type.caption, { color: theme.subtle }]}>{apps.length}</Text>}
-        />
-        <View style={styles.grid}>
-          {apps.map((app, i) => (
-            <FadeUp key={app.id} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
-              <AppTile app={app} onOpen={openApp} />
-            </FadeUp>
-          ))}
+        {/* Two shelves: the apps you made, and the ones that ship with von mini. All stored on
+            this device. */}
+        <View style={{ gap: space(4) }}>
+          <Segmented<Shelf>
+            theme={theme}
+            value={shelf}
+            onChange={setShelfChoice}
+            options={[
+              { value: 'mine', label: `My apps${mine.length ? ` · ${mine.length}` : ''}`, icon: 'person-outline' },
+              { value: 'ready', label: `Ready-made · ${ready.length}`, icon: 'cube-outline' },
+            ]}
+          />
+          {shown.length === 0 ? (
+            <EmptyState
+              icon="sparkles-outline"
+              title="No apps yet"
+              body="Describe one above, or tap the mic below and say what you want. Your apps stay on this device."
+              theme={theme}
+            />
+          ) : (
+            <View style={styles.grid}>
+              {shown.map((app, i) => (
+                <FadeUp key={`${shelf}:${app.id}`} delay={Math.min(i * 40, 240)} style={styles.tileWrap}>
+                  <AppTile app={app} onOpen={openApp} />
+                </FadeUp>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </>
@@ -333,38 +396,30 @@ const styles = StyleSheet.create({
   page: { paddingHorizontal: space(4), gap: space(6), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   brand: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  logo: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: '#fff', fontWeight: '800', fontSize: 17, marginTop: -2 },
+  logo: { width: 40, height: 40, borderRadius: radius.sm },
   hero: {
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.xl,
     padding: space(5),
     gap: space(4),
     overflow: 'hidden',
   },
-  heroWash: {
-    position: 'absolute',
-    top: -120,
-    right: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    opacity: 0.9,
-  },
+  // Sized to the dot grid (11 x 8 at 15 px) so the panel's clipping doesn't hide it.
+  heroDots: { position: 'absolute', top: space(2), right: space(1), width: 11 * 15 + 8, height: 8 * 15 },
   ideas: { gap: space(2), paddingRight: space(4) },
   // A vertical ScrollView's content container is a column by default, so wrapping needs the row
   // direction spelled out — otherwise every chip lands on its own line.
   ideasWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingRight: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   buildBody: { flexDirection: 'row', gap: space(4), flexWrap: 'wrap' },
-  peek: { minWidth: 168, flexGrow: 1, flexBasis: 168, borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(1) },
+  peek: { minWidth: 168, flexGrow: 1, flexBasis: 168, borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(1) },
   peekEmoji: { fontSize: 28 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space(3) },
   tileWrap: { flexBasis: '47%', flexGrow: 1, minWidth: 240 },
   tile: {
     flex: 1,
     minHeight: 168,
-    borderWidth: 1,
+    borderWidth: stroke,
     borderRadius: radius.lg,
     padding: space(4),
     gap: space(3),

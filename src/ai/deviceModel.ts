@@ -26,19 +26,33 @@ export const isDeviceModel = (v: unknown): v is DeviceModel => v === 'nano4' || 
 /** The model to request right now (runtime override, else the build-time default). */
 export const getDeviceModel = (): DeviceModel => override ?? envDefault;
 
+let chosenByUser = false;
+
 /** Reads a previously saved choice. Called once at startup. */
 export async function loadDeviceModel(): Promise<DeviceModel> {
   try {
     const saved = await AsyncStorage.getItem(KEY);
-    if (isDeviceModel(saved)) override = saved;
+    if (isDeviceModel(saved)) {
+      override = saved;
+      chosenByUser = true;
+    }
   } catch {
     // A missing or unreadable preference just means "use the default".
   }
   return getDeviceModel();
 }
 
+/** True when the user picked a model in Settings (automatic fallbacks then leave it alone). */
+export const deviceModelChosenByUser = () => chosenByUser;
+
+/** Switches model for this session only, without saving: used for the automatic fallback. */
+export function setSessionDeviceModel(model: DeviceModel) {
+  override = model;
+}
+
 export async function setDeviceModel(model: DeviceModel): Promise<void> {
   override = model;
+  chosenByUser = true;
   try {
     await AsyncStorage.setItem(KEY, model);
   } catch {

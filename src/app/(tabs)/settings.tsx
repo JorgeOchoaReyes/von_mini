@@ -5,17 +5,18 @@
  * loaded, whether the cloud is allowed, and how to get on-device AI when the device does not have
  * it yet.
  */
-import { router, Stack } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAI } from '../ai/AIContext';
-import { DEVICE_MODELS, type DeviceModel } from '../ai/deviceModel';
-import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../ui/components';
-import { ProgressBar } from '../ui/motion';
-import { MAX_WIDTH, radius, space, type, useTheme } from '../ui/theme';
-import { useRemoteConfig } from '../remote/remoteConfig';
-import { UpdatesCard } from '../ui/UpdatesCard';
-import { useSttSupport } from '../voice/useVoice';
+import { useAI } from '../../ai/AIContext';
+import { DEVICE_MODELS, type DeviceModel } from '../../ai/deviceModel';
+import type { DeviceStatus } from '../../ai/types';
+import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../../ui/components';
+import { ProgressBar } from '../../ui/motion';
+import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme, type SchemePref } from '../../ui/theme';
+import { useRemoteConfig } from '../../remote/remoteConfig';
+import { UpdatesCard } from '../../ui/UpdatesCard';
+import { useSttSupport } from '../../voice/useVoice';
 
 function Row({ icon, title, body, theme }: { icon: IconName; title: string; body: string; theme: ReturnType<typeof useTheme> }) {
   return (
@@ -31,17 +32,56 @@ function Row({ icon, title, body, theme }: { icon: IconName; title: string; body
   );
 }
 
+/**
+ * What the on-device model's state means for the user, and what (if anything) they need to do.
+ * Gemini Nano comes from Android's AICore service: the app can ask it to download the model, but
+ * can't install Nano on a phone AICore doesn't support.
+ */
+function nanoStatusText(status: DeviceStatus, modelName: string): string {
+  switch (status) {
+    case 'available':
+      return modelName ? `Ready on this device: ${modelName}.` : 'Gemini Nano is ready on this device.';
+    case 'downloading':
+      return 'Downloading Gemini Nano. It continues in the background; on-device AI turns on when it finishes.';
+    case 'downloadable':
+      return 'This phone supports Gemini Nano, but the model isn’t downloaded yet. It downloads automatically on Wi-Fi, or tap below. Until then, AI runs in the cloud.';
+    case 'unsupported':
+      return 'On-device AI isn’t available in this build or browser. AI runs in the cloud.';
+    default:
+      return 'This device can’t run Gemini Nano (it needs a phone with Android AICore, such as recent Pixel or Galaxy flagships). Nothing to install: AI runs in the cloud, and everything else works the same.';
+  }
+}
+
 export default function Settings() {
   const ai = useAI();
   const theme = useTheme();
   const onDevice = ai.deviceStatus === 'available';
   const stt = useSttSupport();
   const rc = useRemoteConfig();
+  const insets = useSafeAreaInsets();
+  const schemePref = useSchemePref();
 
   return (
     <>
-      <Stack.Screen options={{ title: 'AI settings' }} />
-      <ScrollView style={{ backgroundColor: theme.bg }} contentContainerStyle={styles.page}>
+      <ScrollView
+        style={{ backgroundColor: theme.bg }}
+        contentContainerStyle={[styles.page, { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + space(4) }]}
+      >
+        <Text style={[type.display, { color: theme.text }]}>Settings</Text>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.overline, { color: theme.text }]}>Appearance</Text>
+          <Segmented<SchemePref>
+            theme={theme}
+            value={schemePref}
+            onChange={setSchemePref}
+            options={[
+              { value: 'system', label: 'System', icon: 'phone-portrait-outline' },
+              { value: 'light', label: 'Light', icon: 'sunny-outline' },
+              { value: 'dark', label: 'Dark', icon: 'moon-outline' },
+            ]}
+          />
+        </Card>
         <StatusBanner
           status={ai.deviceStatus}
           online={ai.online}
@@ -83,14 +123,11 @@ export default function Settings() {
               size={16}
               color={onDevice ? theme.success : theme.subtle}
             />
-            <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>
-              {ai.modelName
-                ? `Loaded: ${ai.modelName}`
-                : onDevice
-                  ? 'On-device runtime is ready; the model name is not reported on this platform.'
-                  : 'No model is loaded yet.'}
-            </Text>
+            <Text style={[type.caption, { color: theme.muted, flex: 1 }]}>{nanoStatusText(ai.deviceStatus, ai.modelName)}</Text>
           </View>
+          {ai.deviceStatus === 'downloadable' && ai.downloadProgress == null && (
+            <Button label="Download Gemini Nano" icon="cloud-download-outline" theme={theme} onPress={ai.downloadModel} />
+          )}
           <Segmented<DeviceModel>
             theme={theme}
             value={ai.deviceModel}
@@ -151,8 +188,6 @@ export default function Settings() {
         </Card>
 
         <UpdatesCard theme={theme} />
-
-        <Button label="Done" theme={theme} variant="secondary" onPress={() => router.back()} />
       </ScrollView>
     </>
   );
@@ -162,5 +197,5 @@ const styles = StyleSheet.create({
   page: { padding: space(4), paddingBottom: space(12), gap: space(4), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space(3) },
   rowIcon: { width: 34, height: 34, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  status: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderWidth: 1, borderRadius: radius.md },
+  status: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(3), borderWidth: stroke, borderRadius: radius.md },
 });

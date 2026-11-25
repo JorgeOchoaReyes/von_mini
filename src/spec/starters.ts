@@ -137,6 +137,7 @@ export const STARTERS: SavedApp[] = [
         { type: 'choice', id: 'result', label: 'How did it go?', options: ['Done', 'Partly', 'Missed'] },
         { type: 'input', id: 'note', label: 'Anything in the way?', placeholder: 'Ran out of time', multiline: true },
         { type: 'ai', id: 'nudge', label: 'Encourage me', prompt: 'In two short sentences, respond kindly to someone who marked "{result}" on their habit "{habit}". If they left a note, address it: {note}' },
+        { type: 'reminder', id: 'check_in', label: 'Evening check-in', text: 'Did you keep your habit today?', times: ['20:00'] },
         { type: 'save', label: 'Log it' },
         { type: 'history', label: 'Past days' },
       ],

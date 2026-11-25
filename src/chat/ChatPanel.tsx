@@ -14,9 +14,9 @@ import { useAI } from '../ai/AIContext';
 import { quickEdits } from '../spec/edit';
 import type { AppSpec } from '../spec/types';
 import { listMessages, type ChatMessage } from '../storage/store';
-import { Chip, Composer, Icon, SourceBadge, StepList, TypingDots, type IconName } from '../ui/components';
+import { Chip, Composer, Icon, SourceBadge, SpeechBubble, StepList, TypingDots, type IconName } from '../ui/components';
 import { FadeUp } from '../ui/motion';
-import { MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
+import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
 import { chatSteps, isBusy, sendMessage, undoEdit, useChatVersion } from './chatJobs';
@@ -188,10 +188,12 @@ export function ChatPanel({
         {messages.map((m) => {
           if (m.role === 'user') {
             return (
-              <FadeUp key={m.id} distance={8} style={[styles.bubble, styles.mine, { backgroundColor: theme.accent }]}>
-                <Text selectable style={[type.body, { color: theme.onAccent }]}>
-                  {m.text}
-                </Text>
+              <FadeUp key={m.id} distance={8} style={styles.mine}>
+                <SpeechBubble theme={theme} side="right" fill={theme.accent}>
+                  <Text selectable style={[type.body, { color: theme.onAccent }]}>
+                    {m.text}
+                  </Text>
+                </SpeechBubble>
               </FadeUp>
             );
           }
@@ -200,13 +202,8 @@ export function ChatPanel({
           return (
             <FadeUp key={m.id} distance={8} style={styles.theirsRow}>
               <Avatar emoji={spec.emoji} theme={theme} />
-              <View
-                style={[
-                  styles.bubble,
-                  styles.theirs,
-                  { backgroundColor: theme.surface, borderColor: isError ? theme.danger : theme.border },
-                ]}
-              >
+              <SpeechBubble theme={theme} side="left" fill={isError ? alpha(theme.danger, 0.12) : theme.surface} style={styles.theirs}>
+                <View style={{ gap: space(2) }}>
                 {isEdit && (
                   <View style={styles.row}>
                     <Icon
@@ -253,7 +250,8 @@ export function ChatPanel({
                     )}
                   </View>
                 )}
-              </View>
+                </View>
+              </SpeechBubble>
             </FadeUp>
           );
         })}
@@ -261,7 +259,7 @@ export function ChatPanel({
         {busy && (
           <View style={styles.theirsRow}>
             <Avatar emoji={spec.emoji} theme={theme} />
-            <View style={[styles.bubble, styles.theirs, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <SpeechBubble theme={theme} side="left" fill={theme.surface} style={styles.theirs}>
               {steps.length ? (
                 <StepList steps={steps} theme={theme} />
               ) : (
@@ -272,7 +270,7 @@ export function ChatPanel({
                   </Text>
                 </View>
               )}
-            </View>
+            </SpeechBubble>
           </View>
         )}
       </ScrollView>
@@ -323,19 +321,19 @@ const styles = StyleSheet.create({
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2), justifyContent: 'center', marginTop: space(2) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   bubble: { maxWidth: '82%', borderRadius: radius.lg, paddingHorizontal: space(4), paddingVertical: space(3), gap: space(2) },
-  mine: { alignSelf: 'flex-end', borderBottomRightRadius: radius.sm },
+  mine: { alignSelf: 'flex-end', maxWidth: '86%' },
   theirsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space(2) },
-  theirs: { borderWidth: 1, borderBottomLeftRadius: radius.sm, flexShrink: 1 },
+  theirs: { flexShrink: 1 },
   avatar: { width: 28, height: 28, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   struck: { textDecorationLine: 'line-through', opacity: 0.6 },
   composerWrap: {
     padding: space(3),
     gap: space(2),
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: stroke,
     maxWidth: MAX_WIDTH,
     width: '100%',
     alignSelf: 'center',
   },
   chips: { gap: space(2), alignItems: 'center', paddingRight: space(4) },
-  diff: { borderWidth: 1, borderRadius: radius.md, padding: space(3), gap: space(2) },
+  diff: { borderWidth: stroke, borderRadius: radius.md, padding: space(3), gap: space(2) },
 });

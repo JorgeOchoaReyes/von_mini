@@ -2,7 +2,7 @@
  * An AppSpec is a small JSON description of a single-screen app. Gemini Nano can write one
  * reliably (structured output), and the runtime renders it from prebuilt building blocks.
  */
-export const COMPONENT_TYPES = ['heading', 'text', 'input', 'choice', 'ai', 'voice', 'save', 'history'] as const;
+export const COMPONENT_TYPES = ['heading', 'text', 'input', 'choice', 'ai', 'voice', 'reminder', 'save', 'history'] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
 export const ACCENTS = ['violet', 'blue', 'teal', 'green', 'amber', 'rose'] as const;
@@ -14,8 +14,10 @@ export interface SpecComponent {
   id?: string;
   /** Label for inputs, buttons, sections. */
   label?: string;
-  /** Static text for heading / text; for voice, the AI's opening line. */
+  /** Static text for heading / text; for voice, the AI's opening line; for reminder, the message. */
   text?: string;
+  /** For reminder: daily times as 24-hour "HH:MM". */
+  times?: string[];
   placeholder?: string;
   multiline?: boolean;
   /** Options for a choice. */
@@ -55,6 +57,7 @@ export const appSpecJsonSchema = {
           placeholder: { type: 'string' },
           multiline: { type: 'boolean' },
           options: { type: 'array', items: { type: 'string' } },
+          times: { type: 'array', items: { type: 'string' } },
           prompt: { type: 'string' },
         },
         required: ['type'],

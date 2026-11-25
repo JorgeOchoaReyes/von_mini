@@ -16,10 +16,10 @@ import { useAI } from '../ai/AIContext';
 import type { InferenceSource } from '../ai/types';
 import { fillTemplate } from '../spec/validate';
 import type { SpecComponent } from '../spec/types';
-import { Button, Icon, IconButton, SourceBadge } from '../ui/components';
+import { Button, Icon, IconButton, SourceBadge, SpeechBubble } from '../ui/components';
 import { haptics } from '../ui/haptics';
 import { Breathe, FadeUp, PopIn, Ripples, TypingDots, usePressScale, Waveform } from '../ui/motion';
-import { radius, space, type, type Theme } from '../ui/theme';
+import { stroke, radius, space, type, type Theme } from '../ui/theme';
 import { voiceReply, type Turn } from './cascade';
 import { setMuted, speak, stopSpeaking } from './tts';
 import { useListener, useSttSupport } from './useVoice';
@@ -234,29 +234,25 @@ export function VoiceChat({
 
       {turns.length > 0 && (
         <View style={{ gap: space(2) }}>
+          {/* Spoken turns as comic speech balloons, tails toward each speaker. */}
           {turns.map((t, i) => (
-            <FadeUp
-              key={i}
-              distance={8}
-              style={[
-                styles.bubble,
-                t.role === 'user'
-                  ? { alignSelf: 'flex-end', backgroundColor: theme.accent }
-                  : { alignSelf: 'flex-start', backgroundColor: theme.surfaceAlt },
-              ]}
-            >
-              {t.text ? (
-                <Text selectable style={[type.body, { color: t.role === 'user' ? theme.onAccent : theme.text }]}>
-                  {t.text}
-                </Text>
-              ) : (
-                <TypingDots color={theme.muted} />
-              )}
+            <FadeUp key={i} distance={8} style={{ alignSelf: t.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
+              <SpeechBubble theme={theme} side={t.role === 'user' ? 'right' : 'left'} fill={t.role === 'user' ? theme.accent : theme.surfaceAlt}>
+                {t.text ? (
+                  <Text selectable style={[type.body, { color: t.role === 'user' ? theme.onAccent : theme.text }]}>
+                    {t.text}
+                  </Text>
+                ) : (
+                  <TypingDots color={theme.muted} />
+                )}
+              </SpeechBubble>
             </FadeUp>
           ))}
           {phase === 'listening' && partial ? (
-            <View style={[styles.bubble, { alignSelf: 'flex-end', backgroundColor: theme.accentSoft }]}>
-              <Text style={[type.body, { color: theme.text, fontStyle: 'italic' }]}>{partial}</Text>
+            <View style={{ alignSelf: 'flex-end', maxWidth: '88%' }}>
+              <SpeechBubble theme={theme} side="right" fill={theme.accentSoft}>
+                <Text style={[type.body, { color: theme.text, fontStyle: 'italic' }]}>{partial}</Text>
+              </SpeechBubble>
             </View>
           ) : null}
         </View>
@@ -338,7 +334,7 @@ export function VoiceChat({
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: radius.lg, padding: space(4), gap: space(4) },
+  card: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(4) },
   header: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   badge: { width: 36, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '86%', borderRadius: radius.lg, paddingHorizontal: space(4), paddingVertical: space(3) },

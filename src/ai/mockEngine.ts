@@ -15,6 +15,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /calorie|food|meal|diet|nutrition|ate\b/i,
+    json: `{"name":"Calorie Tracker","emoji":"🥗","accent":"green","description":"Log meals in seconds and get a gentle daily nudge.","components":[
+      {"type":"input","id":"meal","label":"What did you eat?","placeholder":"Chicken salad and an apple"},
+      {"type":"choice","id":"when","label":"Which meal?","options":["Breakfast","Lunch","Dinner","Snack"]},
+      {"type":"ai","id":"estimate","label":"Estimate calories","prompt":"Estimate the calories in this {when}: {meal}. Reply with one number and a one-sentence breakdown."},
+      {"type":"reminder","id":"log_meals","label":"Meal reminders","text":"Log what you ate","times":["08:00","13:00","19:00"]},
+      {"type":"save","label":"Log meal"},{"type":"history","label":"Today"}]}`,
+  },
+  {
     match: /interview|tough question|practi[cs]e|rehears|role.?play|speak|voice|talk/i,
     json: `{"name":"Interview Coach","emoji":"🎙️","accent":"blue","description":"Rehearse hard questions out loud and get honest feedback.","components":[
       {"type":"input","id":"role","label":"What role is it for?","placeholder":"Product manager"},

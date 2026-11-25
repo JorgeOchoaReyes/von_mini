@@ -7,6 +7,7 @@ const KIND: Record<SpecComponent['type'], string> = {
   choice: 'choice',
   ai: 'AI button',
   voice: 'voice chat',
+  reminder: 'reminder',
   save: 'save button',
   history: 'history list',
 };
@@ -36,6 +37,10 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     else if ((old.label ?? old.text) !== (c.label ?? c.text)) out.push(`Renamed “${nameOf(old)}” to “${nameOf(c)}”.`);
     if (old.prompt !== c.prompt && c.prompt) out.push(`Changed what “${nameOf(c)}” asks the AI.`);
     if (c.type === 'voice' && old.type === 'voice' && old.text !== c.text) out.push(`Changed how “${nameOf(c)}” opens.`);
+    if (c.type === 'reminder' && old.type === 'reminder') {
+      if (old.text !== c.text) out.push('Changed the reminder message.');
+      if (JSON.stringify(old.times) !== JSON.stringify(c.times)) out.push(`Reminders now at ${(c.times ?? []).join(', ')}.`);
+    }
     if (JSON.stringify(old.options) !== JSON.stringify(c.options) && c.options) {
       out.push(`Updated the options for “${nameOf(c)}”.`);
     }

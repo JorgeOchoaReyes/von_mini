@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
 import { buildCustomHtml } from '../../ai/hybrid';
+import { cancelRemindersForApp } from '../../alerts/notifications';
 import { firebaseConfigured } from '../../firebase/app';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { publishApp } from '../../share/share';
@@ -228,6 +229,7 @@ export default function AppScreen() {
   const remove = () => {
     if (!app) return;
     const go = async () => {
+      await cancelRemindersForApp(app.id);
       await deleteApp(app.id);
       router.back();
     };
