@@ -26,7 +26,8 @@ const server = dist.startsWith('http') ? null : createServer((req, res) => {
 }).listen(4173);
 
 const browser = await chromium.launch();
-const page = await browser.newPage();
+const context = await browser.newContext();
+const page = await context.newPage();
 const logs = [];
 page.on('console', (m) => (m.type() === 'error' || m.type() === 'warning') && logs.push(m.text().slice(0, 300)));
 page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
@@ -119,9 +120,40 @@ const coded = await pool(htmlIdeas, 2, async (h) => {
   return { request: h, ok: r.ok, ms: r.ms, error: r.ok ? undefined : r.error, issues };
 });
 
+// Render every design the model made in the real app screen: it must show, with no errors.
+const designs = [
+  ...built.filter((b) => b.ok).map((b) => ({ label: b.request, spec: b.value.spec })),
+  ...chatted.filter((c) => c.ok && c.value.kind === 'edit').map((c) => ({ label: `${c.base} + "${c.message}"`, spec: c.value.spec })),
+];
+console.log(`\nRendering ${designs.length} designs…`);
+const viewer = await context.newPage(); // same storage as the eval page
+await viewer.setViewportSize({ width: 412, height: 915 });
+const viewErrors = [];
+viewer.on('pageerror', (e) => viewErrors.push(e.message));
+const rendered = [];
+for (const [i, d] of designs.entries()) {
+  const id = `eval-${i}`;
+  await call('save', d.spec, id);
+  const before = viewErrors.length;
+  let shown = false;
+  try {
+    await viewer.goto(`${base}/app/${id}`, { waitUntil: 'load', timeout: 60000 });
+    await viewer.getByText(d.spec.name, { exact: false }).first().waitFor({ timeout: 20000 });
+    shown = true;
+    await viewer.waitForTimeout(400);
+  } catch {
+    // reported below
+  }
+  const errors = viewErrors.slice(before);
+  const issues = [...(shown ? [] : ['app did not show']), ...errors.map((e) => `error: ${e.slice(0, 160)}`)];
+  if (issues.length) console.log(`FAIL render  ${d.label.slice(0, 70)}  ⚠ ${issues.join('; ')}`);
+  rendered.push({ label: d.label, ok: !issues.length, issues: [] , error: issues.join('; ') || undefined });
+}
+console.log(`Rendered ${rendered.filter((r) => r.ok).length}/${rendered.length} cleanly.`);
+
 const count = (xs) => ({ total: xs.length, ok: xs.filter((x) => x.ok && !x.issues.length).length, warn: xs.filter((x) => x.ok && x.issues.length).length, fail: xs.filter((x) => !x.ok).length });
-const summary = { builds: count(built), chats: count(chatted), html: count(coded) };
-writeFileSync(join(outDir, 'results.json'), JSON.stringify({ summary, built, chatted, coded, logs: logs.slice(0, 200) }, null, 2));
+const summary = { builds: count(built), chats: count(chatted), html: count(coded), render: count(rendered) };
+writeFileSync(join(outDir, 'results.json'), JSON.stringify({ summary, built, chatted, coded, rendered, logs: logs.slice(0, 200) }, null, 2));
 writeFileSync(join(outDir, 'specs.json'), JSON.stringify(built.filter((b) => b.ok).map((b) => b.value.spec).concat(chatted.filter((c) => c.ok && c.value.kind === 'edit').map((c) => c.value.spec)), null, 2));
 const md = [`## Engine eval`, '', '| | total | ok | warnings | failed |', '|---|---|---|---|---|', ...Object.entries(summary).map(([k, v]) => `| ${k} | ${v.total} | ${v.ok} | ${v.warn} | ${v.fail} |`)].join('\n');
 console.log(`\n${md}`);

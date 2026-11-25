@@ -6,6 +6,7 @@
 import { engine } from '../ai/engineSelect';
 import { buildAppProgressive, buildCustomHtml, chatAboutApp, type RouteContext } from '../ai/hybrid';
 import type { AppSpec } from '../spec/types';
+import { saveApp } from '../storage/store';
 
 const evalEnabled = process.env.EXPO_PUBLIC_ENGINE_EVAL === 'true';
 
@@ -30,6 +31,11 @@ export function installEvalHook() {
       const t0 = Date.now();
       const r = await timed(async () => chatAboutApp(spec, history, message, await ctx()));
       return { ...r, ms: Date.now() - t0 };
+    },
+    /** Saves a design as an app on this device, so the script can open it and check it renders. */
+    async save(spec: AppSpec, id: string) {
+      await saveApp({ id, request: spec.name, spec, builtWith: 'in_cloud', createdAt: Date.now(), updatedAt: Date.now() });
+      return id;
     },
     async html(request: string, spec: AppSpec) {
       const t0 = Date.now();
