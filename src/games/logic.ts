@@ -438,3 +438,367 @@ export function flyerTick(s: FlyerState, dt: number, speed = 1, rng: Rng = Math.
   );
   return { ...s, y, vy, walls, nextId, score, over: hitWall || y > 1 - FLYER_R || y < FLYER_R };
 }
+
+/* ------------------------------------------------------------------ *
+ * Shared by the arcade games below: lives, levels and a short grace
+ * period after a hit, so one mistake can't cost two lives.
+ * ------------------------------------------------------------------ */
+
+export const START_LIVES = 3;
+const GRACE = 1;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/* ------------------------------------------------------------------ *
+ * Bricks: bounce the ball off the paddle to break every brick.
+ * ------------------------------------------------------------------ */
+
+export const BRICK_COLS = 8;
+export const BRICK_ROWS = 5;
+export const BRICK_TOP = 0.1;
+export const BRICK_H = 0.045;
+export const PADDLE_Y = 0.92;
+export const PADDLE_W = 0.24;
+export const BALL_R = 0.018;
+
+export interface Ball {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+export interface BricksState {
+  paddle: number;
+  ball: Ball;
+  /** The ball rests on the paddle until `wait` runs out (after a lost ball or a new level). */
+  stuck: boolean;
+  wait: number;
+  /** Row-major hit points per brick; 0 is gone. */
+  bricks: number[];
+  lives: number;
+  level: number;
+  score: number;
+  over: boolean;
+}
+
+/** Brick layout for a level: from level 3, the top rows take two hits. */
+export function brickLayout(level: number): number[] {
+  return Array.from({ length: BRICK_ROWS * BRICK_COLS }, (_, i) => (level >= 3 && Math.floor(i / BRICK_COLS) < Math.min(BRICK_ROWS, level - 2) ? 2 : 1));
+}
+
+export function newBricks(): BricksState {
+  return {
+    paddle: 0.5,
+    ball: { x: 0.5, y: PADDLE_Y - BALL_R, vx: 0, vy: 0 },
+    stuck: true,
+    wait: 0.8,
+    bricks: brickLayout(1),
+    lives: START_LIVES,
+    level: 1,
+    score: 0,
+    over: false,
+  };
+}
+
+const ballSpeed = (level: number, speed: number) => 0.6 * (1 + 0.1 * (level - 1)) * speed;
+
+export function bricksMove(s: BricksState, dx: number): BricksState {
+  if (s.over) return s;
+  return { ...s, paddle: clamp(s.paddle + dx, PADDLE_W / 2, 1 - PADDLE_W / 2) };
+}
+
+export function bricksTick(s: BricksState, dt: number, speed = 1, rng: Rng = Math.random): BricksState {
+  if (s.over) return s;
+  const t = Math.min(dt, 0.04);
+  if (s.stuck) {
+    const wait = s.wait - t;
+    const ball = { ...s.ball, x: s.paddle, y: PADDLE_Y - BALL_R };
+    if (wait > 0) return { ...s, wait, ball };
+    const v = ballSpeed(s.level, speed);
+    const angle = (rng() - 0.5) * 0.9; // radians off vertical
+    return { ...s, stuck: false, wait: 0, ball: { ...ball, vx: Math.sin(angle) * v, vy: -Math.cos(angle) * v } };
+  }
+  let { x, y, vx, vy } = s.ball;
+  x += vx * t;
+  y += vy * t;
+  if (x < BALL_R) [x, vx] = [BALL_R, Math.abs(vx)];
+  if (x > 1 - BALL_R) [x, vx] = [1 - BALL_R, -Math.abs(vx)];
+  if (y < BALL_R) [y, vy] = [BALL_R, Math.abs(vy)];
+  // Paddle: where it hits sets the angle, like aiming.
+  if (vy > 0 && y + BALL_R >= PADDLE_Y && y < PADDLE_Y + 0.03 && Math.abs(x - s.paddle) <= PADDLE_W / 2 + BALL_R) {
+    const v = Math.hypot(vx, vy);
+    const off = clamp((x - s.paddle) / (PADDLE_W / 2), -1, 1);
+    // Never straight up: a dead-centre hit would bounce in the same column forever.
+    const sign = off !== 0 ? Math.sign(off) : vx >= 0 ? 1 : -1;
+    const angle = sign * Math.max(0.22, Math.abs(off) * 1.05);
+    vx = Math.sin(angle) * v;
+    vy = -Math.cos(angle) * v;
+    y = PADDLE_Y - BALL_R;
+  }
+  let { bricks, score, level, lives } = s;
+  // One brick per frame: the cell the ball is in.
+  const col = Math.floor(x * BRICK_COLS);
+  const row = Math.floor((y - BRICK_TOP) / BRICK_H);
+  if (row >= 0 && row < BRICK_ROWS && col >= 0 && col < BRICK_COLS && bricks[row * BRICK_COLS + col] > 0) {
+    bricks = [...bricks];
+    bricks[row * BRICK_COLS + col]--;
+    score += 10 * level;
+    vy = -vy;
+  }
+  if (y > 1) {
+    lives--;
+    if (lives <= 0) return { ...s, lives: 0, over: true, ball: { x, y, vx, vy }, bricks, score };
+    return { ...s, lives, stuck: true, wait: 0.8, ball: { x: s.paddle, y: PADDLE_Y - BALL_R, vx: 0, vy: 0 }, bricks, score };
+  }
+  if (bricks.every((b) => b === 0)) {
+    level++;
+    return { ...s, level, score: score + 100 * (level - 1), bricks: brickLayout(level), stuck: true, wait: 1, ball: { x: s.paddle, y: PADDLE_Y - BALL_R, vx: 0, vy: 0 } };
+  }
+  return { ...s, ball: { x, y, vx, vy }, bricks, score };
+}
+
+/* ------------------------------------------------------------------ *
+ * Shooter: your ship fires on its own; slide it to hit what comes down.
+ * ------------------------------------------------------------------ */
+
+export const SHIP_Y = 0.88;
+
+export interface Shot {
+  id: number;
+  x: number;
+  y: number;
+}
+export interface Enemy {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+}
+
+export interface ShooterState {
+  ship: number;
+  shots: Shot[];
+  enemies: Enemy[];
+  lives: number;
+  level: number;
+  score: number;
+  kills: number;
+  over: boolean;
+  fireAcc: number;
+  spawnAcc: number;
+  /** Seconds of protection left after a hit. */
+  grace: number;
+  nextId: number;
+}
+
+export function newShooter(): ShooterState {
+  return { ship: 0.5, shots: [], enemies: [], lives: START_LIVES, level: 1, score: 0, kills: 0, over: false, fireAcc: 0, spawnAcc: 0.6, grace: 0, nextId: 1 };
+}
+
+export function shooterMove(s: ShooterState, dx: number): ShooterState {
+  if (s.over) return s;
+  return { ...s, ship: clamp(s.ship + dx, 0.06, 0.94) };
+}
+
+export function shooterTick(s: ShooterState, dt: number, speed = 1, rng: Rng = Math.random): ShooterState {
+  if (s.over) return s;
+  const t = Math.min(dt, 0.05);
+  let { nextId, score, kills, level, lives, grace } = s;
+  grace = Math.max(0, grace - t);
+  let shots = s.shots.map((b) => ({ ...b, y: b.y - 1.4 * t })).filter((b) => b.y > -0.05);
+  let fireAcc = s.fireAcc + t;
+  if (fireAcc >= 0.28) {
+    fireAcc = 0;
+    shots.push({ id: nextId++, x: s.ship, y: SHIP_Y - 0.04 });
+  }
+  const fall = (0.12 + 0.02 * level) * speed;
+  let enemies = s.enemies.map((e) => {
+    let x = e.x + e.vx * t;
+    let vx = e.vx;
+    if (x < 0.05 || x > 0.95) [x, vx] = [clamp(x, 0.05, 0.95), -vx];
+    return { ...e, x, vx, y: e.y + fall * t };
+  });
+  let spawnAcc = s.spawnAcc - t;
+  if (spawnAcc <= 0) {
+    spawnAcc = Math.max(0.35, 1.1 - 0.08 * level) / speed;
+    enemies.push({ id: nextId++, x: 0.08 + rng() * 0.84, y: -0.04, vx: (rng() < 0.5 ? -1 : 1) * (0.05 + rng() * 0.15) });
+  }
+  // Shots against enemies.
+  const hitShots = new Set<number>();
+  enemies = enemies.filter((e) => {
+    const b = shots.find((sh) => !hitShots.has(sh.id) && Math.abs(sh.x - e.x) < 0.06 && Math.abs(sh.y - e.y) < 0.04);
+    if (!b) return true;
+    hitShots.add(b.id);
+    score += 10 * level;
+    kills++;
+    if (kills % 15 === 0) level++;
+    return false;
+  });
+  shots = shots.filter((b) => !hitShots.has(b.id));
+  // Enemies that reach you, or get past.
+  let hit = false;
+  enemies = enemies.filter((e) => {
+    const rams = e.y > SHIP_Y - 0.04 && e.y < SHIP_Y + 0.04 && Math.abs(e.x - s.ship) < 0.08;
+    if (rams || e.y > 0.97) {
+      hit = true;
+      return false;
+    }
+    return true;
+  });
+  if (hit && grace === 0) {
+    lives--;
+    grace = GRACE;
+  }
+  return { ...s, shots, enemies, nextId, score, kills, level, lives, grace, fireAcc, spawnAcc, over: lives <= 0 };
+}
+
+/* ------------------------------------------------------------------ *
+ * Catch: slide the basket under the good things, away from the bad.
+ * ------------------------------------------------------------------ */
+
+export const BASKET_Y = 0.9;
+
+export interface Falling {
+  id: number;
+  x: number;
+  y: number;
+  bad: boolean;
+}
+
+export interface CatchState {
+  basket: number;
+  items: Falling[];
+  lives: number;
+  level: number;
+  score: number;
+  caught: number;
+  over: boolean;
+  spawnAcc: number;
+  nextId: number;
+  /** Set for one frame when something is caught or missed, for haptics. */
+  event: 'catch' | 'ouch' | null;
+}
+
+export function newCatch(): CatchState {
+  return { basket: 0.5, items: [], lives: START_LIVES, level: 1, score: 0, caught: 0, over: false, spawnAcc: 0.5, nextId: 1, event: null };
+}
+
+export function catchMove(s: CatchState, dx: number): CatchState {
+  if (s.over) return s;
+  return { ...s, basket: clamp(s.basket + dx, 0.08, 0.92) };
+}
+
+export function catchTick(s: CatchState, dt: number, speed = 1, rng: Rng = Math.random): CatchState {
+  if (s.over) return s;
+  const t = Math.min(dt, 0.05);
+  let { nextId, score, caught, level, lives } = s;
+  let event: CatchState['event'] = null;
+  const fall = (0.35 + 0.04 * level) * speed;
+  const items: Falling[] = [];
+  for (const it of s.items) {
+    const y = it.y + fall * t;
+    if (y >= BASKET_Y - 0.03 && y <= BASKET_Y + 0.03 && Math.abs(it.x - s.basket) < 0.11) {
+      if (it.bad) {
+        lives--;
+        event = 'ouch';
+      } else {
+        score += 10 * level;
+        caught++;
+        event = 'catch';
+        if (caught % 10 === 0) level++;
+      }
+      continue;
+    }
+    if (y > 1.02) {
+      // Letting a good one drop costs a life, arcade style.
+      if (!it.bad) {
+        lives--;
+        event = 'ouch';
+      }
+      continue;
+    }
+    items.push({ ...it, y });
+  }
+  let spawnAcc = s.spawnAcc - t;
+  if (spawnAcc <= 0) {
+    spawnAcc = Math.max(0.35, 0.9 - 0.05 * level) / speed;
+    items.push({ id: nextId++, x: 0.08 + rng() * 0.84, y: -0.04, bad: rng() < Math.min(0.4, 0.18 + 0.02 * level) });
+  }
+  return { ...s, items, nextId, score, caught, level, lives, spawnAcc, event, over: lives <= 0 };
+}
+
+/* ------------------------------------------------------------------ *
+ * Whack: tap things as they pop up, before they hide again.
+ * ------------------------------------------------------------------ */
+
+export const HOLES = 9;
+
+export interface Hole {
+  kind: 'none' | 'good' | 'bad';
+  /** Seconds until it hides. */
+  t: number;
+  id: number;
+}
+
+export interface WhackState {
+  holes: Hole[];
+  lives: number;
+  level: number;
+  score: number;
+  hits: number;
+  over: boolean;
+  spawnAcc: number;
+  nextId: number;
+}
+
+export function newWhack(): WhackState {
+  return {
+    holes: Array.from({ length: HOLES }, () => ({ kind: 'none' as const, t: 0, id: 0 })),
+    lives: START_LIVES,
+    level: 1,
+    score: 0,
+    hits: 0,
+    over: false,
+    spawnAcc: 0.8,
+    nextId: 1,
+  };
+}
+
+export function whackTick(s: WhackState, dt: number, speed = 1, rng: Rng = Math.random): WhackState {
+  if (s.over) return s;
+  const t = Math.min(dt, 0.05);
+  let { lives, nextId } = s;
+  const holes = s.holes.map((h) => {
+    if (h.kind === 'none') return h;
+    const left = h.t - t;
+    if (left > 0) return { ...h, t: left };
+    // A good one that got away costs a life; a bad one hiding is fine.
+    if (h.kind === 'good') lives--;
+    return { kind: 'none' as const, t: 0, id: h.id };
+  });
+  let spawnAcc = s.spawnAcc - t;
+  if (spawnAcc <= 0) {
+    // Level 1 is forgiving (long-lived, spaced out); each level is a little faster.
+    spawnAcc = Math.max(0.4, 1.15 - 0.07 * s.level) / speed;
+    const empty = holes.map((h, i) => (h.kind === 'none' ? i : -1)).filter((i) => i >= 0);
+    if (empty.length) {
+      const i = empty[Math.floor(rng() * empty.length)];
+      holes[i] = { kind: rng() < 0.15 ? 'bad' : 'good', t: Math.max(0.7, 2 - 0.12 * s.level) / speed, id: nextId++ };
+    }
+  }
+  return { ...s, holes, lives, nextId, spawnAcc, over: lives <= 0 };
+}
+
+export function whackHit(s: WhackState, i: number): WhackState {
+  if (s.over || !s.holes[i] || s.holes[i].kind === 'none') return s;
+  const holes = [...s.holes];
+  const kind = holes[i].kind;
+  holes[i] = { kind: 'none', t: 0, id: holes[i].id };
+  if (kind === 'bad') {
+    const lives = s.lives - 1;
+    return { ...s, holes, lives, over: lives <= 0 };
+  }
+  const hits = s.hits + 1;
+  return { ...s, holes, hits, score: s.score + 10 * s.level, level: 1 + Math.floor(hits / 10) };
+}

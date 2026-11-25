@@ -33,7 +33,7 @@ import {
   setUnit,
   toggleMultiline,
 } from '../spec/edit';
-import { GAME_INFO, type GameKind } from '../games/GamePlayer';
+import { GAME_INFO, GAME_KINDS } from '../games/GamePlayer';
 import { OP_LABEL, RANGE_LABEL, STAT_OPS, STAT_RANGES } from '../spec/stats';
 import { ACCENTS, INPUT_KINDS, type Accent, type AppSpec, type ComponentType, type InputKind } from '../spec/types';
 import { Button, Card, Chip, Icon, IconButton, type IconName } from '../ui/components';
@@ -343,7 +343,7 @@ function BlockFields({
           <Pick<NonNullable<typeof c.game>>
             label="Game"
             value={c.game}
-            options={(Object.keys(GAME_INFO) as GameKind[]).map((g) => ({ value: g, label: GAME_INFO[g].name }))}
+            options={GAME_KINDS.map((g) => ({ value: g, label: GAME_INFO[g].name }))}
             onChange={(g) => emit(setGame(spec, index, { game: g }), `Made “${title}” a ${GAME_INFO[g].name.toLowerCase()} game.`)}
             theme={theme}
           />
@@ -358,24 +358,24 @@ function BlockFields({
             onChange={(sp) => emit(setGame(spec, index, { speed: sp }), `Changed the speed of “${title}”.`)}
             theme={theme}
           />
-          {c.game !== 'blocks' && (
+          {GAME_INFO[c.game ?? 'runner'].player ? (
             <Field
-              label={c.game === 'snake' ? 'Food (emoji)' : c.game === 'flyer' ? 'Flyer (emoji)' : 'Runner (emoji)'}
-              value={(c.game === 'snake' ? c.item : c.player) ?? ''}
-              onChange={(v) => emit(setGame(spec, index, c.game === 'snake' ? { item: v } : { player: v }), `Changed the look of “${title}”.`)}
-              placeholder={c.game === 'snake' ? GAME_INFO.snake.item : GAME_INFO[c.game ?? 'runner'].player}
+              label="Player (emoji)"
+              value={c.player ?? ''}
+              onChange={(v) => emit(setGame(spec, index, { player: v }), `Changed the look of “${title}”.`)}
+              placeholder={GAME_INFO[c.game ?? 'runner'].player}
               theme={theme}
             />
-          )}
-          {c.game === 'runner' && (
+          ) : null}
+          {GAME_INFO[c.game ?? 'runner'].item ? (
             <Field
-              label="Obstacle (emoji)"
+              label={c.game === 'snake' ? 'Food (emoji)' : c.game === 'catch' ? 'Good catch (emoji)' : c.game === 'whack' ? 'Target (emoji)' : 'Enemy or obstacle (emoji)'}
               value={c.item ?? ''}
               onChange={(v) => emit(setGame(spec, index, { item: v }), `Changed the look of “${title}”.`)}
-              placeholder={GAME_INFO.runner.item}
+              placeholder={GAME_INFO[c.game ?? 'runner'].item}
               theme={theme}
             />
-          )}
+          ) : null}
         </>
       )}
 

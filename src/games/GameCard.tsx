@@ -11,7 +11,7 @@ import { entryNumber } from '../spec/stats';
 import type { Entry } from '../storage/store';
 import { Button, Card, Icon } from '../ui/components';
 import { radius, space, type, type Theme } from '../ui/theme';
-import { GAME_INFO, GamePlayer, type GameKind } from './GamePlayer';
+import { GAME_INFO, GamePlayer, type GameKind, type HighScore } from './GamePlayer';
 
 export function GameCard({
   c,
@@ -22,21 +22,24 @@ export function GameCard({
   c: SpecComponent;
   theme: Theme;
   entries: Entry[];
-  onFinish(score: number): Promise<void> | void;
+  onFinish(score: number, by?: string): Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const kind = (c.game ?? 'runner') as GameKind;
   const info = GAME_INFO[kind];
+  // Every finished run, best first; initials are saved next to the score as "<id>_by".
   const scores = useMemo(
     () =>
       entries
-        .map((e) => entryNumber(e, c.id))
-        .filter((n): n is number => n !== null)
-        .sort((a, b) => b - a),
+        .flatMap((e): HighScore[] => {
+          const score = entryNumber(e, c.id);
+          return score === null ? [] : [{ score, by: e.values[`${c.id}_by`] || undefined }];
+        })
+        .sort((a, b) => b.score - a.score),
     [entries, c.id],
   );
-  const best = scores.length ? scores[0] : null;
-  const emoji = c.player || info.player || (kind === 'blocks' ? '🧱' : '🐍');
+  const best = scores.length ? scores[0].score : null;
+  const emoji = c.player || info.icon;
 
   return (
     <Card theme={theme} style={{ gap: space(3) }}>
@@ -57,7 +60,7 @@ export function GameCard({
         <View style={styles.row}>
           <Icon name="trophy-outline" size={16} color={theme.accent} />
           <Text style={[type.label, { color: theme.text }]} accessibilityLabel={`Best score ${best ?? 'none yet'}`}>
-            {best === null ? 'No score yet' : `Best ${best}`}
+            {best === null ? 'No score yet' : `Best ${best}${scores[0].by ? ` · ${scores[0].by}` : ''}`}
           </Text>
         </View>
         <Text style={[type.caption, { color: theme.subtle }]}>

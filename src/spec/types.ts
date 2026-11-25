@@ -50,7 +50,7 @@ export interface SpecComponent {
   /** For history: a field whose numbers are totalled per day, shown on each day's header. */
   total?: string;
   /** game: which built-in game, how fast, and the emoji for the player and the things around it. */
-  game?: 'blocks' | 'runner' | 'snake' | 'flyer';
+  game?: 'blocks' | 'runner' | 'snake' | 'flyer' | 'bricks' | 'shooter' | 'catch' | 'whack';
   speed?: 'slow' | 'normal' | 'fast';
   player?: string;
   item?: string;
@@ -111,7 +111,7 @@ export const appSpecJsonSchema = {
           days: { type: 'number' },
           groupBy: { type: 'string', enum: ['day'] },
           total: { type: 'string' },
-          game: { type: 'string', enum: ['blocks', 'runner', 'snake', 'flyer'] },
+          game: { type: 'string', enum: ['blocks', 'runner', 'snake', 'flyer', 'bricks', 'shooter', 'catch', 'whack'] },
           speed: { type: 'string', enum: ['slow', 'normal', 'fast'] },
           player: { type: 'string' },
           item: { type: 'string' },

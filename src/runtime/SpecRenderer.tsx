@@ -268,7 +268,12 @@ export function SpecRenderer({
   const layout = useMemo(() => sections(spec.components), [spec.components]);
   const labels = useMemo(
     // A game's entries hold its score, so they read "Score" rather than the button's label.
-    () => Object.fromEntries(spec.components.filter((c) => c.id).map((c) => [c.id!, c.type === 'game' ? 'Score' : (c.label ?? c.id!)])),
+    () =>
+      Object.fromEntries(
+        spec.components
+          .filter((c) => c.id)
+          .flatMap((c) => (c.type === 'game' ? [[c.id!, 'Score'], [`${c.id}_by`, 'Player']] : [[c.id!, c.label ?? c.id!]])),
+      ),
     [spec.components],
   );
   const fieldIds = useMemo(
@@ -628,8 +633,8 @@ export function SpecRenderer({
             c={c}
             theme={theme}
             entries={entries}
-            onFinish={async (score) => {
-              setEntries(await addEntry(appId, { [c.id!]: String(score) }));
+            onFinish={async (score, by) => {
+              setEntries(await addEntry(appId, { [c.id!]: String(score), ...(by ? { [`${c.id}_by`]: by } : {}) }));
             }}
           />
         );

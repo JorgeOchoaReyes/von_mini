@@ -15,6 +15,28 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Canned specs so the mock produces believable apps for the demo flows. */
 const LIBRARY: { match: RegExp; json: string }[] = [
   {
+    match: /shooter|invader|space|alien/i,
+    json: `{"name":"Fish Patrol","emoji":"🐱","accent":"violet","description":"Steer your ship and stop the invaders.","components":[
+      {"type":"game","id":"patrol","label":"Fish Patrol","game":"shooter","player":"🐱","item":"🐟"},
+      {"type":"stat","id":"best","label":"Best","field":"patrol","op":"max","range":"all"},
+      {"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /brick|breakout|paddle/i,
+    json: `{"name":"Brick Bash","emoji":"🏓","accent":"rose","description":"Bounce the ball and break every brick.","components":[
+      {"type":"game","id":"bash","label":"Brick Bash","game":"bricks"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /catch|basket|collect/i,
+    json: `{"name":"Fruit Fall","emoji":"🧺","accent":"teal","description":"Catch the fruit, dodge the bombs.","components":[
+      {"type":"game","id":"fall","label":"Fruit Fall","game":"catch"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
+    match: /whack|mole|bop|reflex/i,
+    json: `{"name":"Hamster Bop","emoji":"🐹","accent":"amber","description":"Bop them as they pop up.","components":[
+      {"type":"game","id":"bop","label":"Hamster Bop","game":"whack"},{"type":"history","label":"Scores"}]}`,
+  },
+  {
     match: /tetris|falling block|blocks? game|stack/i,
     json: `{"name":"Block Drop","emoji":"🧱","accent":"violet","description":"Stack falling blocks and clear rows.","components":[
       {"type":"game","id":"drop","label":"Block Drop","game":"blocks","speed":"normal"},

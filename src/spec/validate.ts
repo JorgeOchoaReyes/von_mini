@@ -58,7 +58,11 @@ const GAME_ALIASES: Record<string, SpecComponent['game']> = {
   blocks: 'blocks', block: 'blocks', fallingblocks: 'blocks', tetris: 'blocks', puzzle: 'blocks', stack: 'blocks', stacker: 'blocks', tiles: 'blocks',
   runner: 'runner', lanerunner: 'runner', endlessrunner: 'runner', run: 'runner', dodge: 'runner', dodger: 'runner', subwaysurfers: 'runner', subway: 'runner', racer: 'runner', racing: 'runner', lanes: 'runner',
   snake: 'snake', worm: 'snake',
-  flyer: 'flyer', flappy: 'flyer', flappybird: 'flyer', fly: 'flyer', bird: 'flyer', jump: 'flyer', jumper: 'flyer', tap: 'flyer',
+  flyer: 'flyer', flappy: 'flyer', flappybird: 'flyer', fly: 'flyer', bird: 'flyer', jump: 'flyer', jumper: 'flyer',
+  bricks: 'bricks', brickbreaker: 'bricks', breakout: 'bricks', arkanoid: 'bricks', paddle: 'bricks', pong: 'bricks', ball: 'bricks',
+  shooter: 'shooter', spaceshooter: 'shooter', spaceinvaders: 'shooter', invaders: 'shooter', galaga: 'shooter', asteroids: 'shooter', shmup: 'shooter', space: 'shooter', aliens: 'shooter',
+  catch: 'catch', catcher: 'catch', basket: 'catch', collect: 'catch', fruit: 'catch', falling: 'catch',
+  whack: 'whack', whackamole: 'whack', mole: 'whack', tap: 'whack', tapper: 'whack', reflex: 'whack', reaction: 'whack', popup: 'whack',
 };
 const SPEED_ALIASES: Record<string, SpecComponent['speed']> = {
   slow: 'slow', easy: 'slow', relaxed: 'slow', chill: 'slow', normal: 'normal', medium: 'normal', fast: 'fast', hard: 'fast', quick: 'fast', insane: 'fast',
