@@ -94,6 +94,7 @@ export const HTML_SYSTEM = `You write one self-contained mobile-first HTML file 
 Hard rules:
 - Output ONLY the HTML document, starting with <!doctype html>.
 - No external resources: no <script src>, no CDN, no fonts, no images from URLs, no fetch/XMLHttpRequest/WebSocket.
+- Everything the person taps (a board cell, a card, a key) is a <button>, not a div with a click handler, so it works with a keyboard and a screen reader.
 - Inline all JS. von mini's design system is already loaded (the app's own theme, light or dark): build the whole look from it so the app looks like the rest of von mini.
   Classes: layout .vm-stack .vm-row .vm-grid · panels .vm-hero .vm-card · text .vm-title .vm-headline .vm-overline .vm-muted · a big number .vm-stat
   forms .vm-label .vm-input (inputs, textareas and selects are styled already) · buttons .vm-btn .vm-btn-secondary .vm-btn-block (plain <button> is styled too) · .vm-chip (toggle aria-pressed) · lists .vm-list > li · AI output .vm-result · .vm-badge .vm-empty .vm-spinner

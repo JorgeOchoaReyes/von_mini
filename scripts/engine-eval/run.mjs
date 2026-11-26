@@ -119,14 +119,22 @@ const coded = await pool(htmlIdeas, 3, async (h) => {
   const issues = [];
   if (r.ok) {
     if (/<script[^>]+src=|https?:\/\/(?!www\.w3\.org)/i.test(r.value)) issues.push('external resource');
-    if (/localStorage|alert\(/.test(r.value)) issues.push('uses localStorage/alert');
+    // localStorage and alert() are fine: the runtime bridge persists one and turns the other into a toast.
     if (!/<script/i.test(r.value)) issues.push('no script');
     // It should be drawn with von mini's theme, not its own look.
     const vm = (r.value.match(/\bvm-[a-z-]+/g) ?? []).length;
     if (vm < 4) issues.push(`barely uses the design system (${vm} vm- classes)`);
-    const ownColours = (r.value.match(/(?<![\w-])(#[0-9a-f]{3,8}\b|rgba?\(|hsla?\()/gi) ?? []).length;
-    if (ownColours > 6) issues.push(`${ownColours} hard-coded colours`);
-    if (/font-family\s*:(?![^;]*var\(--vm-)/i.test(r.value)) issues.push('sets its own font');
+    // Neutral colours of its own (white panels, black text) are what break dark mode; game pieces in
+    // real colours are fine. Only CSS counts: script (canvas drawing) sets its own colours.
+    const css = [...r.value.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>|\sstyle\s*=\s*"([^"]*)"/gi)].map((m) => m[1] ?? m[2]).join('\n');
+    const neutral = (css.match(/#[0-9a-f]{3}\b|#[0-9a-f]{6}\b|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|\b(white|black)\b/gi) ?? []).filter((c) => {
+      if (/^(white|black)$/i.test(c)) return true;
+      const h = c.startsWith('#') ? (c.length === 4 ? c.slice(1).split('').map((x) => x + x).join('') : c.slice(1)) : null;
+      const [r1, g1, b1] = h ? [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) : c.match(/\d+/g).map(Number);
+      return Math.max(r1, g1, b1) - Math.min(r1, g1, b1) <= 16;
+    }).length;
+    if (neutral > 0) issues.push(`${neutral} neutral colours of its own (breaks dark mode)`);
+    if (/font-family\s*:(?![^;]*var\(--vm-)/i.test(css)) issues.push('sets its own font');
   }
   console.log(`${r.ok ? (issues.length ? 'WARN' : 'OK  ') : 'FAIL'} ${String(Math.round(r.ms / 1000)).padStart(3)}s  ${h}${r.ok ? `  (${r.value.length} chars)` : `  ✗ ${r.error}`}${issues.length ? `  ⚠ ${issues.join('; ')}` : ''}`);
   if (r.ok) writeFileSync(join(outDir, `${h.replace(/[^a-z0-9]+/gi, '-')}.html`), r.value);
@@ -161,7 +169,13 @@ for (const [i, x] of coded.entries()) {
       const kind = await input.getAttribute('type');
       await input.fill(kind === 'number' ? '3' : 'test 3').catch(() => {});
     }
-    const buttons = (await frame.locator('button, .vm-btn, [role=button]').all()).slice(0, 12);
+    // Buttons first, then anything else that looks tappable (a board cell drawn as a div).
+    const tappable = await frame.locator('button, .vm-btn, [role=button]').all();
+    for (const el of await frame.locator('div, span, li, td').all()) {
+      if (tappable.length >= 12) break;
+      if ((await el.evaluate((n) => getComputedStyle(n).cursor === 'pointer' && !n.closest('button')).catch(() => false))) tappable.push(el);
+    }
+    const buttons = tappable.slice(0, 12);
     let dead = 0;
     for (const btn of buttons) {
       if (!(await btn.isVisible().catch(() => false))) continue;
