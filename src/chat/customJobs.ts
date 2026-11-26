@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { backgroundWork } from '../ai/background';
 import { buildCustomHtml, local, type RouteContext } from '../ai/hybrid';
 import { notifyIfInBackground } from '../alerts/notifications';
-import { getApp, saveApp, type SavedApp } from '../storage/store';
+import { getApp, pushVersion, saveApp, type SavedApp } from '../storage/store';
 
 const busy = new Set<string>();
 /** The last failure per app, with the brief it was for (a new brief clears it). */
@@ -70,6 +70,8 @@ export async function writeCustom(appId: string, ctx: RouteContext): Promise<voi
     const latest = await getApp(appId);
     if (!latest || latest.spec.code !== brief) return;
     await saveApp({ ...latest, html, htmlFor: brief });
+    // The app now is its code version: record it, so History can go back to the blocks (or here).
+    await pushVersion(appId, latest.spec, ['Rebuilt it in code.'], 'chat', 'in_cloud', undefined, html);
     void notifyIfInBackground({
       title: `${latest.spec.emoji} ${latest.spec.name} is ready`,
       body: 'Your custom version is written. Tap to play it.',

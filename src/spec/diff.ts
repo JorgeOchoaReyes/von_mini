@@ -28,8 +28,8 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
   const out: string[] = [];
   if (before.name !== after.name) out.push(`Renamed the app to “${after.name}”.`);
   if (before.emoji !== after.emoji || before.accent !== after.accent) out.push('Updated the look.');
-  if (after.code && after.code !== before.code) out.push('Writing a custom version: ' + after.code);
-  else if (before.code && !after.code) out.push('Went back to the built-in version.');
+  if (after.code && after.code !== before.code) out.push((before.code ? 'Rebuilding it in code: ' : 'Building it in code: ') + after.code);
+  else if (before.code && !after.code) out.push('Back to the blocks version.');
 
   const prev = new Map(before.components.map((c, i) => [keyOf(c, i), c]));
   const next = new Map(after.components.map((c, i) => [keyOf(c, i), c]));

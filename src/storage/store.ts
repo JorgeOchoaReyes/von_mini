@@ -65,7 +65,23 @@ export interface Version {
   /** How the version came about. */
   origin: 'build' | 'chat' | 'manual' | 'restore';
   source: InferenceSource | 'starter';
+  /** The app's code, when this version was its code version (so a rollback needn't rewrite it). */
+  html?: string;
 }
+
+/**
+ * Whether an app shows its code version. An app is one thing at a time: its blocks, or the code
+ * written for its current design (`spec.code`). Apps made custom before design briefs existed have
+ * code without a brief, and show it until they're changed back.
+ */
+export function showsCode(app: Pick<SavedApp, 'html' | 'htmlFor' | 'spec'>): boolean {
+  if (!app.html) return false;
+  if (app.spec.code) return app.htmlFor === app.spec.code;
+  return app.htmlFor === undefined;
+}
+
+/** htmlFor for code that's kept (for history) but not shown. */
+const SHELVED = '-';
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
   try {
@@ -124,14 +140,16 @@ export async function pushVersion(
    * made before version history existed) it is recorded first, so the original can be restored.
    */
   prev?: AppSpec,
+  /** The code, when this version is a code version. */
+  html?: string,
 ): Promise<void> {
   let all = await listVersions(appId);
   if (!all.length && prev && JSON.stringify(prev) !== JSON.stringify(spec)) {
     all = [{ id: newId(), at: Date.now() - 1, spec: prev, changes: ['The original version.'], origin: 'build', source }];
   }
   // Skip a snapshot identical to the newest one (e.g. a no-op edit) to keep the list meaningful.
-  if (all[0] && JSON.stringify(all[0].spec) === JSON.stringify(spec)) return;
-  const next = [{ id: newId(), at: Date.now(), spec, changes, origin, source }, ...all].slice(0, MAX_VERSIONS);
+  if (all[0] && JSON.stringify(all[0].spec) === JSON.stringify(spec) && all[0].html === html) return;
+  const next = [{ id: newId(), at: Date.now(), spec, changes, origin, source, ...(html ? { html } : {}) }, ...all].slice(0, MAX_VERSIONS);
   await writeJson(versionsKey(appId), next);
 }
 
@@ -140,8 +158,12 @@ export async function restoreVersion(appId: string, versionId: string): Promise<
   const version = (await listVersions(appId)).find((v) => v.id === versionId);
   const app = await getApp(appId);
   if (!version || !app) return undefined;
-  await saveApp({ ...app, spec: version.spec });
-  await pushVersion(appId, version.spec, [`Restored the version from ${new Date(version.at).toLocaleString()}.`], 'restore', app.builtWith);
+  // A code version brings its code back; a blocks version shelves any code (kept, not shown).
+  const next: SavedApp = version.html
+    ? { ...app, spec: version.spec, html: version.html, htmlFor: version.spec.code }
+    : { ...app, spec: version.spec, ...(app.html ? { htmlFor: SHELVED } : {}) };
+  await saveApp(next);
+  await pushVersion(appId, version.spec, [`Restored the version from ${new Date(version.at).toLocaleString()}.`], 'restore', app.builtWith, undefined, version.html);
   return version.spec;
 }
 
