@@ -20,6 +20,7 @@ import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
 import { engine, isQuotaError, retryAfterMs } from './engineSelect';
 import { cleanCustomHtml } from './htmlSafety';
+import { chartDaysAsked, isVagueRequest } from './requestRules';
 import {
   ACTION_SYSTEM,
   CHAT_TURN_RULES,
@@ -106,6 +107,7 @@ export function localProblem(ctx: RouteContext): string | null {
 export const ASKS_FOR_CODE_VERSION =
   /\b(write|make|turn|rewrite|redo|build|do|remake|recreate)\s+(it|this|that|the app|this app|my app)?\s*(as|in|into|with|using)\s+(code|html|javascript)\b|\b(make|give|want|build|write)\b[^.?!]{0,20}\bcustom version\b|^\s*(in |as )?code\s*[.!]?\s*$/i;
 
+const dropCode = ({ code: _drop, ...rest }: AppSpec): AppSpec => rest;
 /** Things custom code can't do either: it runs alone on the phone (no internet, camera, people). */
 const NO_CODE_TOPIC = /\b(weather|forecast|stocks?|crypto|bitcoin|live prices?|prices? live|news|photos?|pictures?|camera|selfies?|filters?|social|followers|feed)\b/i;
 /** Requests a built-in game already covers. */
@@ -128,6 +130,7 @@ export const ADDS_CODE_ONLY_FEATURE = /\b(add|put|include|give( me)?|need|want|w
 export function settleCode(request: string, spec: AppSpec): AppSpec {
   if (!spec.code && NEEDS_CODE.test(request) && !NO_CODE_TOPIC.test(request)) return { ...spec, code: `Build it exactly as asked: "${request.slice(0, 400)}"` };
   if (!spec.code || ASKS_CODE.test(request)) return spec;
+  if (isVagueRequest(request)) return dropCode(spec);
   const builtInGame = spec.components.some((c) => c.type === 'game') && BUILT_IN_GAME.test(request) && !/power.?ups?|boss|level editor|multiplayer|own rules/i.test(request);
   if (!NO_CODE_TOPIC.test(request) && !builtInGame) return spec;
   const { code: _drop, ...rest } = spec;
@@ -536,6 +539,16 @@ export async function chatAboutApp(
       : `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features. The user asked: "${asked}"`;
     const next = { ...spec, code: brief };
     return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'That needs the full version of the app, so I’m writing it with that added.', source: 'on_device' };
+  }
+  // "Show 30 days on the chart": a plain number change the model sometimes fumbles. Charts show 7-31.
+  const asked = chartDaysAsked(message);
+  const charts = spec.components.filter((c) => c.type === 'chart');
+  const wantsNewChart = /\b(add|new|another|second|extra|create)\b/i.test(message);
+  if (asked !== null && charts.length === 1 && !spec.code && !wantsNewChart && message.length < 120) {
+    const days = Math.min(31, Math.max(7, asked));
+    const next = { ...spec, components: spec.components.map((c) => (c === charts[0] ? { ...c, days } : c)) };
+    const note = days !== asked ? ` (charts show 7 to 31 days)` : '';
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: `The chart now shows the last ${days} days${note}.`, source: 'on_device' };
   }
   // Back from code to the blocks: drop the brief (the code stays in History to go back to).
   if (spec.code && BACK_TO_BLOCKS.test(message)) {

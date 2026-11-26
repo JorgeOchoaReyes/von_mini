@@ -62,3 +62,42 @@ test('custom apps use the theme fonts, and canvas text keeps its own', async () 
   assert.match(out, /padding: 4px/);
   assert.match(out, /ctx\.font = '20px Arial'/, 'script is untouched');
 });
+
+test('neutral colours follow the theme; real colours and script stay', async () => {
+  const { themeNeutrals } = await import('../src/ai/htmlSafety.ts');
+  const html = `<style>
+.panel{background:#fff;color:#111;border:2px solid #ccc}
+.tile.hit{background:#2fbf5b;color:white}
+.tile.miss{background-color: rgb(120,120,120)}
+.danger{color:#e8483f}
+</style><div style="background:white;color:#333">x</div>
+<script>ctx.fillStyle = '#fff'; el.style.background = 'black';</script>`;
+  const out = themeNeutrals(html);
+  assert.match(out, /\.panel\{background:var\(--vm-surface\);color:var\(--vm-text\);border:2px solid var\(--vm-border\)\}/);
+  assert.match(out, /\.tile\.hit\{background:#2fbf5b;color:var\(--vm-text\)\}/, 'the green stays');
+  assert.match(out, /background-color: var\(--vm-surface-alt\)/);
+  assert.match(out, /\.danger\{color:#e8483f\}/);
+  assert.match(out, /style="background:var\(--vm-surface\);color:var\(--vm-text\)"/);
+  assert.match(out, /ctx\.fillStyle = '#fff'; el\.style\.background = 'black';/, 'script untouched');
+});
+
+test('imagined local files are stripped too', async () => {
+  const { stripExternal } = await import('../src/ai/htmlSafety.ts');
+  const out = stripExternal('<head><link rel="stylesheet" href="/vonmini.css"><script src="/vonmini.js"></script><link rel="icon" href="data:,"></head><script>go()</script>');
+  assert.equal(out, '<head><link rel="icon" href="data:,"></head><script>go()</script>');
+});
+
+test('chart range from chat', async () => {
+  const { chartDaysAsked } = await import('../src/ai/requestRules.ts');
+  assert.equal(chartDaysAsked('show 30 days on the chart'), 30);
+  assert.equal(chartDaysAsked('make the chart cover the last month'), 30);
+  assert.equal(chartDaysAsked('chart 2 weeks please'), 14);
+  assert.equal(chartDaysAsked('show 30 days of history'), null, 'no chart mentioned');
+  assert.equal(chartDaysAsked('make the chart blue'), null);
+});
+
+test('a vague request gets no custom code', async () => {
+  const { isVagueRequest } = await import('../src/ai/requestRules.ts');
+  for (const r of ['app', 'an app', 'something', 'help!']) assert.ok(isVagueRequest(r), r);
+  for (const r of ['a pomodoro timer', 'app for my habits', 'chess']) assert.ok(!isVagueRequest(r), r);
+});
