@@ -22,6 +22,16 @@ function firebaseAI() {
   return ai;
 }
 
+/**
+ * Caps cloud output so one request can't run up the bill. Keep in sync with
+ * `maxOutputTokensFor` in modules/nano-bridge (Android).
+ */
+function maxOutputTokensFor(mode: GenerateOptions['mode'], json: boolean): number {
+  if (mode === 'only_in_cloud') return 16_384; // a whole custom HTML app
+  if (json) return 4_096; // an app spec or an edit
+  return 1_024; // AI buttons, chat answers, voice replies
+}
+
 const models = new Map<string, GenerativeModel>();
 function model({ mode, system, json, schema, model: modelName }: GenerateOptions) {
   // The cloud model comes from Remote Config, so it can be switched without shipping a build.
@@ -34,7 +44,10 @@ function model({ mode, system, json, schema, model: modelName }: GenerateOptions
       inCloudParams: {
         model: cloudModel,
         systemInstruction: system,
-        generationConfig: json ? { responseMimeType: 'application/json' } : undefined,
+        generationConfig: {
+          ...(json ? { responseMimeType: 'application/json' } : {}),
+          maxOutputTokens: maxOutputTokensFor(mode, !!json),
+        },
       },
       onDeviceParams: {
         createOptions: system ? { initialPrompts: [{ role: 'system', content: [{ type: 'text', value: system }] }] } : undefined,

@@ -54,7 +54,8 @@
     "build:apk": "npx eas-cli@latest build --platform android --profile preview",
     "build:release": "npx eas-cli@latest build --platform android --profile production",
     "update:preview": "npx eas-cli@latest update --channel preview --environment preview",
-    "update:production": "npx eas-cli@latest update --channel production --environment production"
+    "update:production": "npx eas-cli@latest update --channel production --environment production",
+    "deploy:web": "expo export --platform web && node scripts/prepare-hosting.mjs && firebase deploy --only hosting"
   },
   "private": true
 }
