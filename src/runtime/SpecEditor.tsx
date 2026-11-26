@@ -26,6 +26,7 @@ import {
   setText,
   setAiFill,
   setGame,
+  setRandom,
   setHistoryDays,
   setKind,
   setStat,
@@ -46,6 +47,7 @@ const ADDABLE: { type: ComponentType; label: string; icon: IconName }[] = [
   { type: 'choice', label: 'Choice', icon: 'radio-button-on-outline' },
   { type: 'checklist', label: 'Checklist', icon: 'checkbox-outline' },
   { type: 'game', label: 'Game', icon: 'game-controller-outline' },
+  { type: 'random', label: 'Dice & chance', icon: 'dice-outline' },
   { type: 'stat', label: 'Stat', icon: 'stats-chart-outline' },
   { type: 'chart', label: 'Chart', icon: 'bar-chart-outline' },
   { type: 'ai', label: 'AI button', icon: 'sparkles-outline' },
@@ -337,6 +339,45 @@ function BlockFields({
         </>
       )}
 
+      {c.type === 'random' && (
+        <>
+          <Field label="Button" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed “${title}” to “${v}”.`)} theme={theme} />
+          <Pick<NonNullable<typeof c.roll>>
+            label="What it does"
+            value={c.roll ?? 'dice'}
+            options={[
+              { value: 'dice', label: 'Dice' },
+              { value: 'coin', label: 'Coin' },
+              { value: 'pick', label: 'Spin a list' },
+              { value: 'number', label: 'Number' },
+            ]}
+            onChange={(r) => emit(setRandom(spec, index, { roll: r }), `“${title}” now picks differently.`)}
+            theme={theme}
+          />
+          {(c.roll ?? 'dice') === 'dice' && (
+            <>
+              <Field label="How many dice (1-6)" value={String(c.count ?? 1)} onChange={(v) => emit(setRandom(spec, index, { count: parseInt(v, 10) }), `Changed the dice in “${title}”.`)} theme={theme} />
+              <Field label="Sides on each" value={String(c.sides ?? 6)} onChange={(v) => emit(setRandom(spec, index, { sides: parseInt(v, 10) }), `Changed the dice in “${title}”.`)} theme={theme} />
+            </>
+          )}
+          {c.roll === 'number' && (
+            <>
+              <Field label="From" value={String(c.min ?? 1)} onChange={(v) => emit(setRandom(spec, index, { min: parseInt(v, 10) }), `Changed the range of “${title}”.`)} theme={theme} />
+              <Field label="To" value={String(c.max ?? 100)} onChange={(v) => emit(setRandom(spec, index, { max: parseInt(v, 10) }), `Changed the range of “${title}”.`)} theme={theme} />
+            </>
+          )}
+          {c.roll === 'pick' && (
+            <Field
+              label="Options (one per line)"
+              value={(c.options ?? []).join('\n')}
+              multiline
+              onChange={(v) => emit(setOptions(spec, index, v.split('\n')), `Updated the options in “${title}”.`)}
+              hint="At least 2, up to 20."
+              theme={theme}
+            />
+          )}
+        </>
+      )}
       {c.type === 'game' && (
         <>
           <Field label="Title" value={c.label ?? ''} onChange={(v) => emit(setLabel(spec, index, v), `Renamed the game to “${v}”.`)} theme={theme} />

@@ -21,7 +21,7 @@ import { haptics } from '../ui/haptics';
 import { Breathe, FadeUp, PopIn, Ripples, TypingDots, usePressScale, Waveform } from '../ui/motion';
 import { stroke, radius, space, type, type Theme } from '../ui/theme';
 import { voiceReply, type Turn } from './cascade';
-import { setMuted, speak, stopSpeaking } from './tts';
+import { speak, stopSpeaking } from './tts';
 import { useListener, useSttSupport } from './useVoice';
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -68,7 +68,9 @@ export function VoiceChat({
   const talkPress = usePressScale(0.92);
   const turnsRef = useRef<Turn[]>([]);
   const abort = useRef<{ aborted: boolean } | null>(null);
-  const active = useRef(false);
+  // Bumped by every new action (talk, interrupt, send, stop). Older loops and replies see they
+  // were overtaken and leave the transcript and status alone.
+  const gen = useRef(0);
   const handsFreeRef = useRef(handsFree);
   useEffect(() => {
     handsFreeRef.current = handsFree;
@@ -83,10 +85,19 @@ export function VoiceChat({
     [onTranscript],
   );
 
+  /** Ends whatever is running: the mic, the reply and its speech. */
+  const halt = useCallback(() => {
+    gen.current++;
+    mic.stop();
+    if (abort.current) abort.current.aborted = true;
+    abort.current = null;
+    stopSpeaking();
+  }, [mic]);
+
   useEffect(
     () => () => {
-      active.current = false;
-      abort.current && (abort.current.aborted = true);
+      gen.current++;
+      if (abort.current) abort.current.aborted = true;
       stopSpeaking();
     },
     [],
@@ -94,14 +105,15 @@ export function VoiceChat({
 
   const persona = fill ? fill(c.prompt ?? '') : fillTemplate(c.prompt ?? '', values);
 
-  /** Runs the model for the latest user turn, speaking as it streams. */
+  /** Runs the model for the latest user turn, speaking as it streams. Resolves true if it finished. */
   const respond = useCallback(
-    async (history: Turn[]) => {
+    async (history: Turn[], g: number) => {
       const signal = { aborted: false };
       abort.current = signal;
+      const mine = () => gen.current === g && !signal.aborted;
       setPhase('thinking');
-      const withReply = [...history, { role: 'assistant' as const, text: '' }];
-      commit(withReply);
+      commit([...history, { role: 'assistant' as const, text: '' }]);
+      let said = '';
       try {
         const r = await voiceReply(history, {
           persona,
@@ -109,17 +121,24 @@ export function VoiceChat({
           speak: !muted,
           signal,
           onText: (text) => {
-            if (signal.aborted) return;
+            if (!mine()) return;
+            said = text;
             setPhase('speaking');
             const next = [...history, { role: 'assistant' as const, text }];
             turnsRef.current = next;
             setTurns(next);
           },
         });
+        if (!mine()) {
+          // Interrupted: keep the words that came out, unless a newer turn already took over.
+          if (turnsRef.current.length === history.length + 1) commit(said.trim() ? [...history, { role: 'assistant', text: said }] : history);
+          return false;
+        }
         setSource(r.source);
         commit([...history, { role: 'assistant', text: r.text || '…' }]);
-        return !signal.aborted;
+        return true;
       } catch (e) {
+        if (gen.current !== g) return false;
         commit(history);
         setError(e instanceof Error ? e.message : String(e));
         return false;
@@ -131,26 +150,24 @@ export function VoiceChat({
   );
 
   /** One spoken user turn, then the reply; loops while hands-free is on. */
-  const listenTurn = useCallback(async () => {
-    active.current = true;
-    while (active.current) {
-      setError(null);
-      setPartial('');
-      setPhase('listening');
-      const heard = await mic.start();
-      setPartial('');
-      if (!active.current) break;
-      if (!heard) {
-        setPhase('idle');
-        break;
+  const listenTurn = useCallback(
+    async (g: number) => {
+      const live = () => gen.current === g;
+      while (live()) {
+        setError(null);
+        setPartial('');
+        setPhase('listening');
+        const heard = await mic.start();
+        if (!live()) return;
+        setPartial('');
+        if (!heard) break;
+        const ok = await respond([...turnsRef.current.filter((t) => t.text), { role: 'user', text: heard }], g);
+        if (!ok || !handsFreeRef.current) break;
       }
-      const ok = await respond([...turnsRef.current, { role: 'user', text: heard }]);
-      setPhase('idle');
-      if (!ok || !handsFreeRef.current) break;
-    }
-    active.current = false;
-    setPhase('idle');
-  }, [mic, respond]);
+      if (live()) setPhase('idle');
+    },
+    [mic, respond],
+  );
 
   /** Starts (or continues) the conversation: speaks the opening line first, then listens. */
   const start = async () => {
@@ -159,36 +176,32 @@ export function VoiceChat({
       mic.stop();
       return;
     }
-    if (phase === 'speaking' || phase === 'thinking') {
-      // Interrupt the AI and hand the floor back to the user.
-      if (abort.current) abort.current.aborted = true;
-      stopSpeaking();
-    }
+    // Interrupt the AI (if it's talking) and hand the floor back to the user.
+    halt();
+    const g = gen.current;
     if (!turnsRef.current.length && c.text) {
       commit([{ role: 'assistant', text: c.text }]);
       setPhase('speaking');
       if (!muted) await speak(c.text);
+      if (gen.current !== g) return;
     }
-    if (support?.available) await listenTurn();
+    if (support?.available) await listenTurn(g);
     else setPhase('idle');
   };
 
   const sendTyped = async () => {
     const text = draft.trim();
-    if (!text || phase === 'thinking') return;
+    if (!text) return;
     setDraft('');
-    active.current = false;
-    mic.stop();
+    halt();
+    const g = gen.current;
     const base = !turnsRef.current.length && c.text ? [{ role: 'assistant' as const, text: c.text }] : turnsRef.current;
-    await respond([...base, { role: 'user', text }]);
-    setPhase('idle');
+    await respond([...base, { role: 'user', text }], g);
+    if (gen.current === g) setPhase('idle');
   };
 
   const stopAll = () => {
-    active.current = false;
-    mic.stop();
-    if (abort.current) abort.current.aborted = true;
-    stopSpeaking();
+    halt();
     setPhase('idle');
   };
 
@@ -199,10 +212,11 @@ export function VoiceChat({
     setError(null);
   };
 
+  // Mute is this block's own: it silences this conversation's replies, not speech elsewhere.
   const toggleMute = () => {
     const v = !muted;
     setMutedState(v);
-    setMuted(v);
+    if (v) stopSpeaking();
   };
 
   const running = phase !== 'idle';

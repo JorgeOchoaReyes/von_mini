@@ -31,6 +31,9 @@ declare class NanoBridgeModule extends NativeModule<NanoBridgeEvents> {
     json: boolean,
     deviceModel: DeviceModel,
   ): Promise<{ text: string; source: 'on_device' | 'in_cloud' }>;
+  /** Keeps the app alive in the background while work runs (a foreground service). Newer APKs only. */
+  startKeepAlive?(title: string): boolean;
+  stopKeepAlive?(): void;
   streamGenerate(
     prompt: string,
     cloudModel: string,

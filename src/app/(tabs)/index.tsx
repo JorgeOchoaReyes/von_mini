@@ -4,7 +4,8 @@ import { Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAI } from '../../ai/AIContext';
-import { stoppable, StoppedError } from '../../ai/stoppable';
+import { StoppedError } from '../../ai/stoppable';
+import { backgroundWork } from '../../ai/background';
 import { buildAppProgressive, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { AddShared } from '../../share/AddShared';
@@ -93,6 +94,10 @@ export default function Home() {
     }
   }, []);
 
+  // "Write it as code": the app is also written as a custom HTML/JS version (cloud), whatever it is.
+  const [asCode, setAsCode] = useState(false);
+  const canCode = ai.online && !ai.privateMode && !ai.locked;
+
   const build = async (text: string) => {
     const value = text.trim();
     if (!value || building) return;
@@ -107,10 +112,19 @@ export default function Home() {
     builtRef.current = false;
     // Ask once (Android 13+) so we can say "your app is ready" if the user switches away mid-build.
     void ensureAlertPermission().catch(() => false);
-    const run = stoppable(buildAppProgressive(value, ai, onEvent));
+    // Keeps going if the user switches apps (see background.ts).
+    const run = backgroundWork('Building your app…', () => buildAppProgressive(value, ai, onEvent), {
+      resumeNote: { title: 'Your app is almost ready', body: 'Your phone paused the build. Open von mini to finish it.', url: '/' },
+    });
     stopBuild.current = run.stop;
     try {
-      const { spec, source } = await run.promise;
+      const built = await run.promise;
+      const source = built.source;
+      // Asked for code: make sure the design carries a brief, so the custom version gets written.
+      const spec =
+        asCode && canCode && !built.spec.code
+          ? { ...built.spec, code: `Write this as a polished custom app or game, exactly as asked: "${value.slice(0, 400)}"` }
+          : built.spec;
       const app: SavedApp = {
         id: newId(),
         request: value,
@@ -233,6 +247,23 @@ export default function Home() {
                 <MicButton theme={theme} size={40} label="Describe your app out loud" onPartial={setRequest} onFinal={(t) => build(t)} />
               }
             />
+            <View style={[styles.codeRow]}>
+              <Chip
+                label="Write it as code"
+                icon="code-slash-outline"
+                theme={theme}
+                selected={asCode && canCode}
+                disabled={!canCode}
+                onPress={() => setAsCode((v) => !v)}
+              />
+              <Text style={[type.caption, { color: theme.subtle, flex: 1 }]} numberOfLines={2}>
+                {!canCode
+                  ? 'Needs the internet to write the code.'
+                  : asCode
+                    ? 'Gemini also writes it in code.'
+                    : 'Off: blocks, plus code only when needed.'}
+              </Text>
+            </View>
             {/* Scrolling on phones keeps the hero short; wrapping on wide screens uses the space. */}
             <ScrollView
               horizontal={!wide}
@@ -346,6 +377,7 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
+  codeRow: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   page: { paddingHorizontal: space(4), gap: space(6), maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   brand: { flexDirection: 'row', alignItems: 'center', gap: space(2) },

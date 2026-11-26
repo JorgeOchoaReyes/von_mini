@@ -29,6 +29,7 @@ const BLOCK: Record<AppSpec['components'][number]['type'], { icon: IconName; kin
   reminder: { icon: 'alarm-outline', kind: 'Reminders' },
   save: { icon: 'checkmark-outline', kind: 'Save' },
   game: { icon: 'game-controller-outline', kind: 'Game' },
+  random: { icon: 'dice-outline', kind: 'Dice & chance' },
   history: { icon: 'time-outline', kind: 'History' },
 };
 
@@ -64,20 +65,26 @@ export default function SharedApp() {
   }, [id, code]);
 
   const add = async () => {
-    if (!shared) return;
+    if (!shared || adding) return;
     setAdding(true);
-    const app = {
-      id: newId(),
-      request: shared.request || `Shared app: ${shared.spec.name}`,
-      spec: shared.spec,
-      builtWith: 'starter' as const,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await saveApp(app);
-    await pushVersion(app.id, app.spec, [code ? 'Added from a QR code or share link.' : 'Added from a shared link.'], 'build', 'starter');
-    haptics.success();
-    router.replace({ pathname: '/app/[id]', params: { id: app.id } });
+    try {
+      const app = {
+        id: newId(),
+        request: shared.request || `Shared app: ${shared.spec.name}`,
+        spec: shared.spec,
+        builtWith: 'starter' as const,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await saveApp(app);
+      await pushVersion(app.id, app.spec, [code ? 'Added from a QR code or share link.' : 'Added from a shared link.'], 'build', 'starter');
+      haptics.success();
+      router.replace({ pathname: '/app/[id]', params: { id: app.id } });
+    } catch (e) {
+      haptics.error();
+      setError(`Couldn’t add it: ${e instanceof Error ? e.message : String(e)}`);
+      setAdding(false);
+    }
   };
 
   return (

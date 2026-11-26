@@ -7,12 +7,19 @@ import { useEffect } from 'react';
 
 import { AIProvider } from '../ai/AIContext';
 import { initAlerts } from '../alerts/notifications';
+import { installEvalHook } from '../dev/evalHook';
 import { loadRemoteConfig } from '../remote/remoteConfig';
 import { loadSchemePref, useTheme } from '../ui/theme';
 
 // Keep the splash screen up until the comic display font has loaded, so headlines never flash in
 // the system font.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+/**
+ * Home (the tabs) always sits under any screen, so a link opened while the app was closed (a
+ * shared app, a notification) still has somewhere to go back to.
+ */
+export const unstable_settings = { anchor: '(tabs)' };
 
 export default function RootLayout() {
   const theme = useTheme();
@@ -24,6 +31,7 @@ export default function RootLayout() {
   useEffect(() => {
     void loadRemoteConfig();
     void loadSchemePref();
+    installEvalHook();
   }, []);
   // Show notifications in the foreground, and open the app a tapped notification points at.
   useEffect(() => initAlerts((url) => router.push(url as never)), []);

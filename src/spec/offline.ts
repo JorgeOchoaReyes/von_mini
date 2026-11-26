@@ -7,9 +7,11 @@ import type { AppSpec } from './types';
 
 export type OfflineLevel = 'always' | 'with-nano';
 
-export function offlineLevel(spec: AppSpec, hasCustomHtml = false): OfflineLevel {
-  // A custom (code) app calls the AI through the bridge, so it counts as an AI app.
-  return hasCustomHtml || spec.components.some((c) => c.type === 'ai' || c.type === 'voice') ? 'with-nano' : 'always';
+/** Whether a custom (code) version calls the AI through the bridge; a plain game doesn't. */
+export const htmlUsesAI = (html: string | undefined) => !!html && /vonmini\.(ai|converse)\s*\(/.test(html);
+
+export function offlineLevel(spec: AppSpec, customUsesAI = false): OfflineLevel {
+  return customUsesAI || spec.components.some((c) => c.type === 'ai' || c.type === 'voice') ? 'with-nano' : 'always';
 }
 
 /** A short label for this device: whether the app works offline here. */

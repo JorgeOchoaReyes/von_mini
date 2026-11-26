@@ -12,10 +12,15 @@ import { Platform } from 'react-native';
 import { getVoiceSettings } from './voiceSettings';
 
 let muted = false;
+/**
+ * Bumped by every stop. A queued sentence only plays if nothing was stopped since its reply
+ * began, so Stop, mute or leaving a screen silences the rest of a reply, not just one sentence.
+ */
+let epoch = 0;
 /** Mutes all speech output (the transcript still updates). */
 export function setMuted(v: boolean) {
   muted = v;
-  if (v) void Speech.stop();
+  if (v) stopSpeaking();
 }
 export const isMuted = () => muted;
 
@@ -36,7 +41,12 @@ function localWebVoice(): string | undefined {
 export function speak(text: string, force = false): Promise<void> {
   const clean = forSpeech(text);
   if (!clean || (muted && !force)) return Promise.resolve();
-  const { voice, rate, pitch } = getVoiceSettings();
+  const { rate, pitch } = getVoiceSettings();
+  // A saved voice the phone no longer has (deleted, or settings from another phone) would make
+  // iOS fail silently on every sentence: fall back to the default voice.
+  let voice = getVoiceSettings().voice;
+  if (voice && known && !known.has(voice)) voice = undefined;
+  if (!known) void listVoices();
   return new Promise((resolve) => {
     let settled = false;
     const finish = () => {
@@ -60,6 +70,9 @@ export function speak(text: string, force = false): Promise<void> {
   });
 }
 
+/** Ids of the voices the device has, once read. */
+let known: Set<string> | null = null;
+
 /** The device's installed voices, best first: offline ones before ones that need the internet. */
 export async function listVoices(): Promise<{ id: string; label: string; language: string; offline: boolean; enhanced: boolean }[]> {
   let voices: Speech.Voice[] = [];
@@ -68,6 +81,8 @@ export async function listVoices(): Promise<{ id: string; label: string; languag
   } catch {
     return [];
   }
+  // Browsers fill their list lazily; only trust a non-empty one.
+  if (voices.length) known = new Set(voices.map((v) => v.identifier));
   const lang = (Intl.DateTimeFormat().resolvedOptions().locale || 'en').slice(0, 2).toLowerCase();
   const seen = new Set<string>();
   const out = voices
@@ -101,6 +116,7 @@ export async function listVoices(): Promise<{ id: string; label: string; languag
 }
 
 export function stopSpeaking() {
+  epoch++;
   void Speech.stop();
 }
 
@@ -127,9 +143,15 @@ export class SentenceSpeaker {
   private spoken = 0;
   private tail: Promise<void> = Promise.resolve();
   private stopped = false;
+  private readonly epoch = epoch;
+
+  /** Stopped directly, or by any stopSpeaking() since this reply began. */
+  get isStopped() {
+    return this.stopped || this.epoch !== epoch;
+  }
 
   update(text: string) {
-    if (this.stopped || text.length <= this.spoken) return;
+    if (this.isStopped || text.length <= this.spoken) return;
     // Find the end of the last complete sentence in the not-yet-spoken part.
     const rest = text.slice(this.spoken);
     let end = 0;
@@ -142,7 +164,7 @@ export class SentenceSpeaker {
   }
 
   finish(text: string): Promise<void> {
-    if (!this.stopped && text.length > this.spoken) this.enqueue(text.slice(this.spoken));
+    if (!this.isStopped && text.length > this.spoken) this.enqueue(text.slice(this.spoken));
     this.spoken = text.length;
     return this.tail;
   }
@@ -155,6 +177,6 @@ export class SentenceSpeaker {
   private enqueue(chunk: string) {
     if (!forSpeech(chunk)) return;
     // Chain so sentences never overlap and `finish` can wait for the last one.
-    this.tail = this.tail.then(() => (this.stopped ? undefined : speak(chunk)));
+    this.tail = this.tail.then(() => (this.isStopped ? undefined : speak(chunk)));
   }
 }

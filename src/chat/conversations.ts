@@ -28,11 +28,26 @@ const MAX = 100;
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+/** Reads the stored list. Throws if it can't be read, so a write never replaces chats it didn't see. */
+async function read(): Promise<Conversation[]> {
+  const raw = await AsyncStorage.getItem(KEY);
+  const list = raw ? (JSON.parse(raw) as Conversation[]) : [];
+  return Array.isArray(list) ? list.sort((a, b) => b.updatedAt - a.updatedAt) : [];
+}
+
+// Writes run one after another, so two quick saves never interleave and drop each other.
+let queue: Promise<unknown> = Promise.resolve();
+function write(change: (list: Conversation[]) => Conversation[]): Promise<void> {
+  const next = queue.then(async () => {
+    await AsyncStorage.setItem(KEY, JSON.stringify(change(await read())));
+  });
+  queue = next.catch(() => undefined);
+  return next;
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   try {
-    const raw = await AsyncStorage.getItem(KEY);
-    const list = raw ? (JSON.parse(raw) as Conversation[]) : [];
-    return list.sort((a, b) => b.updatedAt - a.updatedAt);
+    return await read();
   } catch {
     return [];
   }
@@ -55,13 +70,14 @@ export function titleFor(turns: ChatTurn[]): string {
 }
 
 /** Saves a conversation (empty ones aren't kept). */
-export async function saveConversation(c: Conversation): Promise<void> {
-  const list = (await listConversations()).filter((x) => x.id !== c.id);
-  if (c.turns.some((t) => t.role === 'user')) list.unshift({ ...c, title: titleFor(c.turns), updatedAt: Date.now() });
-  await AsyncStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
+export function saveConversation(c: Conversation): Promise<void> {
+  return write((all) => {
+    const list = all.filter((x) => x.id !== c.id);
+    if (c.turns.some((t) => t.role === 'user')) list.unshift({ ...c, title: titleFor(c.turns), updatedAt: Date.now() });
+    return list.slice(0, MAX);
+  });
 }
 
-export async function deleteConversation(id: string): Promise<void> {
-  const list = (await listConversations()).filter((x) => x.id !== id);
-  await AsyncStorage.setItem(KEY, JSON.stringify(list));
+export function deleteConversation(id: string): Promise<void> {
+  return write((all) => all.filter((x) => x.id !== id));
 }

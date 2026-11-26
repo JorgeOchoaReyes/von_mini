@@ -1,3 +1,4 @@
+import { DATA_TOKENS } from './stats';
 import { ACCENTS, COMPONENT_TYPES, type AppSpec, type SpecComponent } from './types';
 
 const MAX_COMPONENTS = 12;
@@ -23,13 +24,107 @@ export function extractJson(text: string): unknown {
   try {
     return JSON.parse(json);
   } catch (e) {
-    const repaired = json.replace(/[“”]/g, '"').replace(/,\s*([}\]])/g, '$1');
+    const repaired = looseRepair(json);
     try {
       return JSON.parse(repaired);
     } catch {
-      throw e;
+      // Output cut off mid-way (seen in the cloud: "Unterminated string"): close what's open and
+      // keep everything before the break. The validator drops the half-written last block.
+      try {
+        return JSON.parse(closeTruncated(looseRepair(body.slice(start))));
+      } catch {
+        throw e;
+      }
     }
   }
+}
+
+/**
+ * Fixes slips models make in long JSON, outside strings only: curly quotes, trailing commas,
+ * // and /* comments, unquoted or single-quoted keys.
+ */
+function looseRepair(text: string): string {
+  let out = '';
+  let inString = false;
+  let curly = false; // the open string started with a curly quote
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (curly && ch === '”') {
+        out += '"';
+        inString = curly = false;
+        continue;
+      }
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 1;
+      continue;
+    }
+    if (ch === '“' || ch === '”') {
+      out += '"';
+      inString = curly = true;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    out += ch;
+  }
+  return out
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/([{,]\s*)'([^'"\n]+)'\s*:/g, '$1"$2":')
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+}
+
+/** Closes an unfinished JSON text: an open string, then open arrays and objects, in order. */
+export function closeTruncated(text: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let lastSafe = 0; // end of the last complete value inside a container
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      lastSafe = i + 1;
+      if (!stack.length) return text.slice(0, i + 1);
+    } else if (ch === ',') lastSafe = i;
+  }
+  // Cut back to the last complete element, so no half-written key or value is left dangling.
+  let cut = text.slice(0, lastSafe).replace(/,\s*$/, '');
+  // Re-count what's still open in the kept part.
+  const open: string[] = [];
+  inString = false;
+  escaped = false;
+  for (const ch of cut) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') open.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') open.pop();
+  }
+  if (inString) cut += '"';
+  return cut + open.reverse().join('');
 }
 
 /** Lowercased letters only, so "Yes/No", "yes_no" and "YesNo" all read "yesno". */
@@ -67,6 +162,18 @@ const GAME_ALIASES: Record<string, SpecComponent['game']> = {
 const SPEED_ALIASES: Record<string, SpecComponent['speed']> = {
   slow: 'slow', easy: 'slow', relaxed: 'slow', chill: 'slow', normal: 'normal', medium: 'normal', fast: 'fast', hard: 'fast', quick: 'fast', insane: 'fast',
 };
+const ROLL_ALIASES: Record<string, SpecComponent['roll']> = {
+  dice: 'dice', die: 'dice', roll: 'dice', d6: 'dice', d20: 'dice', rolldice: 'dice',
+  coin: 'coin', flip: 'coin', coinflip: 'coin', headsortails: 'coin', toss: 'coin',
+  pick: 'pick', spin: 'pick', spinner: 'pick', wheel: 'pick', choose: 'pick', choice: 'pick', random: 'pick', decide: 'pick', draw: 'pick', card: 'pick',
+  number: 'number', range: 'number', integer: 'number', lottery: 'number', randomnumber: 'number',
+};
+/** A whole number from model output, clamped; `fallback` when it isn't one. */
+const int = (v: unknown, lo: number, hi: number, fallback: number) => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseInt(v, 10) : NaN;
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
+};
+
 /** A short emoji-ish token for a game sprite: at most 2 user-perceived characters. */
 const sprite = (v: unknown) => {
   const t = typeof v === 'string' ? v.trim() : '';
@@ -82,10 +189,11 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'st
  * Unknown component types are dropped, ids are normalized and de-duplicated,
  * and missing pieces (save / history) are added so every app is usable.
  */
-export function sanitizeSpec(raw: unknown): AppSpec {
+export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): AppSpec {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid app description.');
   const r = raw as Record<string, unknown>;
-  const used = new Set<string>();
+  // {today}, {entries}… read saved data, so no field may take those names.
+  const used = new Set<string>(DATA_TOKENS);
   const uniqueId = (base: string) => {
     let id = slug(base);
     for (let i = 2; used.has(id); i++) id = `${slug(base)}_${i}`;
@@ -211,6 +319,26 @@ export function sanitizeSpec(raw: unknown): AppSpec {
         out.text = str(comp.text, 120);
         break;
       }
+      case 'random': {
+        // Dice, a coin, a spinner over options, or a random number. Every result saves as an entry.
+        const options = [...new Set(list(comp.options ?? comp.items).map((o) => str(o, 40)).filter((o): o is string => !!o))].slice(0, 20);
+        const roll = ROLL_ALIASES[word(comp.roll ?? comp.mode ?? comp.style ?? comp.kind)] ?? (options.length >= 2 ? 'pick' : 'dice');
+        if (roll === 'pick' && options.length < 2) continue;
+        out.id = uniqueId(str(comp.id) ?? label ?? roll);
+        out.label = label ?? { dice: 'Roll', coin: 'Flip a coin', pick: 'Spin', number: 'Pick a number' }[roll!];
+        out.roll = roll;
+        if (roll === 'dice') {
+          out.count = int(comp.count ?? comp.dice, 1, 6, 1);
+          out.sides = int(comp.sides ?? comp.faces, 2, 100, 6);
+        } else if (roll === 'number') {
+          const a = int(comp.min, -1_000_000, 1_000_000, 1);
+          const b = int(comp.max, -1_000_000, 1_000_000, 100);
+          out.min = Math.min(a, b);
+          out.max = Math.max(a, b) === Math.min(a, b) ? Math.min(a, b) + 1 : Math.max(a, b);
+        } else if (roll === 'pick') out.options = options;
+        out.text = str(comp.text, 120);
+        break;
+      }
       case 'save':
       case 'history':
         if (components.some((x) => x.type === type)) continue;
@@ -250,14 +378,17 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     return near.length === 1 ? near[0].id : raw;
   };
   const DATA = ['today', 'today_entries', 'entries'];
-  const repairPrompts = () => {
+  const repairPrompts = (final = false) => {
     for (const c of components) {
       if ((c.type !== 'ai' && c.type !== 'voice') || !c.prompt) continue;
       c.prompt = c.prompt.replace(/\{\s*([A-Za-z0-9_ -]+?)\s*\}/g, (m, name: string) => {
         const s = slug(name);
         if (DATA.includes(s)) return `{${s}}`;
         const id = resolve(name);
-        return id && ids.some((x) => x.id === id) ? `{${id}}` : m;
+        if (id && ids.some((x) => x.id === id)) return `{${id}}`;
+        // Still pointing at nothing after blocks were settled: say it in words, so the AI never
+        // sees a raw "{preset}" and the app doesn't wait on a field that doesn't exist.
+        return final ? name.trim().replace(/_/g, ' ') : m;
       });
     }
   };
@@ -272,7 +403,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
   // count entries without one. Anything else would show a number that can never change.
   const savedIds = new Set(
     components
-      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game')
+      .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game' || c.type === 'random')
       .map((c) => c.id),
   );
   // An AI can only fill a field the user could also type into.
@@ -281,6 +412,12 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     const c = components[i];
     if (c.type === 'ai') {
       if (c.fills && !fillable.has(c.fills)) c.fills = undefined;
+      // Never write the answer over the text the AI is reading (a mood tag replacing the journal
+      // entry, scaled amounts replacing the recipe): the answer shows under the button instead.
+      if (c.fills && new RegExp(`\\{\\s*${c.fills}\\s*\\}`, 'i').test(c.prompt ?? '')) {
+        c.fills = undefined;
+        c.auto = undefined;
+      }
       continue;
     }
     if (c.type === 'history') {
@@ -295,11 +432,17 @@ export function sanitizeSpec(raw: unknown): AppSpec {
 
   // Blocks may have been dropped above; resolve placeholders against what's left.
   ids = components.filter((c) => c.id).map((c) => ({ id: c.id!, label: c.label ? slug(c.label) : '' }));
-  repairPrompts();
+  repairPrompts(true);
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
-  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game')) {
-    throw new Error('The generated app has no inputs. Try describing it differently.');
+  if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game' || c.type === 'random')) {
+    // A build's last attempt keeps what the model made and adds a place to write, rather than
+    // failing: a usable app beats an error. (Chat edits throw, so the turn is retried instead.)
+    if (opts.rescue) {
+      components.splice(MAX_COMPONENTS - 3, Infinity); // room for the note, save and history
+      const id = ids.some((x) => x.id === 'note') ? 'note_2' : 'note';
+      components.push({ type: 'input', id, label: 'Note', placeholder: 'Write it down…', multiline: true });
+    } else throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   // A game saves its own scores, so a games-only app needs no save button.
   const fillable2 = components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist');
@@ -317,6 +460,7 @@ export function sanitizeSpec(raw: unknown): AppSpec {
     emoji: (str(r.emoji, 8) || '✨').slice(0, 4),
     accent,
     description: str(r.description, 160) ?? '',
+    ...(str(r.code, 600) ? { code: str(r.code, 600) } : {}),
     components: normalizeLayout(components),
   };
 }
@@ -349,6 +493,7 @@ const RANK: Record<SpecComponent['type'], number> = {
   // Totals sit at the top, like a dashboard, above the form that feeds them.
   // A game is the point of its app, so it leads.
   game: 0.4,
+  random: 0.4,
   stat: 0.5,
   chart: 0.5,
   input: 1,

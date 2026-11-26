@@ -24,6 +24,7 @@ export async function scheduleDailyReminders(): Promise<boolean> {
 }
 export async function cancelReminders(): Promise<void> {}
 export async function cancelRemindersForApp(): Promise<void> {}
+export async function cancelOrphanReminders(): Promise<void> {}
 export async function notifyIfInBackground(): Promise<void> {}
 export async function notify(): Promise<void> {}
 export function initAlerts(): () => void {

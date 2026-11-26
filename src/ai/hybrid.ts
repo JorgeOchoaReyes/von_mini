@@ -49,9 +49,7 @@ export const local = (ctx: RouteContext) => onDeviceOnly || !ctx.online || ctx.p
  */
 export function appModeProblem(ctx: RouteContext): string | null {
   const nano = ctx.deviceStatus === 'available';
-  if (local(ctx)) {
-    return nano ? null : 'Private mode (or no connection) keeps AI on this device, but this device can’t run Gemini Nano.';
-  }
+  if (local(ctx)) return localProblem(ctx);
   if (ctx.appMode === 'device' && !nano) {
     return 'This app is set to On-device, but this device can’t run Gemini Nano. Choose Auto or Cloud.';
   }
@@ -86,12 +84,53 @@ async function generateSpec(prompt: string, mode: InferenceMode) {
   } catch {
     // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
     result = await engine.generate(`${prompt}\n\nReturn valid JSON only, no other text.`, opts);
-    return { spec: sanitizeSpec(extractJson(result.text)), source: result.source };
+    return { spec: sanitizeSpec(extractJson(result.text), { rescue: true }), source: result.source };
   }
 }
 
+/**
+ * Why AI can't run at all right now, in plain words, or null: offline or in private mode, every
+ * request must stay on the phone, and this phone has no on-device model. Checked before a build,
+ * an edit or a chat turn, so the answer is a clear sentence rather than an engine error.
+ */
+export function localProblem(ctx: RouteContext): string | null {
+  if (!local(ctx) || ctx.deviceStatus === 'available') return null;
+  if (!ctx.online) return 'You’re offline, and this phone can’t run AI on its own. Connect to build or change apps. Your apps, saved data and games still work offline.';
+  return 'Private mode keeps AI on this phone, but this phone can’t run Gemini Nano. Turn off Private mode in Settings to use AI.';
+}
+
+/** A chat message asking for the app to be written in code: "write it as code", "make this a custom version". */
+export const ASKS_FOR_CODE_VERSION =
+  /\b(write|make|turn|rewrite|redo|build|do|remake|recreate)\s+(it|this|that|the app|this app|my app)?\s*(as|in|into|with|using)\s+(code|html|javascript)\b|\b(make|give|want|build|write)\b[^.?!]{0,20}\bcustom version\b|^\s*(in |as )?code\s*[.!]?\s*$/i;
+
+/** The user asked for code / a custom version in so many words. */
+const ASKS_CODE = /\b(code|coded|html|javascript|custom (version|app|game))\b/i;
+/** Things custom code can't do either: it runs alone on the phone (no internet, camera, people). */
+const NO_CODE_TOPIC = /\b(weather|forecast|stocks?|crypto|bitcoin|live prices?|prices? live|news|photos?|pictures?|camera|selfies?|filters?|social|followers|feed)\b/i;
+/** Requests a built-in game already covers. */
+const BUILT_IN_GAME = /\b(tetris|falling blocks?|block (drop|stack)|subway|runner|dodge|snake|flappy|bird|brick|breakout|arkanoid|space ?shooter|shooter|invaders?|aliens?|galaga|catch(ing|er)?|whack|mole)\b/i;
+
+/**
+ * Keeps a design's code brief only where code helps. The model adds one too eagerly (a built-in
+ * game, or live weather that code can't fetch either), which would write a needless custom app.
+ */
+export function settleCode(request: string, spec: AppSpec): AppSpec {
+  if (!spec.code || ASKS_CODE.test(request)) return spec;
+  const builtInGame = spec.components.some((c) => c.type === 'game') && BUILT_IN_GAME.test(request) && !/power.?ups?|boss|level editor|multiplayer|own rules/i.test(request);
+  if (!NO_CODE_TOPIC.test(request) && !builtInGame) return spec;
+  const { code: _drop, ...rest } = spec;
+  return rest;
+}
+
+function checkLocal(ctx: RouteContext) {
+  const problem = localProblem(ctx);
+  if (problem) throw new Error(problem);
+}
+
 export async function buildApp(request: string, ctx: RouteContext): Promise<{ spec: AppSpec; source: InferenceSource }> {
-  return generateSpec(specPrompt(request), modeFor('build', ctx));
+  checkLocal(ctx);
+  const r = await generateSpec(specPrompt(request), modeFor('build', ctx));
+  return { ...r, spec: settleCode(request, r.spec) };
 }
 
 /* ------------------------------------------------------------------ *
@@ -198,8 +237,11 @@ export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** Cloud failures worth retrying on the device: the model is busy, over quota, or unreachable. */
+/** The cloud couldn't be reached or didn't answer (as opposed to refusing the request). */
+export class UnreachableError extends Error {}
+
 export function isCloudUnavailable(e: unknown): boolean {
-  if (e instanceof StalledError) return true;
+  if (e instanceof StalledError || e instanceof UnreachableError) return true;
   const msg = e instanceof Error ? e.message : String(e);
   return /high demand|overloaded|unavailable|503|429|resource.?exhausted|quota|deadline|timed? ?out|network|fetch failed|failed to connect|unable to resolve host/i.test(
     msg,
@@ -262,7 +304,7 @@ async function withDeviceFallback<T>(
     }
     if (isQuotaError(e)) throw explainCloudError(e);
     if (isCloudUnavailable(e)) {
-      throw new Error(
+      throw new UnreachableError(
         e instanceof StalledError
           ? 'Gemini in the cloud didn’t answer in time, and this device has no on-device model to fall back to. Try again in a minute.'
           : 'Gemini in the cloud is busy right now, and this device has no on-device model to fall back to. Try again in a minute.',
@@ -310,13 +352,23 @@ async function generateSpecOnce(
       source = r.source;
     }
     try {
-      const spec = sanitizeSpec(extractJson(text));
+      // The last attempt keeps a usable app even if it came back with nothing to fill in.
+      const spec = sanitizeSpec(extractJson(text), { rescue: attempt > 0 });
       onEvent({ type: 'step', step: { id: 'design', label: labels[1], state: 'done' } });
       onEvent({ type: 'step', step: { id: 'check', label: labels[2], state: 'done' } });
       return { spec, source };
     } catch (e) {
       // Small models occasionally break JSON; one retry with a stricter nudge usually fixes it.
-      if (attempt++ > 0) throw e;
+      if (attempt++ > 0) {
+        // Both streamed answers were broken (seen on very long requests): one last plain request,
+        // kept as usable as possible, before giving up.
+        try {
+          const r = await withDeadline(engine.generate(`${prompt}\n\nReturn valid JSON only, no comments, at most 12 components.`, opts), REQUEST_MS);
+          return { spec: sanitizeSpec(extractJson(r.text), { rescue: true }), source: r.source };
+        } catch {
+          throw e;
+        }
+      }
       onEvent({ type: 'retry' });
     }
   }
@@ -328,7 +380,9 @@ export async function buildAppProgressive(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
-  return generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
+  checkLocal(ctx);
+  const r = await generateSpecProgressive(specPrompt(request), modeFor('build', ctx), 'build', onEvent);
+  return { ...r, spec: settleCode(request, r.spec) };
 }
 
 /** Applies a requested change, reporting progress as the new spec streams in. */
@@ -338,6 +392,7 @@ export async function editAppProgressive(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpecProgressive(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx), 'edit', onEvent);
 }
 
@@ -346,6 +401,7 @@ export async function editApp(
   change: string,
   ctx: RouteContext,
 ): Promise<{ spec: AppSpec; source: InferenceSource }> {
+  checkLocal(ctx);
   return generateSpec(editSpecPrompt(JSON.stringify(spec), change), modeFor('edit', ctx));
 }
 
@@ -413,18 +469,50 @@ export async function chatAboutApp(
   ctx: RouteContext,
   onEvent: (e: BuildEvent) => void = () => undefined,
 ): Promise<ChatReply> {
-  const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
-  const turn = await withDeviceFallback(modeFor('edit', ctx), onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
-  if (turn.app) {
-    const changes = describeChanges(spec, turn.app);
-    if (changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
+  checkLocal(ctx);
+  // "Write it as code": no model needed to say yes. The brief carries anything else they asked.
+  if (ASKS_FOR_CODE_VERSION.test(message) && message.length < 200) {
+    if (spec.code) {
+      return {
+        kind: 'answer',
+        source: 'on_device',
+        text: 'It already has a custom version written in code: open the Custom tab. Tell me what to change in it (like “make the breaks 10 minutes”) and I’ll rewrite it.',
+      };
+    }
+    const next = { ...spec, code: `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features and a more interactive design. The user asked: "${message.trim()}"` };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Writing a custom version in code.', source: 'on_device' };
   }
-  // An "updated" app identical to the current one: its reply would claim a change that didn't
-  // happen, so say so plainly instead.
+  const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
+  const mode = modeFor('edit', ctx);
+  let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  const edit = (t: typeof turn) => (t.app ? describeChanges(spec, t.app) : []);
+  let changes = edit(turn);
+  // The model sent the app back unchanged while saying it changed something (or said nothing):
+  // the edit was lost on the way. Ask once more, pointing that out, before giving up.
+  // Also when it says it changed the app but sent no app at all ("I've extended the chart").
+  const lost = turn.app ? !changes.length && (!turn.reply || CLAIMS_CHANGE.test(turn.reply)) : SAYS_DONE.test(turn.reply);
+  if (lost) {
+    const again = `${prompt}\n\nYour last answer returned the app unchanged. If the user asked for any change, return the full app with that change applied (use "code" for what the blocks can't do). If they didn't ask for a change, set "app" to null and just reply.`;
+    try {
+      turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(again, m, onEvent));
+      changes = edit(turn);
+    } catch {
+      // Keep the first answer.
+    }
+  }
+  if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
   const noChange =
     'I couldn’t work out a change from that, so the app is as it was. Try naming what to change, e.g. “add a daily total of calories” or “make the AI answers shorter”.';
-  return { kind: 'answer', source: turn.source, text: turn.app ? noChange : turn.reply || noChange };
+  // No change: show the model's own words, unless they claim a change that didn't happen.
+  const reply = turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : noChange;
+  return { kind: 'answer', source: turn.source, text: reply };
 }
+
+/** A reply in which the model says it has already made a change. */
+const SAYS_DONE = /\b(i('ve| have)|i)\s+(just\s+)?(added|changed|updated|removed|renamed|made|turned|replaced|switched|extended|set|increased|decreased|moved|generated|created|built|wrote|written)\b|\b(is|are) now\b|\bnow (has|shows|uses|rolls|includes)\b/i;
+
+/** A reply that says the app was changed. */
+const CLAIMS_CHANGE = /\b(added|add(ing)?|changed|updated|removed|renamed|made|turned|replaced|switched|set|now (has|shows|uses|rolls|is))\b/i;
 
 export async function runAction(prompt: string, ctx: RouteContext): Promise<GenerateResult> {
   const problem = appModeProblem(ctx);
@@ -437,9 +525,10 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
 }
 
 export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {
+  // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify(spec)), {
+  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code), {
     mode: 'only_in_cloud',
     system: HTML_SYSTEM,
   });

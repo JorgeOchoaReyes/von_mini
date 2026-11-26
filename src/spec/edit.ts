@@ -10,7 +10,7 @@
  * The AI is still used for changes expressed in words ("make this kinder"); these functions back
  * the tap-to-edit UI and the quick-edit chips.
  */
-import type { StatOp, StatRange } from './stats';
+import { DATA_TOKENS, type StatOp, type StatRange } from './stats';
 import { ACCENTS, COMPONENT_TYPES, type Accent, type AppSpec, type ComponentType, type InputKind, type SpecComponent } from './types';
 import { normalizeLayout, normalizeTimes } from './validate';
 
@@ -23,7 +23,7 @@ const clone = (spec: AppSpec): AppSpec => ({ ...spec, components: spec.component
 const settle = (spec: AppSpec): AppSpec => ({ ...spec, components: normalizeLayout(spec.components) });
 
 const uniqueId = (spec: AppSpec, base: string) => {
-  const used = new Set(spec.components.map((c) => c.id).filter(Boolean) as string[]);
+  const used = new Set<string>([...DATA_TOKENS, ...(spec.components.map((c) => c.id).filter(Boolean) as string[])]);
   const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'field';
   let id = slug;
   for (let i = 2; used.has(id); i++) id = `${slug}_${i}`;
@@ -90,11 +90,12 @@ export function setPlaceholder(spec: AppSpec, index: number, placeholder: string
 export function setOptions(spec: AppSpec, index: number, options: string[]): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
-  if (!c || (c.type !== 'choice' && c.type !== 'checklist')) return spec;
+  if (!c || (c.type !== 'choice' && c.type !== 'checklist' && c.type !== 'random')) return spec;
   // Checklist items are saved joined by ", ", so an item can't contain a comma.
   const clean = [...new Set(options.map((o) => (c.type === 'checklist' ? o.replace(/,/g, ' ') : o).trim().slice(0, 40)).filter(Boolean))];
   if (clean.length < (c.type === 'choice' ? 2 : 1)) return spec;
-  c.options = clean.slice(0, c.type === 'choice' ? 8 : 12);
+  if (c.type === 'random' && clean.length < 2) return spec;
+  c.options = clean.slice(0, c.type === 'choice' ? 8 : c.type === 'random' ? 20 : 12);
   return next;
 }
 
@@ -159,6 +160,36 @@ export function setGame(
   return next;
 }
 
+/** Changes how a dice & chance block picks: what it rolls, how many dice, their sides, a range. */
+export function setRandom(
+  spec: AppSpec,
+  index: number,
+  patch: { roll?: SpecComponent['roll']; count?: number; sides?: number; min?: number; max?: number },
+): AppSpec {
+  const next = clone(spec);
+  const c = next.components[index];
+  if (!c || c.type !== 'random') return spec;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
+  if (patch.roll) {
+    c.roll = patch.roll;
+    if (patch.roll === 'dice') {
+      c.count ??= 1;
+      c.sides ??= 6;
+    }
+    if (patch.roll === 'number') {
+      c.min ??= 1;
+      c.max ??= 100;
+    }
+    if (patch.roll === 'pick' && (c.options?.length ?? 0) < 2) c.options = ['Yes', 'No', 'Maybe'];
+  }
+  if (patch.count !== undefined && Number.isFinite(patch.count)) c.count = clamp(patch.count, 1, 6);
+  if (patch.sides !== undefined && Number.isFinite(patch.sides)) c.sides = clamp(patch.sides, 2, 100);
+  if (patch.min !== undefined && Number.isFinite(patch.min)) c.min = Math.round(patch.min);
+  if (patch.max !== undefined && Number.isFinite(patch.max)) c.max = Math.round(patch.max);
+  if (c.min !== undefined && c.max !== undefined && c.min >= c.max) c.max = c.min + 1;
+  return next;
+}
+
 /** Groups history by day, optionally totalling a field on each day. */
 export function setHistoryDays(spec: AppSpec, index: number, patch: { byDay?: boolean; total?: string }): AppSpec {
   const next = clone(spec);
@@ -181,8 +212,20 @@ export function toggleMultiline(spec: AppSpec, index: number): AppSpec {
 export function removeComponent(spec: AppSpec, index: number): AppSpec {
   const next = clone(spec);
   if (!next.components[index]) return spec;
-  next.components.splice(index, 1);
-  return next;
+  const [gone] = next.components.splice(index, 1);
+  const id = gone.id;
+  if (!id) return next;
+  // Nothing may keep pointing at the removed block: an AI that filled it, a stat or chart that
+  // counted it (it falls back to counting entries), or a history total.
+  for (const c of next.components) {
+    if (c.fills === id) delete c.fills;
+    if (c.total === id) delete c.total;
+    if (c.field === id) {
+      delete c.field;
+      if (c.type === 'stat' || c.type === 'chart') c.op = 'count';
+    }
+  }
+  return pruneTemplates(next);
 }
 
 /** Moves a component one slot up or down among its layout group. */
@@ -252,6 +295,9 @@ export function addComponent(spec: AppSpec, type: ComponentType): AppSpec {
     case 'game':
       next.components.push({ type, id: uniqueId(next, 'game'), label: 'Lane Dash', game: 'runner', speed: 'normal' });
       break;
+    case 'random':
+      next.components.push({ type, id: uniqueId(next, 'roll'), label: 'Roll', roll: 'dice', count: 1, sides: 6 });
+      break;
     case 'heading':
       next.components.push({ type, text: 'New heading' });
       break;
@@ -285,11 +331,11 @@ export function setDescription(spec: AppSpec, description: string): AppSpec {
 
 /** Keeps a template's `{field}` placeholders pointing at fields that still exist. */
 export function pruneTemplates(spec: AppSpec): AppSpec {
-  const ids = new Set(spec.components.map((c) => c.id).filter(Boolean) as string[]);
+  const ids = new Set<string>([...DATA_TOKENS, ...(spec.components.map((c) => c.id).filter(Boolean) as string[])]);
   return {
     ...spec,
     components: spec.components.map((c) =>
-      c.type === 'ai' && c.prompt
+      (c.type === 'ai' || c.type === 'voice') && c.prompt
         ? { ...c, prompt: c.prompt.replace(/\{([a-z0-9_]+)\}/gi, (m, id: string) => (ids.has(id) ? m : '')) }
         : c,
     ),
@@ -367,5 +413,10 @@ export function quickEdits(spec: AppSpec): QuickEdit[] {
   const partner = ACCENTS.find((a) => a !== spec.accent);
   if (partner) out.push({ label: 'Change the colour', apply: (s) => setAccent(s, partner) });
 
-  return out.slice(0, 5);
+  // Adding chips are hidden once an app has the most blocks it can hold, and never overfill it.
+  const full = spec.components.length >= 12;
+  return out
+    .filter((e) => !(full && e.label.startsWith('Add ')))
+    .map((e) => (e.label.startsWith('Add ') ? { ...e, apply: (s: AppSpec) => (s.components.length >= 12 ? s : e.apply(s)) } : e))
+    .slice(0, 5);
 }

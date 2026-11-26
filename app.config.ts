@@ -78,6 +78,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-notifications',
       { icon: './assets/notification-icon.png', color: '#E8322C', enableRemoteNotifications: false },
     ],
+    // Camera only to scan QR codes of shared apps; no photos or video, so no microphone from here.
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'von mini uses the camera to scan QR codes of apps people share with you.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
   ],
   experiments: { typedRoutes: true },
 });

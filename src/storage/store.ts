@@ -14,6 +14,8 @@ export interface SavedApp {
   spec: AppSpec;
   /** Custom HTML version written by Gemini in the cloud (optional). */
   html?: string;
+  /** The design's `code` brief that `html` was written from, so a changed brief writes it again. */
+  htmlFor?: string;
   builtWith: InferenceSource | 'starter';
   /** Where this app's own AI runs: auto (hybrid, default), device (Gemini Nano only) or cloud. */
   aiMode?: 'auto' | 'device' | 'cloud';
@@ -39,6 +41,8 @@ export interface ChatMessage {
   source?: InferenceSource;
   /** For edits: the spec before the change, so it can be undone. */
   prevSpec?: AppSpec;
+  /** For an edit: the app right after it, so undo can tell whether anything changed since. */
+  nextSpec?: AppSpec;
   undone?: boolean;
 }
 
@@ -161,17 +165,25 @@ export async function updateMessage(appId: string, id: string, patch: Partial<Ch
 
 export const listEntries = (appId: string) => readJson<Entry[]>(entriesKey(appId), []);
 
-export async function addEntry(appId: string, values: Record<string, string>): Promise<Entry[]> {
-  const entries = await listEntries(appId);
-  const next = [{ id: newId(), at: Date.now(), values }, ...entries].slice(0, 500);
-  await writeJson(entriesKey(appId), next);
-  return next;
+// Entry writes for one app run one after another, so a quick save and delete (or a game ending
+// mid-save) never read the same list and drop or bring back an entry.
+const entryQueues = new Map<string, Promise<unknown>>();
+function changeEntries(appId: string, change: (entries: Entry[]) => Entry[]): Promise<Entry[]> {
+  const run = (entryQueues.get(appId) ?? Promise.resolve()).then(async () => {
+    const next = change(await listEntries(appId));
+    await writeJson(entriesKey(appId), next);
+    return next;
+  });
+  entryQueues.set(appId, run.catch(() => undefined));
+  return run;
 }
 
-export async function deleteEntry(appId: string, entryId: string): Promise<Entry[]> {
-  const next = (await listEntries(appId)).filter((e) => e.id !== entryId);
-  await writeJson(entriesKey(appId), next);
-  return next;
+export function addEntry(appId: string, values: Record<string, string>): Promise<Entry[]> {
+  return changeEntries(appId, (entries) => [{ id: newId(), at: Date.now(), values }, ...entries].slice(0, 500));
+}
+
+export function deleteEntry(appId: string, entryId: string): Promise<Entry[]> {
+  return changeEntries(appId, (entries) => entries.filter((e) => e.id !== entryId));
 }
 
 /** Key-value store exposed to custom HTML apps through the bridge. */
