@@ -10,6 +10,7 @@
  * Builds prefer the cloud for quality but still succeed on Nano offline; everything users do
  * inside their apps prefers the device, so their data stays local and costs nothing.
  */
+import { withLatestChange } from './brief';
 import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
@@ -546,8 +547,9 @@ export async function chatAboutApp(
   }
   // An app built in code shows its code, not its blocks: a change that only touched the blocks
   // would never show. Carry the ask into the brief so the code is rebuilt with it.
-  if (turn.app && changes.length && spec.code && turn.app.code === spec.code) {
-    turn.app = { ...turn.app, code: `${spec.code} Also: ${message.trim()}`.slice(0, 600) };
+  // Also when the model replied but sent no app: a code app can still take any change in its code.
+  if (spec.code && (turn.app ? turn.app.code === spec.code : !rejected.length && SAYS_DONE.test(turn.reply))) {
+    turn.app = { ...(turn.app ?? spec), code: withLatestChange(spec.code, message) };
     changes = describeChanges(spec, turn.app);
   }
   if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };

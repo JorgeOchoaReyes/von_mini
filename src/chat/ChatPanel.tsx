@@ -17,7 +17,7 @@ import { FadeUp } from '../ui/motion';
 import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
-import { chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
+import { canStop, chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
   { label: 'What does this app do?', icon: 'help-circle-outline' },
@@ -302,10 +302,10 @@ export function ChatPanel({
           theme={theme}
           busy={busy}
           // While it's thinking or streaming, the send button becomes Stop.
-          onStop={() => {
+          onStop={canStop(appId) || !busy ? () => {
             stopMessage(appId);
             stopSpeaking();
-          }}
+          } : undefined}
           accessory={
             <MicButton
               theme={theme}

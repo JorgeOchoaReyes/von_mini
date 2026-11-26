@@ -110,10 +110,29 @@ export function customState(app: SavedApp, ctx: RouteContext): CustomState {
   return { kind: 'pending' };
 }
 
-/** Writes the custom version for the app's current brief. Safe to call repeatedly. */
-export async function writeCustom(appId: string, ctx: RouteContext): Promise<void> {
+const jobs = new Map<string, Promise<void>>();
+
+/**
+ * Writes the custom version for the app's current brief. Safe to call repeatedly: a call while one
+ * is running returns that same job, so the chat can wait for the update it asked for.
+ */
+export function writeCustom(appId: string, ctx: RouteContext): Promise<void> {
   // Offline or in private mode it waits ("needs the internet"), and starts once the cloud is back.
-  if (busy.has(appId) || local(ctx)) return;
+  const running = jobs.get(appId);
+  if (running) return running;
+  if (local(ctx)) return Promise.resolve();
+  const job = write(appId, ctx).finally(() => jobs.delete(appId));
+  jobs.set(appId, job);
+  return job;
+}
+
+/** Why the last update for this brief failed, if it did. */
+export const customError = (appId: string, brief: string) => {
+  const e = errors.get(appId);
+  return e && e.brief === brief ? e.message : undefined;
+};
+
+async function write(appId: string, ctx: RouteContext): Promise<void> {
   const app = await getApp(appId);
   const brief = app?.spec.code;
   if (!app || !brief || (app.html && app.htmlFor === brief)) return;
@@ -132,10 +151,10 @@ export async function writeCustom(appId: string, ctx: RouteContext): Promise<voi
     if (!latest || latest.spec.code !== brief) return;
     await saveApp({ ...latest, html, htmlFor: brief });
     // The app now is its code version: record it, so History can go back to the blocks (or here).
-    await pushVersion(appId, latest.spec, ['Rebuilt it in code.'], 'chat', 'in_cloud', undefined, html);
+    await pushVersion(appId, latest.spec, [base ? 'Updated the app with your change.' : 'Built the app.'], 'chat', 'in_cloud', undefined, html);
     void notifyIfInBackground({
-      title: `${latest.spec.emoji} ${latest.spec.name} is ready`,
-      body: 'Your custom version is written. Tap to play it.',
+      title: `${latest.spec.emoji} ${latest.spec.name} ${base ? 'updated' : 'is ready'}`,
+      body: base ? 'Your change is in. Tap to see it.' : 'Your app is built. Tap to open it.',
       url: `/app/${appId}`,
     });
   } catch (e) {
