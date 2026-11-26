@@ -153,7 +153,7 @@ export function baseCss(t: HtmlTheme) {
 *{box-sizing:border-box}
 html{overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{margin:0;min-height:100%;background:var(--vm-bg);color:var(--vm-text);font:16px/1.5 var(--vm-font);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
-body{padding:12px 10px 32px !important;max-width:720px;margin:0 auto;overflow-wrap:anywhere}
+body{padding:14px 16px 32px !important;max-width:720px;margin:0 auto;overflow-wrap:anywhere}
 h1,.vm-title{font-family:var(--vm-display);font-weight:400;font-size:30px;line-height:1.1;letter-spacing:.03em;margin:0 0 4px}
 h2,.vm-headline{font-family:var(--vm-display);font-weight:400;font-size:22px;line-height:1.15;letter-spacing:.03em;margin:0}
 h3{font-size:17px;font-weight:700;margin:0}
@@ -163,12 +163,12 @@ p{margin:0}
 .vm-stack{display:flex;flex-direction:column;gap:16px}
 .vm-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .vm-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
-.vm-card{background:var(--vm-surface);border:var(--vm-stroke) solid var(--vm-border);border-radius:var(--vm-radius);padding:14px;box-shadow:var(--vm-shadow)}
+.vm-card{background:var(--vm-surface);border:var(--vm-stroke) solid var(--vm-border);border-radius:var(--vm-radius);padding:18px;box-shadow:var(--vm-shadow)}
 /* Use the width: a card inside a card goes flat, and the app's own wrappers add no side space. */
 .vm-card .vm-card,.vm-hero .vm-card,.vm-card .vm-hero{border:0;box-shadow:none;padding:0;background:transparent}
 .vm-card .vm-result,.vm-card .vm-list>li{box-shadow:none}
 main,.container,.wrapper,.app,#app,#root,.page,.content{max-width:none !important;padding-left:0 !important;padding-right:0 !important;margin-left:0 !important;margin-right:0 !important}
-.vm-hero{background:var(--vm-accent-soft);border:var(--vm-stroke) solid var(--vm-border);border-radius:18px;padding:14px;box-shadow:var(--vm-shadow)}
+.vm-hero{background:var(--vm-accent-soft);border:var(--vm-stroke) solid var(--vm-border);border-radius:18px;padding:18px;box-shadow:var(--vm-shadow)}
 .vm-stat{font-family:var(--vm-display);font-size:44px;line-height:1;letter-spacing:.02em}
 .vm-label{display:block;font-size:15px;font-weight:700;margin-bottom:8px}
 .vm-input,input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select{width:100%;font:inherit;color:var(--vm-text);background:var(--vm-surface-alt);border:var(--vm-stroke) solid var(--vm-border);border-radius:10px;padding:12px;outline:none}
