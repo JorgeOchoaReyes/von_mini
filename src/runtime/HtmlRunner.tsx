@@ -49,6 +49,11 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
       allowFileAccessFromFileURLs={false}
       allowUniversalAccessFromFileURLs={false}
       setSupportMultipleWindows={false}
+      // Fit the page: the phone's font-size setting mustn't reflow it, no pinch zoom or overscroll.
+      textZoom={100}
+      setBuiltInZoomControls={false}
+      overScrollMode="never"
+      bounces={false}
       style={{ flex: 1, backgroundColor: 'transparent' }}
     />
   );

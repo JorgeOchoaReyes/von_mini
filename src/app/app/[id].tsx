@@ -73,6 +73,8 @@ export default function AppScreen() {
 
   const [app, setApp] = useState<SavedApp | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>('preview');
+  // The person chose the simple (blocks) version while the full one can't be built.
+  const [useSimple, setUseSimple] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [editingApp, setEditingApp] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -454,11 +456,10 @@ export default function AppScreen() {
   // One app at a time: when its code version is the current one, that's what the App tab shows.
   // Going back to the blocks (or to code) is an edit or a restore, kept in History.
   const codeView = (
-    <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
+    <View style={{ flex: 1, backgroundColor: appTheme.bg, paddingBottom: insets.bottom }}>
+      {/* While the agent updates the app, it stays usable, with a bar saying so. */}
       {custom.kind !== 'none' && custom.kind !== 'ready' && (
-        <View style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
-          <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onRetry={() => void writeCustom(app.id, ai)} />
-        </View>
+        <UpdateBar state={custom} theme={appTheme} onRetry={() => void writeCustom(app.id, ai)} />
       )}
       {/* Reminders are the phone's own notifications, so they stay native around the HTML. */}
       {app.spec.components
@@ -473,7 +474,22 @@ export default function AppScreen() {
       </AppAiModeProvider>
     </View>
   );
-  const appView = showsCode(app) ? codeView : preview;
+  // HTML is the app. First build: a building screen until it's ready (the blocks are only its plan,
+  // or a stand-in the person can choose when it can't be built). Updates: the current HTML stays.
+  const hasHtml = !!app.html && app.htmlFor !== '-';
+  const appView = showsCode(app) || (app.spec.code && hasHtml)
+    ? codeView
+    : app.spec.code && !useSimple
+      ? (
+          <BuildingView
+            app={app}
+            state={custom}
+            theme={appTheme}
+            onRetry={() => void writeCustom(app.id, ai)}
+            onUseSimple={() => setUseSimple(true)}
+          />
+        )
+      : preview;
 
   const sidePanel = (
     <View style={[styles.side, { borderColor: appTheme.border, backgroundColor: appTheme.bg }]}>
@@ -664,6 +680,9 @@ function Tabs({
 }
 
 const styles = StyleSheet.create({
+  building: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space(6), gap: space(3) },
+  buildingIcon: { width: 88, height: 88, borderRadius: radius.xl, borderWidth: stroke, alignItems: 'center', justifyContent: 'center' },
+  updateBar: { flexDirection: 'row', alignItems: 'center', gap: space(2), marginHorizontal: space(4), marginBottom: space(2), paddingHorizontal: space(3), paddingVertical: space(2), borderRadius: radius.md, borderWidth: stroke },
   customCard: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(2) },
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space(4), padding: space(6) },
   header: {
@@ -738,6 +757,71 @@ function CustomCard({
               : brief}
       </Text>
       {state.kind === 'failed' && <Button label="Try again" icon="refresh" size="sm" variant="secondary" theme={theme} onPress={onRetry} />}
+    </View>
+  );
+}
+
+/** The first build of an app's HTML: what's happening, and what to do if it can't finish. */
+function BuildingView({
+  app,
+  state,
+  theme,
+  onRetry,
+  onUseSimple,
+}: {
+  app: SavedApp;
+  state: CustomState;
+  theme: Theme;
+  onRetry(): void;
+  onUseSimple(): void;
+}) {
+  const working = state.kind === 'writing' || state.kind === 'pending' || state.kind === 'ready';
+  return (
+    <View style={[styles.building, { backgroundColor: theme.bg }]} accessibilityLiveRegion="polite">
+      <View style={[styles.buildingIcon, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <Text style={{ fontSize: 44 }}>{app.spec.emoji}</Text>
+      </View>
+      <Text style={[type.title, { color: theme.text, textAlign: 'center' }]}>{app.spec.name}</Text>
+      {working ? (
+        <>
+          <ActivityIndicator size="large" color={theme.accent} />
+          <Text style={[type.headline, { color: theme.text, textAlign: 'center' }]}>Building your app…</Text>
+          <Text style={[type.body, { color: theme.muted, textAlign: 'center' }]}>
+            Usually 10–20 seconds. You can leave: it keeps going, and you’ll get a notification when it’s ready.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={[type.headline, { color: theme.text, textAlign: 'center' }]}>
+            {state.kind === 'needs-cloud' ? 'Needs the internet to build' : 'Couldn’t build it'}
+          </Text>
+          <Text style={[type.body, { color: theme.muted, textAlign: 'center' }]}>
+            {state.kind === 'failed'
+              ? state.message
+              : 'Gemini builds apps in the cloud (with private mode off). It starts by itself when you’re back online.'}
+          </Text>
+          {state.kind === 'failed' && <Button label="Try again" icon="refresh" theme={theme} onPress={onRetry} />}
+          <Button label="Use the simple version for now" icon="apps-outline" variant="secondary" theme={theme} onPress={onUseSimple} />
+        </>
+      )}
+    </View>
+  );
+}
+
+/** A slim bar over an app whose HTML the agent is updating (or couldn't update). */
+function UpdateBar({ state, theme, onRetry }: { state: CustomState; theme: Theme; onRetry(): void }) {
+  const working = state.kind === 'writing' || state.kind === 'pending';
+  return (
+    <View style={[styles.updateBar, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} accessibilityLiveRegion="polite">
+      {working ? <ActivityIndicator color={theme.accent} /> : <Text>⚠️</Text>}
+      <Text style={[type.caption, { color: theme.text, flex: 1, fontWeight: '700' }]} numberOfLines={2}>
+        {working
+          ? 'Updating your app… keep using it, it switches when ready.'
+          : state.kind === 'needs-cloud'
+            ? 'Your change will be applied when you’re online.'
+            : `Couldn’t apply the change: ${state.kind === 'failed' ? state.message : ''}`}
+      </Text>
+      {state.kind === 'failed' && <Button label="Retry" size="sm" variant="secondary" theme={theme} onPress={onRetry} />}
     </View>
   );
 }

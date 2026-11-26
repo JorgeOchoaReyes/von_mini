@@ -1,3 +1,4 @@
+import { writeCustom } from '../../chat/customJobs';
 import { useRemoteConfig } from '../../remote/remoteConfig';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -135,6 +136,8 @@ export default function Home() {
         updatedAt: Date.now(),
       };
       await saveApp(app);
+      // Start building the HTML now, not when its screen opens, so it's under way wherever you go.
+      if (app.spec.code) void writeCustom(app.id, ai);
       await pushVersion(app.id, spec, [`Built “${spec.name}” from your description.`], 'build', source);
       builtRef.current = true;
       haptics.success();
