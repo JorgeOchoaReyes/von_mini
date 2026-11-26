@@ -58,7 +58,7 @@ export function describeChanges(before: AppSpec, after: AppSpec): string[] {
     }
     const same = (keys: (keyof SpecComponent)[]) => keys.every((key) => JSON.stringify(old[key]) === JSON.stringify(c[key]));
     if (c.type === 'game' && !same(['game', 'speed', 'player', 'item'])) out.push(`Changed the game “${nameOf(c)}”.`);
-    if (c.type === 'random' && !same(['roll', 'count', 'sides', 'min', 'max'])) out.push(`Changed how “${nameOf(c)}” picks.`);
+    if (c.type === 'random' && !same(['roll', 'count', 'sides', 'min', 'max', 'countFrom', 'sidesFrom', 'minFrom', 'maxFrom', 'optionsFrom'])) out.push(`Changed how “${nameOf(c)}” picks.`);
     if (old.type === c.type && (c.type === 'game' || c.type === 'random') && old.text !== c.text && c.text && (old.label ?? old.text) === (c.label ?? c.text)) {
       out.push(`Changed the description of “${nameOf(c)}”.`);
     }

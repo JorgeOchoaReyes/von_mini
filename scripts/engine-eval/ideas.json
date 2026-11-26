@@ -373,6 +373,21 @@
     {
       "request": "split expenses with roommates",
       "code": true
+    },
+    {
+      "request": "a dice roller where I can choose how many dice to roll",
+      "has": [
+        "random",
+        "choice"
+      ],
+      "wired": true
+    },
+    {
+      "request": "spin to pick a random name from a list I type",
+      "has": [
+        "random"
+      ],
+      "wired": true
     }
   ],
   "chats": [
@@ -574,6 +589,52 @@
       "base": "weight log with a weekly chart",
       "message": "show 30 days on the chart",
       "expect": "edit"
+    },
+    {
+      "base": "roll two dice",
+      "message": "add a choice for how many dice to roll",
+      "expect": "edit",
+      "has": [
+        "choice"
+      ],
+      "wired": true
+    },
+    {
+      "base": "roll two dice",
+      "message": "let me pick between a d6 and a d20",
+      "expect": "edit",
+      "wired": true
+    },
+    {
+      "base": "a dice roller where I can choose how many dice to roll",
+      "message": "The roll dice still 3",
+      "history": [
+        {
+          "role": "user",
+          "text": "The widget is to adjust the total"
+        }
+      ],
+      "expect": "any",
+      "noInvent": true
+    },
+    {
+      "base": "a dice roller where I can choose how many dice to roll",
+      "message": "the number of dice should change the roll",
+      "expect": "any",
+      "wired": true,
+      "noInvent": true
+    },
+    {
+      "base": "log what I eat and count calories",
+      "message": "make it better",
+      "expect": "any",
+      "noInvent": true
+    },
+    {
+      "base": "morning routine checklist",
+      "message": "fix it",
+      "expect": "any",
+      "noInvent": true
     }
   ],
   "html": [

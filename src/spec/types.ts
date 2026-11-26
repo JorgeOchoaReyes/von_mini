@@ -66,6 +66,16 @@ export interface SpecComponent {
   /** random number: the range, inclusive. */
   min?: number;
   max?: number;
+  /**
+   * random: take a setting from another field on the screen instead (its current value), so the
+   * blocks work together: a "Number of dice" choice sets how many dice roll, a list field sets
+   * what the spinner picks from. Each is a field id (input, choice or checklist).
+   */
+  countFrom?: string;
+  sidesFrom?: string;
+  minFrom?: string;
+  maxFrom?: string;
+  optionsFrom?: string;
   /** For chart: how many days to show (7-31). */
   days?: number;
   /** For stat / chart: the field (input, choice, checklist or ai id) whose saved values it reads. */
@@ -139,6 +149,11 @@ export const appSpecJsonSchema = {
           sides: { type: 'number' },
           min: { type: 'number' },
           max: { type: 'number' },
+          countFrom: { type: 'string' },
+          sidesFrom: { type: 'string' },
+          minFrom: { type: 'string' },
+          maxFrom: { type: 'string' },
+          optionsFrom: { type: 'string' },
         },
         required: ['type'],
       },

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { SpecComponent } from '../spec/types';
-import { rollOnce, type Result } from './random';
+import { resolveRandom, rollOnce, type Result } from './random';
 import type { Entry } from '../storage/store';
 import { Button, Card } from '../ui/components';
 import { haptics } from '../ui/haptics';
@@ -23,16 +23,20 @@ function fromSaved(c: SpecComponent, v: string | undefined): Result | null {
 }
 
 export function RandomCard({
-  c,
+  c: block,
+  values = {},
   theme,
   entries,
   onResult,
 }: {
   c: SpecComponent;
+  /** What's on screen now, for settings taken from other fields (see resolveRandom). */
+  values?: Record<string, string | undefined>;
   theme: Theme;
   entries: Entry[];
   onResult(value: string): Promise<void> | void;
 }) {
+  const c = resolveRandom(block, values);
   const last = entries.find((e) => e.values[c.id!])?.values[c.id!];
   const [shown, setShown] = useState<Result | null>(null);
   const [rolling, setRolling] = useState(false);

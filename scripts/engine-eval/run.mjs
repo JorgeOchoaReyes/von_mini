@@ -52,6 +52,7 @@ function review(spec, expect = {}) {
   const types = spec.components.map((c) => c.type);
   for (const t of expect.has ?? []) if (!types.includes(t)) issues.push(`missing ${t}`);
   if (expect.code === true && !spec.code) issues.push('expected a code brief');
+  if (expect.wired && !spec.components.some((c) => c.type === 'random' && (c.countFrom || c.sidesFrom || c.minFrom || c.maxFrom || c.optionsFrom))) issues.push('blocks not connected');
   if (expect.code === false && spec.code) issues.push('unexpected code brief');
   if (!spec.name || spec.name === 'My App') issues.push('no name');
   if (spec.components.length < 2) issues.push('too few blocks');
@@ -91,12 +92,17 @@ const specOf = Object.fromEntries(built.filter((b) => b.ok).map((b) => [b.reques
 const chats = ideas.chats.filter((c) => specOf[c.base] && (!only || c.base.includes(only)));
 console.log(`\nChat: ${chats.length} turns…`);
 const chatted = await pool(chats, 3, async (c) => {
-  const r = await withRetry('chat', specOf[c.base], [], c.message);
+  const r = await withRetry('chat', specOf[c.base], c.history ?? [], c.message);
   const issues = [];
   if (r.ok) {
     const v = r.value;
     if (c.expect !== 'any' && v.kind !== c.expect) issues.push(`expected ${c.expect}, got ${v.kind}`);
-    if (v.kind === 'edit') issues.push(...review(v.spec, { has: c.has, code: c.code }));
+    if (v.kind === 'edit') issues.push(...review(v.spec, { has: c.has, code: c.code, wired: c.wired }));
+    if (c.noInvent && v.kind === 'edit') {
+      const before = new Set(specOf[c.base].components.map((x) => x.id));
+      const added = v.spec.components.filter((x) => x.type === 'ai' && !before.has(x.id));
+      if (added.length) issues.push(`invented AI button ${added.map((x) => x.label).join(', ')}`);
+    }
     if (v.kind === 'answer' && /couldn.t work out a change/i.test(v.text) && c.expect === 'edit') issues.push('no change made');
   }
   const what = r.ok ? (r.value.kind === 'edit' ? `edit: ${r.value.changes.join(' | ').slice(0, 160)}` : `answer: ${r.value.text.slice(0, 160)}`) : `✗ ${r.error}`;

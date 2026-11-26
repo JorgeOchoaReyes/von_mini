@@ -164,7 +164,16 @@ export function setGame(
 export function setRandom(
   spec: AppSpec,
   index: number,
-  patch: { roll?: SpecComponent['roll']; count?: number; sides?: number; min?: number; max?: number },
+  patch: {
+    roll?: SpecComponent['roll'];
+    count?: number;
+    sides?: number;
+    min?: number;
+    max?: number;
+    /** Field ids to take a setting from; '' disconnects it. */
+    countFrom?: string;
+    optionsFrom?: string;
+  },
 ): AppSpec {
   const next = clone(spec);
   const c = next.components[index];
@@ -187,6 +196,8 @@ export function setRandom(
   if (patch.min !== undefined && Number.isFinite(patch.min)) c.min = Math.round(patch.min);
   if (patch.max !== undefined && Number.isFinite(patch.max)) c.max = Math.round(patch.max);
   if (c.min !== undefined && c.max !== undefined && c.min >= c.max) c.max = c.min + 1;
+  if (patch.countFrom !== undefined) c.countFrom = patch.countFrom || undefined;
+  if (patch.optionsFrom !== undefined) c.optionsFrom = patch.optionsFrom || undefined;
   return next;
 }
 
