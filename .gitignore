@@ -51,3 +51,5 @@ modules/*/android/build/
 
 # Firebase deploy cache
 .firebase/
+dist-eval/
+engine-eval-results*/

@@ -25,7 +25,8 @@ const server = dist.startsWith('http') ? null : createServer((req, res) => {
   createReadStream(file).pipe(res);
 }).listen(4173);
 
-const browser = await chromium.launch();
+// PW_CHANNEL=chrome uses an installed Chrome instead of a downloaded browser.
+const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
 const context = await browser.newContext();
 const page = await context.newPage();
 const logs = [];

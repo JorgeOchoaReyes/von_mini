@@ -1,6 +1,8 @@
 # Sends ~80 real app ideas and ~30 chat messages through the app's own AI pipeline (cloud Gemini,
 # via a web build with a test hook), to catch requests that fail or produce a poor app.
-# Runs by hand, or when the ideas change on a branch. Uses the EXPO_PUBLIC_ENV secret.
+# Runs by hand only (Actions > Engine eval > Run workflow): each run makes a few hundred Gemini
+# calls, so it never starts on its own. Uses the EXPO_PUBLIC_ENV secret, which needs an App Check
+# debug token for the web app now that App Check is enforced.
 name: Engine eval
 
 on:
@@ -9,9 +11,6 @@ on:
       only:
         description: Only run ideas whose text contains this
         required: false
-  push:
-    branches-ignore: [master]
-    paths: ['scripts/engine-eval/**', '.github/workflows/engine-eval.yml']
 
 permissions:
   contents: read
