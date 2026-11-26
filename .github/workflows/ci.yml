@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npx expo lint
 
+      - name: Game rules tests
+        run: npm test
+
       - name: Web build
         run: npx expo export --platform web --output-dir dist
         env:
