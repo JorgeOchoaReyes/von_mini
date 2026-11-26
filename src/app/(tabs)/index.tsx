@@ -9,6 +9,7 @@ import { useAI } from '../../ai/AIContext';
 import { StoppedError } from '../../ai/stoppable';
 import { backgroundWork } from '../../ai/background';
 import { buildAppProgressive, type BuildEvent, type ProgressStep, type SpecPeek } from '../../ai/hybrid';
+import { onCloudWait } from '../../ai/engineSelect';
 import { ensureAlertPermission, notify, notifyIfInBackground } from '../../alerts/notifications';
 import { AddShared } from '../../share/AddShared';
 import { AppTile } from '../../ui/AppTile';
@@ -67,6 +68,25 @@ export default function Home() {
   const [peek, setPeek] = useState<SpecPeek | null>(null);
   const [partial, setPartial] = useState('');
   const [retrying, setRetrying] = useState(false);
+  // Seconds left while we wait out a per-minute cloud limit, so a build never looks stuck.
+  const [waitLeft, setWaitLeft] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const off = onCloudWait((ms) => {
+      clearInterval(timer);
+      const until = Date.now() + ms;
+      setWaitLeft(Math.ceil(ms / 1000));
+      timer = setInterval(() => {
+        const left = Math.ceil((until - Date.now()) / 1000);
+        setWaitLeft(Math.max(0, left));
+        if (left <= 0) clearInterval(timer);
+      }, 250);
+    });
+    return () => {
+      off();
+      clearInterval(timer);
+    };
+  }, []);
   const [building, setBuilding] = useState<string | null>(null);
   const builtRef = useRef(false);
   /** Stops the build in flight (its late result is discarded). */
@@ -281,7 +301,11 @@ export default function Home() {
                 <Text style={[type.label, { color: theme.text, flex: 1 }]} numberOfLines={1}>
                   Building “{building}”
                 </Text>
-                {retrying && <Text style={[type.caption, { color: theme.warning }]}>retrying…</Text>}
+                {waitLeft > 0 ? (
+                  <Text style={[type.caption, { color: theme.warning }]}>busy, trying again in {waitLeft}s…</Text>
+                ) : (
+                  retrying && <Text style={[type.caption, { color: theme.warning }]}>retrying…</Text>
+                )}
                 <Button label="Stop" icon="stop" size="sm" variant="secondary" theme={theme} onPress={() => stopBuild.current?.()} />
               </View>
 
