@@ -11,6 +11,7 @@
  * Paths 1 and 2 work with no network and no Gemini Nano at all, because an app here is a small
  * JSON document rather than generated code.
  */
+import { ReminderBlock } from '../../alerts/ReminderBlock';
 import { htmlUsesAI } from '../../spec/offline';
 import { cancelOrphanReminders } from '../../alerts/notifications';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -454,18 +455,19 @@ export default function AppScreen() {
   // Going back to the blocks (or to code) is an edit or a restore, kept in History.
   const codeView = (
     <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
-      <View style={[styles.row, { paddingHorizontal: space(4), paddingVertical: space(2), gap: space(2) }]}>
-        <Text style={{ fontSize: 22 }}>{app.spec.emoji}</Text>
-        <Text style={[type.headline, { color: appTheme.text, flex: 1 }]} numberOfLines={1}>
-          {app.spec.name}
-        </Text>
-        <OfflineBadge spec={app.spec} html={htmlUsesAI(app.html)} />
-      </View>
       {custom.kind !== 'none' && custom.kind !== 'ready' && (
         <View style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
           <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onRetry={() => void writeCustom(app.id, ai)} />
         </View>
       )}
+      {/* Reminders are the phone's own notifications, so they stay native around the HTML. */}
+      {app.spec.components
+        .filter((c) => c.type === 'reminder' && c.id)
+        .map((c) => (
+          <View key={c.id} style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
+            <ReminderBlock appId={app.id} appName={app.spec.name} appEmoji={app.spec.emoji} c={c} theme={appTheme} />
+          </View>
+        ))}
       <AppAiModeProvider mode={app.aiMode}>
         <HtmlRunner appId={app.id} html={app.html ?? ''} accent={app.spec.accent} />
       </AppAiModeProvider>
@@ -720,19 +722,19 @@ function CustomCard({
         {writing ? <ActivityIndicator color={theme.accent} /> : <Text style={{ fontSize: 20 }}>✨</Text>}
         <Text style={[type.label, { color: theme.text, flex: 1 }]}>
           {writing
-            ? 'Rebuilding it in code…'
+            ? 'Finishing your app…'
             : state.kind === 'needs-cloud'
-              ? 'Waiting to rebuild it in code'
-              : 'Couldn’t rebuild it in code'}
+              ? 'The full version needs the internet'
+              : 'Couldn’t finish the full version'}
         </Text>
       </View>
       <Text style={[type.caption, { color: theme.muted }]} numberOfLines={3}>
         {state.kind === 'failed'
           ? state.message
           : state.kind === 'needs-cloud'
-            ? 'Gemini in the cloud writes the code, so it needs the internet (and private mode off). Until then the app works as it is.'
+            ? 'Gemini builds the full version in the cloud (with private mode off). Until then this simpler version works, offline too.'
             : writing
-              ? `${brief ?? ''} Keep using the app meanwhile; it switches over by itself when ready.`
+              ? 'Gemini is building the full version. Use this one meanwhile; it switches over by itself.'
               : brief}
       </Text>
       {state.kind === 'failed' && <Button label="Try again" icon="refresh" size="sm" variant="secondary" theme={theme} onPress={onRetry} />}

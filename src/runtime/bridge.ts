@@ -7,6 +7,8 @@ import { kvGet, kvSet } from '../storage/store';
 import { voiceReply, type Turn } from '../voice/cascade';
 import { listen } from '../voice/stt';
 import { speak, stopSpeaking } from '../voice/tts';
+import type { Theme } from '../ui/theme';
+import { COMIC_FONT_TTF_BASE64 } from './comicFont';
 
 export interface BridgeRequest {
   __vm: true;
@@ -100,44 +102,59 @@ export const bridgeScript = (post: string) => `
 export const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'";
 
+/** The theme an HTML app is drawn with: the app's own colours, in its current light/dark mode. */
+export type HtmlTheme = Pick<Theme, 'scheme' | 'bg' | 'surface' | 'surfaceAlt' | 'text' | 'muted' | 'subtle' | 'border' | 'danger' | 'success' | 'accent' | 'accentSoft' | 'onAccent'>;
+
 /**
- * von mini's design system as plain CSS, injected into every custom app so cloud-written
- * apps look consistent with the rest of the product. The model is told to use these classes.
+ * von mini's design system as plain CSS, injected into every app written in HTML so it looks
+ * like the rest of the product: newsprint page, ink outlines, hard comic shadows, caption-yellow
+ * inputs, the comic display font for headings and buttons, and the app's own accent. The model
+ * is told to use these classes and variables and never its own colours or fonts.
  */
-export function baseCss(accent: { light: string; dark: string }) {
+export function baseCss(t: HtmlTheme) {
   return `
-:root{--vm-accent:${accent.light};--vm-accent-soft:${accent.light}1a;--vm-bg:#F6F5FA;--vm-surface:#fff;--vm-surface-alt:#EFEDF5;--vm-text:#15141A;--vm-muted:#64627A;--vm-border:#E3E1EC;--vm-danger:#C62828;--vm-radius:18px;color-scheme:light dark}
-@media (prefers-color-scheme: dark){:root{--vm-accent:${accent.dark};--vm-accent-soft:${accent.dark}2e;--vm-bg:#0D0C12;--vm-surface:#17161F;--vm-surface-alt:#211F2B;--vm-text:#F3F2F8;--vm-muted:#A3A1B8;--vm-border:#2A2836;--vm-danger:#FF6B6B}}
+@font-face{font-family:"VM Comic";src:url(data:font/ttf;base64,${COMIC_FONT_TTF_BASE64}) format("truetype");font-display:block}
+:root{--vm-bg:${t.bg};--vm-surface:${t.surface};--vm-surface-alt:${t.surfaceAlt};--vm-text:${t.text};--vm-muted:${t.muted};--vm-subtle:${t.subtle};--vm-border:${t.border};--vm-danger:${t.danger};--vm-success:${t.success};--vm-accent:${t.accent};--vm-accent-soft:${t.accentSoft};--vm-on-accent:${t.onAccent};--vm-stroke:3px;--vm-shadow:4px 4px 0 ${t.border};--vm-shadow-sm:3px 3px 0 ${t.border};--vm-radius:14px;--vm-display:"VM Comic",Impact,"Arial Black",sans-serif;--vm-font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:${t.scheme}}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--vm-bg);color:var(--vm-text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-body{padding:16px;max-width:720px;margin:0 auto}
-h1,.vm-title{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:0 0 4px}
-h2,.vm-headline{font-size:17px;font-weight:600;margin:0}
-.vm-muted{color:var(--vm-muted);font-size:13px}
-.vm-overline{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vm-accent)}
+html,body{margin:0;min-height:100%;background:var(--vm-bg);color:var(--vm-text);font:16px/1.5 var(--vm-font);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+body{padding:16px 16px 32px;max-width:720px;margin:0 auto;overflow-wrap:anywhere}
+h1,.vm-title{font-family:var(--vm-display);font-weight:400;font-size:30px;line-height:1.1;letter-spacing:.03em;margin:0 0 4px}
+h2,.vm-headline{font-family:var(--vm-display);font-weight:400;font-size:22px;line-height:1.15;letter-spacing:.03em;margin:0}
+h3{font-size:17px;font-weight:700;margin:0}
+p{margin:0}
+.vm-muted{color:var(--vm-muted);font-size:14px}
+.vm-overline{font-family:var(--vm-display);font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--vm-accent)}
 .vm-stack{display:flex;flex-direction:column;gap:16px}
 .vm-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.vm-card{background:var(--vm-surface);border:1px solid var(--vm-border);border-radius:var(--vm-radius);padding:16px;box-shadow:0 1px 2px rgba(20,16,40,.06),0 4px 16px rgba(20,16,40,.06)}
-.vm-hero{background:var(--vm-accent-soft);border-radius:24px;padding:16px}
-.vm-label{display:block;font-size:14px;font-weight:600;margin-bottom:8px}
-.vm-input,input,textarea,select{width:100%;font:inherit;color:inherit;background:var(--vm-surface-alt);border:1px solid transparent;border-radius:12px;padding:12px;outline:none}
-.vm-input:focus,input:focus,textarea:focus,select:focus{border-color:var(--vm-accent)}
+.vm-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+.vm-card{background:var(--vm-surface);border:var(--vm-stroke) solid var(--vm-border);border-radius:var(--vm-radius);padding:16px;box-shadow:var(--vm-shadow)}
+.vm-hero{background:var(--vm-accent-soft);border:var(--vm-stroke) solid var(--vm-border);border-radius:18px;padding:16px;box-shadow:var(--vm-shadow)}
+.vm-stat{font-family:var(--vm-display);font-size:44px;line-height:1;letter-spacing:.02em}
+.vm-label{display:block;font-size:15px;font-weight:700;margin-bottom:8px}
+.vm-input,input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select{width:100%;font:inherit;color:var(--vm-text);background:var(--vm-surface-alt);border:var(--vm-stroke) solid var(--vm-border);border-radius:10px;padding:12px;outline:none}
+.vm-input:focus,input:focus,textarea:focus,select:focus{box-shadow:var(--vm-shadow-sm)}
+input[type=checkbox],input[type=radio]{width:22px;height:22px;accent-color:var(--vm-accent)}
+input[type=range]{width:100%;accent-color:var(--vm-accent)}
 textarea{min-height:110px;resize:vertical}
-.vm-btn,button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:0;border-radius:12px;font:600 16px/1 inherit;background:var(--vm-accent);color:#fff;cursor:pointer;transition:transform .08s,opacity .15s}
-.vm-btn:active,button:active{transform:scale(.98)}
+.vm-btn,button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:0 20px;border:var(--vm-stroke) solid var(--vm-border);border-radius:12px;font:400 20px/1 var(--vm-display);letter-spacing:.05em;background:var(--vm-accent);color:var(--vm-on-accent);box-shadow:var(--vm-shadow);cursor:pointer;transition:transform .08s,box-shadow .08s,opacity .15s;touch-action:manipulation}
+.vm-btn:active,button:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--vm-border)}
 .vm-btn:disabled,button:disabled{opacity:.45;cursor:default}
-.vm-btn-secondary{background:var(--vm-surface-alt);color:var(--vm-text)}
+.vm-btn-secondary{background:var(--vm-surface);color:var(--vm-text)}
 .vm-btn-block{width:100%}
-.vm-chip{display:inline-flex;align-items:center;gap:4px;padding:8px 12px;border-radius:999px;border:1px solid var(--vm-border);background:var(--vm-surface);font-size:13px;cursor:pointer}
-.vm-chip[aria-pressed=true],.vm-chip.is-active{background:var(--vm-accent);border-color:var(--vm-accent);color:#fff}
-.vm-result{background:var(--vm-accent-soft);border-left:3px solid var(--vm-accent);border-radius:12px;padding:16px;white-space:pre-wrap}
-.vm-badge{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--vm-muted);border:1px solid var(--vm-border);border-radius:999px;padding:2px 8px}
-.vm-empty{text-align:center;color:var(--vm-muted);border:1px dashed var(--vm-border);border-radius:var(--vm-radius);padding:20px}
-.vm-spinner{width:18px;height:18px;border-radius:50%;border:2px solid var(--vm-accent-soft);border-top-color:var(--vm-accent);animation:vm-spin .8s linear infinite}
+.vm-chip{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:6px 14px;border-radius:999px;border:var(--vm-stroke) solid var(--vm-border);background:var(--vm-surface);color:var(--vm-text);font:700 14px/1 var(--vm-font);box-shadow:var(--vm-shadow-sm);cursor:pointer}
+.vm-chip[aria-pressed=true],.vm-chip.is-active{background:var(--vm-accent);color:var(--vm-on-accent)}
+.vm-result{background:var(--vm-surface-alt);border:var(--vm-stroke) solid var(--vm-border);border-radius:12px;padding:14px;white-space:pre-wrap}
+.vm-badge{display:inline-flex;gap:4px;align-items:center;font-size:12px;font-weight:700;color:var(--vm-text);border:2px solid var(--vm-border);border-radius:999px;padding:2px 10px;background:var(--vm-surface)}
+.vm-empty{text-align:center;color:var(--vm-muted);border:var(--vm-stroke) dashed var(--vm-border);border-radius:var(--vm-radius);padding:20px}
+.vm-list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.vm-list>li{background:var(--vm-surface);border:var(--vm-stroke) solid var(--vm-border);border-radius:12px;padding:12px;box-shadow:var(--vm-shadow-sm)}
+.vm-spinner{width:20px;height:20px;border-radius:50%;border:3px solid var(--vm-accent-soft);border-top-color:var(--vm-accent);animation:vm-spin .8s linear infinite}
+canvas{display:block;max-width:100%;touch-action:none}
+svg{max-width:100%}
 @keyframes vm-spin{to{transform:rotate(360deg)}}`;
 }
 
-export function wrapHtml(html: string, script: string, accent: { light: string; dark: string }): string {
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${baseCss(accent)}</style><script>${script}</script>`;
+export function wrapHtml(html: string, script: string, theme: HtmlTheme): string {
+  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"><style>${baseCss(theme)}</style><script>${script}</script>`;
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + head) : head + html;
 }

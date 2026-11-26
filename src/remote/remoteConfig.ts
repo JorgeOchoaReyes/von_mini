@@ -12,6 +12,7 @@
  *   spec_rules_extra   extra design rules appended to the app-designer prompt
  *   voice_input        "false" hides speech input (a kill switch if recognition misbehaves)
  *   sharing            "false" hides app sharing
+ *   build_as_code      "false" keeps new apps as blocks only (a kill switch for HTML apps)
  */
 import { useSyncExternalStore } from 'react';
 
@@ -26,6 +27,8 @@ export const RC_DEFAULTS = {
   spec_rules_extra: '',
   voice_input: 'true',
   sharing: 'true',
+  // Development override (tests drive the blocks): EXPO_PUBLIC_BUILD_AS_CODE=false.
+  build_as_code: process.env.EXPO_PUBLIC_BUILD_AS_CODE === 'false' ? 'false' : 'true',
 };
 export type RcKey = keyof typeof RC_DEFAULTS;
 

@@ -483,16 +483,16 @@ export async function chatAboutApp(
       return {
         kind: 'answer',
         source: 'on_device',
-        text: 'It’s already built in code. Tell me what to change (like “make the breaks 10 minutes”) and I’ll rebuild it.',
+        text: 'It’s already the full version. Tell me what to change (like “make the breaks 10 minutes”) and I’ll update it.',
       };
     }
     const next = { ...spec, code: `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features and a more interactive design. The user asked: "${message.trim()}"` };
-    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Rebuilding it in code.', source: 'on_device' };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Building the full version of the app.', source: 'on_device' };
   }
   // Back from code to the blocks: drop the brief (the code stays in History to go back to).
   if (spec.code && BACK_TO_BLOCKS.test(message)) {
     const { code: _gone, ...blocks } = spec;
-    return { kind: 'edit', spec: blocks, changes: describeChanges(spec, blocks), reply: 'Back to the blocks version.', source: 'on_device' };
+    return { kind: 'edit', spec: blocks, changes: describeChanges(spec, blocks), reply: 'Back to the simpler version.', source: 'on_device' };
   }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
@@ -568,11 +568,11 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
   );
 }
 
-export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {
+export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec, currentHtml?: string): Promise<string> {
   // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code), {
+  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml), {
     mode: 'only_in_cloud',
     system: HTML_SYSTEM,
   });

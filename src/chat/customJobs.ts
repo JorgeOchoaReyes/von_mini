@@ -62,7 +62,9 @@ export async function writeCustom(appId: string, ctx: RouteContext): Promise<voi
   errors.delete(appId);
   emit();
   try {
-    const run = backgroundWork('Writing your custom version…', () => buildCustomHtml(app.request, ctx, app.spec), {
+    // Changing an app that's already built in code updates that code, so its look and data carry over.
+    const base = app.html && app.htmlFor !== undefined && app.htmlFor !== '-' ? app.html : undefined;
+    const run = backgroundWork(base ? 'Updating your app…' : 'Building your app…', () => buildCustomHtml(app.request, ctx, app.spec, base), {
       resumeNote: { title: `${app.spec.emoji} ${app.spec.name}`, body: 'Your phone paused writing the custom version. Open von mini to finish it.', url: `/app/${appId}` },
     });
     const html = await run.promise;
