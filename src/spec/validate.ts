@@ -453,6 +453,11 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
   // Blocks may have been dropped above; resolve placeholders against what's left.
   ids = components.filter((c) => c.id).map((c) => ({ id: c.id!, label: c.label ? slug(c.label) : '' }));
   repairPrompts(true);
+  // An AI button that reads nothing gives the same generic answer every time ("drink more
+  // water"). Ground it in what this person saved, so the answer is about them.
+  for (const c of components) {
+    if (c.type === 'ai' && c.prompt && !/\{[a-z0-9_]+\}/i.test(c.prompt)) c.prompt = `${c.prompt}\nWhat I saved recently:\n{entries}`;
+  }
 
   // A voice conversation or a checklist collects input too, so an app can be built from those alone.
   if (!components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist' || c.type === 'game' || c.type === 'random')) {

@@ -19,6 +19,7 @@ import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
 import { engine, isQuotaError, retryAfterMs } from './engineSelect';
+import { cleanCustomHtml } from './htmlSafety';
 import {
   ACTION_SYSTEM,
   CHAT_TURN_RULES,
@@ -114,7 +115,18 @@ const BUILT_IN_GAME = /\b(tetris|falling blocks?|block (drop|stack)|subway|runne
  * Keeps a design's code brief only where code helps. The model adds one too eagerly (a built-in
  * game, or live weather that code can't fetch either), which would write a needless custom app.
  */
+/**
+ * Requests the blocks can only approximate (money owed between people, timers, calculators, board
+ * and puzzle games): always write the custom version, even if the model forgot to ask for it.
+ */
+const NEEDS_CODE =
+  /\b(split(ting)? (the |a |our )?(bill|check|tab|rent|costs?|expenses?)|split(ting)? (expenses|costs|bills|rent) with|who owes|settle up|pomodoro|stopwatch|countdown timer|calculator|unit converter|play(ing)? (chess|checkers)|(chess|checkers) (against|vs|board)|an? (chess|checkers) game|tic.?tac.?toe|sudoku|minesweeper|memory (card|matching) game|drawing pad|sketch ?pad)\b/i;
+
+/** A chat change that asks for something only code can do: "add a 5 minute timer". */
+export const ADDS_CODE_ONLY_FEATURE = /\b(add|put|include|give( me)?|need|want|with)\b.{0,60}\b(timer|countdown|stopwatch|pomodoro)s?\b/i;
+
 export function settleCode(request: string, spec: AppSpec): AppSpec {
+  if (!spec.code && NEEDS_CODE.test(request) && !NO_CODE_TOPIC.test(request)) return { ...spec, code: `Build it exactly as asked: "${request.slice(0, 400)}"` };
   if (!spec.code || ASKS_CODE.test(request)) return spec;
   const builtInGame = spec.components.some((c) => c.type === 'game') && BUILT_IN_GAME.test(request) && !/power.?ups?|boss|level editor|multiplayer|own rules/i.test(request);
   if (!NO_CODE_TOPIC.test(request) && !builtInGame) return spec;
@@ -515,6 +527,16 @@ export async function chatAboutApp(
     const next = { ...spec, code: `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features and a more interactive design. The user asked: "${message.trim()}"` };
     return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Building the full version of the app.', source: 'on_device' };
   }
+  // Things only a custom version can do (a running timer, a stopwatch, a countdown): no block can,
+  // so write or extend the custom version directly instead of hoping the model works that out.
+  if (ADDS_CODE_ONLY_FEATURE.test(message) && message.length < 300) {
+    const asked = message.trim();
+    const brief = spec.code
+      ? `${spec.code}\nAlso: ${asked}`
+      : `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features. The user asked: "${asked}"`;
+    const next = { ...spec, code: brief };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'That needs the full version of the app, so I’m writing it with that added.', source: 'on_device' };
+  }
   // Back from code to the blocks: drop the brief (the code stays in History to go back to).
   if (spec.code && BACK_TO_BLOCKS.test(message)) {
     const { code: _gone, ...blocks } = spec;
@@ -620,5 +642,5 @@ export async function buildCustomHtml(request: string, ctx: RouteContext, spec?:
   const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i);
   const html = (fenced ? fenced[1] : text).trim();
   if (!/<html|<!doctype/i.test(html)) throw new Error('Gemini did not return an HTML document. Try again.');
-  return html;
+  return cleanCustomHtml(html);
 }
