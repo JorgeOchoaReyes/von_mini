@@ -62,7 +62,10 @@ export function HistoryPanel({
     [appId, onRestored],
   );
 
-  const isCurrent = (v: Version) => JSON.stringify(v.spec) === JSON.stringify(current);
+  // The newest version matching the app is the current one (a design and the code built from it
+  // share the same design, so only the latest of them is "current").
+  const currentId = versions.find((v) => JSON.stringify(v.spec) === JSON.stringify(current))?.id;
+  const isCurrent = (v: Version) => v.id === currentId;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
@@ -118,7 +121,7 @@ export function HistoryPanel({
 
               <View style={styles.row}>
                 <Text style={[type.caption, { color: theme.subtle, flex: 1 }]}>
-                  {v.spec.emoji} {v.spec.name} · {v.spec.components.length} blocks
+                  {v.spec.emoji} {v.spec.name} · {v.html ? 'built in code' : `${v.spec.components.length} blocks`}
                 </Text>
                 <Button
                   label={now ? 'Already current' : 'Restore'}

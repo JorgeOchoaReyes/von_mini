@@ -112,7 +112,7 @@ const chatted = await pool(chats, 3, async (c) => {
 
 const htmlIdeas = ideas.html.filter((h) => specOf[h] && (!only || h.includes(only)));
 console.log(`\nCustom code: ${htmlIdeas.length}…`);
-const coded = await pool(htmlIdeas, 2, async (h) => {
+const coded = await pool(htmlIdeas, 3, async (h) => {
   const spec = { ...specOf[h], code: specOf[h].code ?? `Build: ${h}` };
   const r = await withRetry('html', h, spec);
   const issues = [];
@@ -120,6 +120,12 @@ const coded = await pool(htmlIdeas, 2, async (h) => {
     if (/<script[^>]+src=|https?:\/\/(?!www\.w3\.org)/i.test(r.value)) issues.push('external resource');
     if (/localStorage|alert\(/.test(r.value)) issues.push('uses localStorage/alert');
     if (!/<script/i.test(r.value)) issues.push('no script');
+    // It should be drawn with von mini's theme, not its own look.
+    const vm = (r.value.match(/\bvm-[a-z-]+/g) ?? []).length;
+    if (vm < 4) issues.push(`barely uses the design system (${vm} vm- classes)`);
+    const ownColours = (r.value.match(/(?<![\w-])(#[0-9a-f]{3,8}\b|rgba?\(|hsla?\()/gi) ?? []).length;
+    if (ownColours > 6) issues.push(`${ownColours} hard-coded colours`);
+    if (/font-family\s*:(?![^;]*var\(--vm-)/i.test(r.value)) issues.push('sets its own font');
   }
   console.log(`${r.ok ? (issues.length ? 'WARN' : 'OK  ') : 'FAIL'} ${String(Math.round(r.ms / 1000)).padStart(3)}s  ${h}${r.ok ? `  (${r.value.length} chars)` : `  ✗ ${r.error}`}${issues.length ? `  ⚠ ${issues.join('; ')}` : ''}`);
   if (r.ok) writeFileSync(join(outDir, `${h.replace(/[^a-z0-9]+/gi, '-')}.html`), r.value);

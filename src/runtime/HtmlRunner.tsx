@@ -4,7 +4,7 @@ import WebViewBase, { type WebViewMessageEvent, type WebViewNavigation, type Web
 
 import { useAppAI } from '../ai/appMode';
 import type { Accent } from '../spec/types';
-import { ACCENT_COLORS } from '../ui/theme';
+import { useTheme } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
 // Upstream typings default the class generic to `undefined`, which collapses props to `never`
@@ -15,10 +15,13 @@ const WebView = WebViewBase as unknown as ComponentType<WebViewProps & RefAttrib
 export function HtmlRunner({ appId, html, accent }: { appId: string; html: string; accent: Accent }) {
   const ref = useRef<WebViewHandle>(null);
   const ai = useAppAI();
-  const source = useMemo(
-    () => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage'), ACCENT_COLORS[accent] ?? ACCENT_COLORS.violet) }),
-    [html, accent],
-  );
+  // Drawn with the app's own theme (and its light/dark mode), so it looks like the rest of von mini.
+  const fresh = useTheme(accent);
+  // useTheme returns a new object each render; only a different scheme or accent may reload the
+  // app (a reload restarts whatever is running inside it).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const theme = useMemo(() => fresh, [fresh.scheme, fresh.accent]);
+  const source = useMemo(() => ({ html: wrapHtml(html, bridgeScript('window.ReactNativeWebView.postMessage'), theme) }), [html, theme]);
 
   const onMessage = async (event: WebViewMessageEvent) => {
     let req: unknown;

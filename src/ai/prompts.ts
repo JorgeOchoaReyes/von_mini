@@ -94,13 +94,14 @@ export const HTML_SYSTEM = `You write one self-contained mobile-first HTML file 
 Hard rules:
 - Output ONLY the HTML document, starting with <!doctype html>.
 - No external resources: no <script src>, no CDN, no fonts, no images from URLs, no fetch/XMLHttpRequest/WebSocket.
-- Inline all JS. A design system stylesheet is already loaded (light and dark mode); use its classes instead of writing your own theme:
-  layout .vm-stack .vm-row · surfaces .vm-hero .vm-card · text .vm-title .vm-headline .vm-muted .vm-overline
-  forms .vm-label .vm-input · buttons .vm-btn .vm-btn-secondary .vm-btn-block · .vm-chip (toggle aria-pressed) · AI output .vm-result · .vm-badge .vm-empty .vm-spinner
-  Colors come from CSS variables: var(--vm-accent) var(--vm-accent-soft) var(--vm-surface) var(--vm-text) var(--vm-muted) var(--vm-border).
-- Only add small extra CSS for layout specific to this app. Never hard-code colors.
-- Structure: a .vm-hero with the app name and one-line purpose, the main form in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a list of .vm-card, an empty state with .vm-empty.
-- Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails. Must work at 360px wide.
+- Inline all JS. von mini's design system is already loaded (the app's own theme, light or dark): build the whole look from it so the app looks like the rest of von mini.
+  Classes: layout .vm-stack .vm-row .vm-grid · panels .vm-hero .vm-card · text .vm-title .vm-headline .vm-overline .vm-muted · a big number .vm-stat
+  forms .vm-label .vm-input (inputs, textareas and selects are styled already) · buttons .vm-btn .vm-btn-secondary .vm-btn-block (plain <button> is styled too) · .vm-chip (toggle aria-pressed) · lists .vm-list > li · AI output .vm-result · .vm-badge .vm-empty .vm-spinner
+  CSS variables for anything custom (canvas, SVG, games): var(--vm-bg) var(--vm-surface) var(--vm-surface-alt) var(--vm-text) var(--vm-muted) var(--vm-border) var(--vm-accent) var(--vm-accent-soft) var(--vm-on-accent) var(--vm-danger) var(--vm-success), the comic font var(--vm-display), borders var(--vm-stroke) and shadows var(--vm-shadow). In canvas code read them with getComputedStyle(document.documentElement).
+- Never set your own colours, fonts, backgrounds, gradients or shadows, and never restyle body. Extra CSS only for layout specific to this app.
+- Render on the page right away: the first screen shows the real app (inputs, board, current stats), never a blank page or only a start button with nothing around it. Everything fits the screen width (360px and up) with no sideways scrolling.
+- Structure: a .vm-hero with the app name and one-line purpose, the main controls in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a .vm-list, an empty state with .vm-empty.
+- Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails.
 - For AI features call: await vonmini.ai(promptString) -> string. It runs on a small on-device model, so ask for short outputs and keep prompts simple.
 - Voice (all on the device, so it works offline):
   await vonmini.listen() -> string: listens to the user once and returns what they said ('' if nothing).
@@ -109,6 +110,8 @@ Hard rules:
   For practice/rehearsal/role-play apps, build a voice conversation: a big round mic button that calls listen() then converse(), a transcript of turns as chat bubbles, a "hands-free" toggle that listens again after each reply, a stop button, and a text box to type instead of speaking. Show the state (Listening / Thinking / Speaking).
 - For persistence call: await vonmini.store.get(key) -> any|null and await vonmini.store.set(key, value).
 - Never use localStorage, cookies or alert().
+- Daily reminders are handled by the app around your HTML: don't build reminder UI.
+- Save each entry as an item in a list under one key (e.g. vonmini.store "entries": [{at, ...fields}]) and compute totals, streaks and charts from it; draw charts with inline SVG.
 Games and toys:
 - Draw on a <canvas> sized to the screen (devicePixelRatio aware) and animate with requestAnimationFrame; or use DOM for board and card games.
 - Touch first: tap, drag and swipe with pointer events; big hit areas; no hover. Arrow keys and space as extras.
@@ -117,9 +120,13 @@ Games and toys:
 - Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
-export function htmlPrompt(request: string, specJson?: string, brief?: string) {
+export function htmlPrompt(request: string, specJson?: string, brief?: string, currentHtml?: string) {
+  if (currentHtml && brief) {
+    // An edit: change the app the user already has, so its look and saved data carry over.
+    return `Here is the app's current HTML. Update it to match this brief, changing only what the brief asks; keep its design, layout, wording and the vonmini.store keys it uses.\nBrief: ${brief.trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
+  }
   if (brief) {
-    return `Build this: ${brief.trim()}\nIt is the custom version of the app below: use its name, emoji and purpose.\nApp JSON:\n${specJson ?? '{}'}\nUser's original request: "${request}"`;
+    return `Build this: ${brief.trim()}\nUse the blocks in the App JSON as the plan: every field, choice, checklist, stat, chart, AI button, dice, game and history list it describes should exist and work in your HTML (stats and history read the entries you save with vonmini.store), connected as described; then add whatever else the request needs. Use its name, emoji and purpose.\nApp JSON:\n${specJson ?? '{}'}\nUser's original request: "${request}"`;
   }
   return specJson
     ? `Build a richer custom version of this app. Keep its purpose and features, improve layout and interactions.\nApp JSON:\n${specJson}\nUser's original request: "${request}"`
@@ -136,7 +143,7 @@ Reply with ONLY one JSON object, "reply" first: {"reply":string,"app":object|nul
 - If the user says something is broken or wrong without saying what ("fix it", "it doesn't work"), and the conversation doesn't make it clear, change nothing: set "app" to null and ask in "reply" which part and what it does wrong.
 - If the user asks a question or is chatting, set "app" to null and answer in "reply" in 1-3 short, friendly sentences. Explain blocks in plain words, never JSON. When useful, end with one concrete change they could ask for.
 - When they want one block to control another ("the choice should set how many dice roll", "spin from the names I type"), connect them with countFrom / sidesFrom / minFrom / maxFrom / optionsFrom on the random block; never add an ai button or "code" for that.
-- If they want something the blocks can't do (a timer, calculator, board, drag-and-drop, drawing, a different game, its own rules, a timed quiz) or ask for code / a custom version, return the app with the closest blocks AND "code" set to 1-3 sentences describing exactly what to build, including what they just asked; "reply" says a custom version is being written. To change an existing custom version, rewrite "code" to include the change.
+- If they want something the blocks can't do (a timer, calculator, board, drag-and-drop, drawing, a different game, its own rules, a timed quiz) or ask for code / a custom version, return the app with the closest blocks AND "code" set to 1-3 sentences describing exactly what to build, including what they just asked; "reply" says a custom version is being written. An app with "code" is shown as its code version: to change it, rewrite "code" to include the change. To go back to the blocks, leave "code" out.
 - If what they ask is impossible in any app (internet, photos, live data, other apps), set "app" to null and say in "reply" what the app can do instead.
 - Never answer with "app" equal to the current app: either change something or use null.`;
 

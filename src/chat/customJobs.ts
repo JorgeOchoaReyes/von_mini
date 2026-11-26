@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { backgroundWork } from '../ai/background';
 import { buildCustomHtml, local, type RouteContext } from '../ai/hybrid';
 import { notifyIfInBackground } from '../alerts/notifications';
-import { getApp, saveApp, type SavedApp } from '../storage/store';
+import { getApp, pushVersion, saveApp, type SavedApp } from '../storage/store';
 
 const busy = new Set<string>();
 /** The last failure per app, with the brief it was for (a new brief clears it). */
@@ -62,7 +62,9 @@ export async function writeCustom(appId: string, ctx: RouteContext): Promise<voi
   errors.delete(appId);
   emit();
   try {
-    const run = backgroundWork('Writing your custom version…', () => buildCustomHtml(app.request, ctx, app.spec), {
+    // Changing an app that's already built in code updates that code, so its look and data carry over.
+    const base = app.html && app.htmlFor !== undefined && app.htmlFor !== '-' ? app.html : undefined;
+    const run = backgroundWork(base ? 'Updating your app…' : 'Building your app…', () => buildCustomHtml(app.request, ctx, app.spec, base), {
       resumeNote: { title: `${app.spec.emoji} ${app.spec.name}`, body: 'Your phone paused writing the custom version. Open von mini to finish it.', url: `/app/${appId}` },
     });
     const html = await run.promise;
@@ -70,6 +72,8 @@ export async function writeCustom(appId: string, ctx: RouteContext): Promise<voi
     const latest = await getApp(appId);
     if (!latest || latest.spec.code !== brief) return;
     await saveApp({ ...latest, html, htmlFor: brief });
+    // The app now is its code version: record it, so History can go back to the blocks (or here).
+    await pushVersion(appId, latest.spec, ['Rebuilt it in code.'], 'chat', 'in_cloud', undefined, html);
     void notifyIfInBackground({
       title: `${latest.spec.emoji} ${latest.spec.name} is ready`,
       body: 'Your custom version is written. Tap to play it.',

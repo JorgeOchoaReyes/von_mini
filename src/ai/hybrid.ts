@@ -483,11 +483,16 @@ export async function chatAboutApp(
       return {
         kind: 'answer',
         source: 'on_device',
-        text: 'It already has a custom version written in code: open the Custom tab. Tell me what to change in it (like “make the breaks 10 minutes”) and I’ll rewrite it.',
+        text: 'It’s already the full version. Tell me what to change (like “make the breaks 10 minutes”) and I’ll update it.',
       };
     }
     const next = { ...spec, code: `A custom version of “${spec.name}”${spec.description ? ` (${spec.description})` : ''}, with all of its features and a more interactive design. The user asked: "${message.trim()}"` };
-    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Writing a custom version in code.', source: 'on_device' };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Building the full version of the app.', source: 'on_device' };
+  }
+  // Back from code to the blocks: drop the brief (the code stays in History to go back to).
+  if (spec.code && BACK_TO_BLOCKS.test(message)) {
+    const { code: _gone, ...blocks } = spec;
+    return { kind: 'edit', spec: blocks, changes: describeChanges(spec, blocks), reply: 'Back to the simpler version.', source: 'on_device' };
   }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
@@ -525,6 +530,12 @@ export async function chatAboutApp(
       // Keep the first answer.
     }
   }
+  // An app built in code shows its code, not its blocks: a change that only touched the blocks
+  // would never show. Carry the ask into the brief so the code is rebuilt with it.
+  if (turn.app && changes.length && spec.code && turn.app.code === spec.code) {
+    turn.app = { ...turn.app, code: `${spec.code} Also: ${message.trim()}`.slice(0, 600) };
+    changes = describeChanges(spec, turn.app);
+  }
   if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
   const noChange =
     'I couldn’t work out a change from that, so the app is as it was. Try naming what to change, e.g. “add a daily total of calories” or “make the AI answers shorter”.';
@@ -537,6 +548,9 @@ export async function chatAboutApp(
       : (explainConnections(spec, message) ?? (rejected.length ? unsure : noChange));
   return { kind: 'answer', source: turn.source, text: reply };
 }
+
+/** "Go back to the blocks", "use the widgets again", "stop using code". */
+const BACK_TO_BLOCKS = /\b(back to|go back to|use|switch to|return to)\s+(the\s+)?(blocks?|built.?in|widgets?|original|normal|simple)( version| app)?\b|\b(stop using|remove|undo|drop)\s+(the\s+)?(code|custom)( version)?\b/i;
 
 /** A reply in which the model says it has already made a change. */
 const SAYS_DONE = /\b(i('ve| have)|i)\s+(just\s+)?(added|changed|updated|removed|renamed|made|turned|replaced|switched|extended|set|increased|decreased|moved|generated|created|built|wrote|written)\b|\b(is|are) now\b|\bnow (has|shows|uses|rolls|includes)\b/i;
@@ -554,11 +568,11 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
   );
 }
 
-export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec): Promise<string> {
+export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec, currentHtml?: string): Promise<string> {
   // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code), {
+  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml), {
     mode: 'only_in_cloud',
     system: HTML_SYSTEM,
   });

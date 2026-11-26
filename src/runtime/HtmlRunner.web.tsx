@@ -3,12 +3,18 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { useAppAI } from '../ai/appMode';
 import type { Accent } from '../spec/types';
-import { ACCENT_COLORS } from '../ui/theme';
+import { useTheme } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
 export function HtmlRunner({ appId, html, accent }: { appId: string; html: string; accent: Accent }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const ai = useAppAI();
+  // Drawn with the app's own theme (and its light/dark mode), so it looks like the rest of von mini.
+  const fresh = useTheme(accent);
+  // useTheme returns a new object each render; only a different scheme or accent may reload the
+  // app (a reload restarts whatever is running inside it).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const theme = useMemo(() => fresh, [fresh.scheme, fresh.accent]);
   // Keep the latest routing context for the message listener without re-subscribing.
   const aiRef = useRef(ai);
   useEffect(() => {
@@ -24,9 +30,9 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
         // Sandboxed frames have an opaque origin, so the target must be '*'.
         bridgeScript("(function(m){ parent.postMessage(m, '*'); })") +
           `window.addEventListener('message', function(e){ var m=e.data; if(m && m.__vmReply) window.__vmReply(m.id, m.ok, m.v); });`,
-        (ACCENT_COLORS[accent] ?? ACCENT_COLORS.violet),
+        theme,
       ),
-    [html, accent],
+    [html, theme],
   );
 
   useEffect(() => {

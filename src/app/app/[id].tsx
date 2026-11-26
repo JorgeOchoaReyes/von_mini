@@ -11,6 +11,7 @@
  * Paths 1 and 2 work with no network and no Gemini Nano at all, because an app here is a small
  * JSON document rather than generated code.
  */
+import { ReminderBlock } from '../../alerts/ReminderBlock';
 import { htmlUsesAI } from '../../spec/offline';
 import { cancelOrphanReminders } from '../../alerts/notifications';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -43,7 +44,7 @@ import { SpecRenderer } from '../../runtime/SpecRenderer';
 import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
-import { getApp, pushVersion, saveApp, type SavedApp, type Version } from '../../storage/store';
+import { getApp, pushVersion, saveApp, showsCode, type SavedApp, type Version } from '../../storage/store';
 import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
 import { canDelete, confirmDeleteApp, isChangedStarter } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
@@ -51,7 +52,7 @@ import { useKeyboardInset } from '../../ui/useKeyboardInset';
 import { FadeUp } from '../../ui/motion';
 import { MAX_WIDTH, MAX_WIDTH_WIDE, WIDE, radius, space, stroke, type, useTheme, type Theme } from '../../ui/theme';
 
-type Tab = 'preview' | 'chat' | 'history' | 'custom';
+type Tab = 'preview' | 'chat' | 'history';
 
 /** Back, or Home when this screen was opened straight from a link with nothing under it. */
 const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
@@ -135,14 +136,6 @@ export default function AppScreen() {
   useEffect(() => {
     if (appId && customKind === 'pending') void writeCustom(appId, ai);
   }, [appId, customKind, ai]);
-  const prevCustom = useRef<{ id?: string; kind: CustomState['kind'] }>({ kind: 'none' });
-  useEffect(() => {
-    const prev = prevCustom.current;
-    const opened = prev.id !== appId;
-    prevCustom.current = { id: appId, kind: customKind };
-    // Right after writing, the app reloads a moment later, so it reads "pending" in between.
-    if (customKind === 'ready' && (opened || prev.kind === 'writing' || prev.kind === 'pending')) setTab('custom');
-  }, [appId, customKind]);
 
   // A reminder block that's gone (removed, or undone by a chat edit or restore) stops reminding.
   const reminderIds = app?.spec.components.filter((c) => c.type === 'reminder' && c.id).map((c) => c.id!).join('|');
@@ -202,8 +195,10 @@ export default function AppScreen() {
     dirty.current = null;
     setLastChange(null);
     setApp((a) => (a ? { ...a, spec } : a));
+    // A restore can bring code back or shelve it: reload the whole app.
+    void getApp(id).then((a) => a && setApp(a));
     notifyAppsChanged();
-  }, []);
+  }, [id]);
 
   /**
    * "Make it custom" / "Rewrite": gives the design a brief (or keeps its own) and writes the
@@ -331,7 +326,7 @@ export default function AppScreen() {
           </View>
         </View>
 
-        <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onOpen={() => setTab('custom')} onRetry={() => void writeCustom(app.id, ai)} />
+        <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onRetry={() => void writeCustom(app.id, ai)} />
 
         <View style={styles.row}>
           <Chip
@@ -456,17 +451,29 @@ export default function AppScreen() {
     </View>
   );
 
-  const customView = app.html ? (
+  // One app at a time: when its code version is the current one, that's what the App tab shows.
+  // Going back to the blocks (or to code) is an edit or a restore, kept in History.
+  const codeView = (
     <View style={{ flex: 1, backgroundColor: appTheme.bg }}>
-      <View style={[styles.row, { paddingHorizontal: space(4), paddingVertical: space(2), justifyContent: 'space-between' }]}>
-        <Text style={[type.caption, { color: appTheme.muted }]}>✨ Custom version, written by Gemini</Text>
-        <Chip label="Built-in version" icon="apps-outline" theme={appTheme} onPress={() => setTab('preview')} />
-      </View>
+      {custom.kind !== 'none' && custom.kind !== 'ready' && (
+        <View style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
+          <CustomCard state={custom} brief={app.spec.code} theme={appTheme} onRetry={() => void writeCustom(app.id, ai)} />
+        </View>
+      )}
+      {/* Reminders are the phone's own notifications, so they stay native around the HTML. */}
+      {app.spec.components
+        .filter((c) => c.type === 'reminder' && c.id)
+        .map((c) => (
+          <View key={c.id} style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
+            <ReminderBlock appId={app.id} appName={app.spec.name} appEmoji={app.spec.emoji} c={c} theme={appTheme} />
+          </View>
+        ))}
       <AppAiModeProvider mode={app.aiMode}>
-        <HtmlRunner appId={app.id} html={app.html} accent={app.spec.accent} />
+        <HtmlRunner appId={app.id} html={app.html ?? ''} accent={app.spec.accent} />
       </AppAiModeProvider>
     </View>
-  ) : null;
+  );
+  const appView = showsCode(app) ? codeView : preview;
 
   const sidePanel = (
     <View style={[styles.side, { borderColor: appTheme.border, backgroundColor: appTheme.bg }]}>
@@ -541,15 +548,15 @@ export default function AppScreen() {
 
         {wide ? (
           <View style={styles.wide}>
-            <View style={styles.widePreview}>{tab === 'custom' && customView ? customView : preview}</View>
+            <View style={styles.widePreview}>{appView}</View>
             <View style={styles.wideSide}>{sidePanel}</View>
           </View>
         ) : (
           <View style={{ flex: 1 }}>
             <View style={{ paddingHorizontal: space(4), paddingBottom: space(2) }}>
-              <Tabs theme={appTheme} value={tab} onChange={setTab} hasCustom={!!app.html} chatDot={chatBusy} />
+              <Tabs theme={appTheme} value={tab} onChange={setTab} chatDot={chatBusy} />
             </View>
-            {tab === 'preview' && preview}
+            {tab === 'preview' && appView}
             {tab === 'chat' && <ChatPanel
               appId={app.id}
               spec={app.spec}
@@ -560,7 +567,6 @@ export default function AppScreen() {
             {tab === 'history' && (
               <HistoryPanel appId={app.id} current={app.spec} version={chatVersion} onRestored={onRestored} />
             )}
-            {tab === 'custom' && customView}
           </View>
         )}
       </View>
@@ -638,20 +644,17 @@ function Tabs({
   value,
   onChange,
   theme,
-  hasCustom,
   chatDot,
 }: {
   value: Tab;
   onChange(v: Tab): void;
   theme: ReturnType<typeof useTheme>;
-  hasCustom: boolean;
   chatDot?: boolean;
 }) {
   const options: { value: Tab; label: string; icon: IconName; dot?: boolean }[] = [
     { value: 'preview', label: 'App', icon: 'apps-outline' },
     { value: 'chat', label: 'Edit', icon: 'chatbubble-ellipses-outline', dot: chatDot },
     { value: 'history', label: 'History', icon: 'time-outline' },
-    ...(hasCustom ? [{ value: 'custom' as const, label: 'Custom', icon: 'color-wand-outline' as const }] : []),
   ];
   return (
     <FadeUp distance={4}>
@@ -703,16 +706,15 @@ function CustomCard({
   state,
   brief,
   theme,
-  onOpen,
   onRetry,
 }: {
   state: CustomState;
   brief?: string;
   theme: Theme;
-  onOpen(): void;
   onRetry(): void;
 }) {
-  if (state.kind === 'none') return null;
+  // Once written, the code version simply is the app: nothing to announce.
+  if (state.kind === 'none' || state.kind === 'ready') return null;
   const writing = state.kind === 'writing' || state.kind === 'pending';
   return (
     <View style={[styles.customCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
@@ -720,24 +722,21 @@ function CustomCard({
         {writing ? <ActivityIndicator color={theme.accent} /> : <Text style={{ fontSize: 20 }}>✨</Text>}
         <Text style={[type.label, { color: theme.text, flex: 1 }]}>
           {writing
-            ? 'Writing a custom version…'
-            : state.kind === 'ready'
-              ? 'The custom version is ready'
-              : state.kind === 'needs-cloud'
-                ? 'A custom version is waiting to be written'
-                : 'Couldn’t write the custom version'}
+            ? 'Finishing your app…'
+            : state.kind === 'needs-cloud'
+              ? 'The full version needs the internet'
+              : 'Couldn’t finish the full version'}
         </Text>
       </View>
       <Text style={[type.caption, { color: theme.muted }]} numberOfLines={3}>
         {state.kind === 'failed'
           ? state.message
           : state.kind === 'needs-cloud'
-            ? 'Gemini in the cloud writes it, so it needs the internet (and private mode off). Below is the built-in version, which works offline.'
+            ? 'Gemini builds the full version in the cloud (with private mode off). Until then this simpler version works, offline too.'
             : writing
-              ? `${brief ?? ''} You can keep using the built-in version below; it switches over when ready.`
+              ? 'Gemini is building the full version. Use this one meanwhile; it switches over by itself.'
               : brief}
       </Text>
-      {state.kind === 'ready' && <Button label="Play the custom version" icon="play" size="sm" theme={theme} onPress={onOpen} />}
       {state.kind === 'failed' && <Button label="Try again" icon="refresh" size="sm" variant="secondary" theme={theme} onPress={onRetry} />}
     </View>
   );
