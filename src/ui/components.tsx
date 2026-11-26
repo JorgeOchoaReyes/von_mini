@@ -137,6 +137,7 @@ export function IconButton({
   filled,
   disabled,
   color,
+  focusable,
 }: {
   icon: IconName;
   onPress(): void;
@@ -145,12 +146,15 @@ export function IconButton({
   filled?: boolean;
   disabled?: boolean;
   color?: string;
+  /** False keeps it out of keyboard focus (on the web, Tab skips it and Enter can't press it). */
+  focusable?: boolean;
 }) {
   const spring = usePressScale(0.86);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      focusable={focusable}
       onPress={() => {
         haptics.tap();
         onPress();

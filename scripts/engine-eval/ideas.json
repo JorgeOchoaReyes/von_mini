@@ -388,6 +388,143 @@
         "random"
       ],
       "wired": true
+    },
+    {
+      "request": "a falling blocks puzzle game where you rotate pieces and clear lines",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a game where a frog hops through gaps between logs",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a brick breaker game with a paddle",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "catch falling pizza slices and avoid the bombs",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a whack-a-mole game with ghosts for halloween",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a space shooter where a dog fights cats",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a runner game where a skateboarder dodges cones",
+      "has": [
+        "game"
+      ],
+      "code": false
+    },
+    {
+      "request": "a word guessing game with 6 tries",
+      "code": true
+    },
+    {
+      "request": "a reaction time test",
+      "code": true
+    },
+    {
+      "request": "rock paper scissors",
+      "code": true
+    },
+    {
+      "request": "a 2048 style number sliding puzzle",
+      "code": true
+    },
+    {
+      "request": "a typing speed game",
+      "code": true
+    },
+    {
+      "request": "split expenses with roommates and show who owes who",
+      "code": true
+    },
+    {
+      "request": "a pomodoro timer that logs my focus sessions",
+      "code": true
+    },
+    {
+      "request": "log my baby's feedings and diapers",
+      "has": [
+        "input",
+        "history"
+      ],
+      "code": false
+    },
+    {
+      "request": "remind me to water my plants and track when I did",
+      "has": [
+        "reminder"
+      ],
+      "code": false
+    },
+    {
+      "request": "track my sleep and how rested I feel",
+      "has": [
+        "input",
+        "chart"
+      ],
+      "code": false
+    },
+    {
+      "request": "a gratitude journal with three things a day",
+      "has": [
+        "input"
+      ],
+      "code": false
+    },
+    {
+      "request": "help me prepare for a tough conversation with my boss about a raise",
+      "has": [
+        "voice"
+      ],
+      "code": false
+    },
+    {
+      "request": "practice speaking spanish with me out loud",
+      "has": [
+        "voice"
+      ],
+      "code": false
+    },
+    {
+      "request": "a reading log for books with ratings",
+      "has": [
+        "input",
+        "history"
+      ],
+      "code": false
+    },
+    {
+      "request": "track my running distance and pace",
+      "has": [
+        "input",
+        "stat"
+      ],
+      "code": false
     }
   ],
   "chats": [
@@ -645,6 +782,10 @@
     "log what I eat and count calories",
     "roll two dice",
     "habit tracker with streaks",
-    "a game where a cat dodges dogs"
+    "a game where a cat dodges dogs",
+    "tic tac toe against the computer",
+    "a word guessing game with 6 tries",
+    "a reaction time test",
+    "split expenses with roommates and show who owes who"
   ]
 }

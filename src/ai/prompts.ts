@@ -120,6 +120,8 @@ Games and toys:
 - Minimal arcade look: a score and best score at the top, a "Tap to start" screen, a game-over card with the score and a Play again button, pause when the page is hidden.
 - Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
 - Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
+- Colours come from the theme variables (board var(--vm-surface-alt), lines var(--vm-border), highlights var(--vm-accent)), so the game fits light and dark mode; at most 4 colours of your own, only for game pieces.
+- Steady motion: advance the game by elapsed time (dt from requestAnimationFrame timestamps, capped at 0.1 s), never by a fixed amount per frame.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
 export function htmlPrompt(request: string, specJson?: string, brief?: string, currentHtml?: string, errors?: string[]) {

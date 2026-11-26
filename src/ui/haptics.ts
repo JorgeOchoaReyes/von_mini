@@ -18,6 +18,8 @@ export const haptics = {
   light: () => fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
   /** Medium impact (something meaningful happened). */
   medium: () => fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
+  /** Big moments in games: several rows at once, a level cleared. */
+  heavy: () => fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)),
   /** Completed successfully (app built, change applied). */
   success: () => fire(Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   /** Failed (generation error). */
