@@ -1,6 +1,7 @@
 package expo.modules.nanobridge
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.DownloadStatus
@@ -19,6 +20,7 @@ import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -184,8 +186,15 @@ class NanoBridgeModule : Module() {
       FirebaseApp.initializeApp(context)
         ?: throw IllegalStateException("Firebase is not configured. Add google-services.json (see README).")
     }
-    // Debug provider: the token is printed to logcat on first run; register it in the Firebase console.
-    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(DebugAppCheckProviderFactory.getInstance())
+    // Release builds attest with Play Integrity, so only the genuine signed APK on a real device
+    // can call Gemini once App Check is enforced; a copied API key alone is rejected. Works for
+    // the GitHub-distributed APK too, with "Play recognized" set to not required in App Check.
+    // Debug builds use the debug provider: the token is printed to logcat on first run; register
+    // it in the Firebase console.
+    val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+      if (debuggable) DebugAppCheckProviderFactory.getInstance() else PlayIntegrityAppCheckProviderFactory.getInstance(),
+    )
     firebaseReady = true
   }
 
@@ -201,11 +210,25 @@ class NanoBridgeModule : Module() {
       ensureFirebase()
       FirebaseAI.getInstance(backend = GenerativeBackend.googleAI()).generativeModel(
         modelName = cloudModel,
-        generationConfig = if (json) generationConfig { responseMimeType = "application/json" } else null,
+        generationConfig = generationConfig {
+          if (json) responseMimeType = "application/json"
+          maxOutputTokens = maxOutputTokensFor(mode, json)
+        },
         systemInstruction = system?.let { content { text(it) } },
         onDeviceConfig = OnDeviceConfig(mode = inferenceMode(mode), modelOption = modelOptionOf(modelOption)),
       )
     }
+  }
+
+  /**
+   * Caps cloud output so one request can't run up the bill. Keep in sync with
+   * `maxOutputTokensFor` in src/ai/engine.web.ts. Derived from the existing arguments so the
+   * native signatures (and over-the-air JS compatibility) stay unchanged.
+   */
+  private fun maxOutputTokensFor(mode: String, json: Boolean): Int = when {
+    mode == "only_in_cloud" -> 16_384 // a whole custom HTML app
+    json -> 4_096 // an app spec or an edit
+    else -> 1_024 // AI buttons, chat answers, voice replies
   }
 
   /** Maps the JS setting onto the SDK's model options. Gemini Nano 4 is behind the preview flags. */

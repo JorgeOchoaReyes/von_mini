@@ -48,3 +48,6 @@ GoogleService-Info.plist
 # Gradle output from local native modules
 modules/*/android/build/
 
+
+# Firebase deploy cache
+.firebase/

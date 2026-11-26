@@ -25,9 +25,10 @@ dependencies {
   // Kotlin 2.2 compiler used by Expo SDK 58 cannot read. beta07 uses ML Kit built with Kotlin 2.3.
   implementation 'com.google.firebase:firebase-ai:18.1.0'
   implementation 'com.google.firebase:firebase-ai-ondevice:16.0.0-beta07'
-  // App Check is required by Firebase AI Logic. Debug tokens are accepted for the hackathon.
+  // App Check is required by Firebase AI Logic: Play Integrity in release builds, debug tokens in debug builds.
   implementation 'com.google.firebase:firebase-appcheck:20.1.0'
   implementation 'com.google.firebase:firebase-appcheck-debug:20.1.0'
+  implementation 'com.google.firebase:firebase-appcheck-playintegrity:20.1.0'
   // Remote Config: model, routing and feature flags tunable from the Firebase console.
   implementation 'com.google.firebase:firebase-config:22.1.2'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'

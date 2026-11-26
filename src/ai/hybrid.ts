@@ -18,7 +18,7 @@ import { ASKS_CODE, explainConnections, VAGUE_FIX, vetEdit } from './vet';
 import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
-import { engine, isQuotaError } from './engineSelect';
+import { engine, isQuotaError, retryAfterMs } from './engineSelect';
 import {
   ACTION_SYSTEM,
   CHAT_TURN_RULES,
@@ -243,9 +243,22 @@ export class UnreachableError extends Error {}
 export function isCloudUnavailable(e: unknown): boolean {
   if (e instanceof StalledError || e instanceof UnreachableError) return true;
   const msg = e instanceof Error ? e.message : String(e);
-  return /high demand|overloaded|unavailable|503|429|resource.?exhausted|quota|deadline|timed? ?out|network|fetch failed|failed to connect|unable to resolve host/i.test(
-    msg,
+  return (
+    isAppCheckRejection(e) ||
+    /high demand|overloaded|unavailable|503|429|resource.?exhausted|quota|deadline|timed? ?out|network|fetch failed|failed to connect|unable to resolve host/i.test(
+      msg,
+    )
   );
+}
+
+/**
+ * The cloud refused to serve this copy of the app: App Check couldn't attest it (an old APK, an
+ * emulator, a rooted phone, a browser that failed reCAPTCHA). Treated like "cloud unavailable",
+ * so Gemini Nano takes over where the device has it.
+ */
+export function isAppCheckRejection(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /app.?check|firebaseappcheck|UNAUTHENTICATED|\b401\b/i.test(msg);
 }
 
 /**
@@ -254,13 +267,27 @@ export function isCloudUnavailable(e: unknown): boolean {
  */
 export function explainCloudError(e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
+  // These two are limits we set on purpose (quotas, App Check), so the message is for the person
+  // using the app, not for a developer. The technical details go to the console.
   if (isQuotaError(e)) {
-    // e.g. "...limit: 20, model: gemini-3.8-flash ... Please retry in 34m17.04s."
-    const model = msg.match(/model:\s*([\w.-]+)/)?.[1];
-    const wait = msg.match(/retry in\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*([\d.]+s)?/i);
-    const when = wait && (wait[1] || wait[2]) ? ` It resets in about ${wait[1] ? `${wait[1]} h ` : ''}${wait[2] ? `${wait[2]} min` : ''}.`.replace(/ \./, '.') : '';
+    console.warn('Cloud quota reached:', msg.slice(0, 400));
+    const wait = retryAfterMs(e);
+    const when =
+      wait === null
+        ? 'in a minute'
+        : wait < 90_000
+          ? 'in a minute'
+          : wait < 2 * 3600_000
+            ? `in about ${Math.ceil(wait / 60_000)} minutes`
+            : `in about ${Math.round(wait / 3600_000)} hours`;
     return new Error(
-      `The free Gemini quota${model ? ` for ${model}` : ''} is used up for now.${when} More quota: enable billing on the Firebase project (Blaze plan), or change cloud_model in Remote Config.`,
+      `So many people are using von mini’s cloud AI right now that it’s at its limit. Try again ${when}. Your apps, your saved entries and anything that runs on this device keep working.`,
+    );
+  }
+  if (isAppCheckRejection(e)) {
+    console.warn('App Check rejected the request:', msg.slice(0, 400));
+    return new Error(
+      'Cloud AI only works in the official von mini app and website, and this copy couldn’t confirm it is one. Update to the latest version (or use a phone with Gemini Nano). Everything on this device keeps working.',
     );
   }
   const hint = /android client application|API_KEY_ANDROID_APP_BLOCKED|blocked/i.test(msg)
@@ -269,9 +296,7 @@ export function explainCloudError(e: unknown): Error {
       ? 'Firebase rejected the API key. Check google-services.json / the EXPO_PUBLIC_FIREBASE_* values for this build.'
       : /SERVICE_DISABLED|has not been used|not been enabled|is disabled/i.test(msg)
         ? 'Firebase AI Logic isn’t enabled for this project yet. Open AI Logic in the Firebase console and click Get started.'
-        : /app ?check/i.test(msg)
-          ? 'App Check rejected this app. Register its debug token in Firebase > App Check, or turn off enforcement.'
-          : null;
+        : null;
   return new Error(hint ? `${hint} (${msg.slice(0, 200)})` : msg);
 }
 
