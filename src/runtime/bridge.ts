@@ -3,6 +3,7 @@
  * and talks to the host only through postMessage; the host decides how each call is served.
  */
 import { local, runAction, type RouteContext } from '../ai/hybrid';
+import { reportRuntimeError } from '../chat/customJobs';
 import { kvGet, kvSet } from '../storage/store';
 import { voiceReply, type Turn } from '../voice/cascade';
 import { listen } from '../voice/stt';
@@ -13,7 +14,7 @@ import { COMIC_FONT_TTF_BASE64 } from './comicFont';
 export interface BridgeRequest {
   __vm: true;
   id: number;
-  method: 'ai' | 'store.get' | 'store.set' | 'listen' | 'speak' | 'stopSpeaking' | 'converse';
+  method: 'ai' | 'store.get' | 'store.set' | 'listen' | 'speak' | 'stopSpeaking' | 'converse' | 'error';
   args: unknown[];
 }
 
@@ -60,6 +61,10 @@ export async function handleBridge(
       case 'store.set':
         await kvSet(appId, String(req.args[0]), req.args[1] ?? null);
         return { ok: true, value: null };
+      // The app hit an error: noted, and repaired in the background (see customJobs).
+      case 'error':
+        reportRuntimeError(appId, String(req.args[0] ?? 'Error').slice(0, 500), ctx);
+        return { ok: true, value: null };
       default:
         return { ok: false, error: 'Unknown method' };
     }
@@ -85,6 +90,36 @@ export const bridgeScript = (post: string) => `
     var p = pending[id]; if(!p) return; delete pending[id];
     ok ? p[0](v) : p[1](new Error(v));
   };
+  // Errors reach the host, so an app that breaks is repaired instead of silently doing nothing.
+  function report(msg){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'error', args:[String(msg).slice(0, 500)]})); } catch (e) {} }
+  window.addEventListener('error', function(e){ report((e.message || 'Error') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function(e){ var r = e.reason; report('Unhandled promise: ' + ((r && r.message) || r)); });
+  // Storage the sandbox blocks, made to work: localStorage is kept through vonmini.store (seeded by
+  // the host before the app starts), sessionStorage lives for the visit.
+  function makeStorage(data, persist){
+    return {
+      getItem: function(k){ k = String(k); return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function(k, v){ data[String(k)] = String(v); persist(); },
+      removeItem: function(k){ delete data[String(k)]; persist(); },
+      clear: function(){ for (var k in data) delete data[k]; persist(); },
+      key: function(i){ return Object.keys(data)[i] || null; },
+      get length(){ return Object.keys(data).length; }
+    };
+  }
+  var lsData = {}, seed = window.__vmSeed || {}, saveTimer;
+  for (var sk in seed) lsData[sk] = String(seed[sk]);
+  var ls = makeStorage(lsData, function(){ clearTimeout(saveTimer); saveTimer = setTimeout(function(){ call('store.set', ['__ls', lsData]).catch(function(){}); }, 150); });
+  try { Object.defineProperty(window, 'localStorage', { value: ls, configurable: true }); } catch (e) {}
+  try { Object.defineProperty(window, 'sessionStorage', { value: makeStorage({}, function(){}), configurable: true }); } catch (e) {}
+  // Dialogs the sandbox blocks: alert shows a themed toast, confirm says yes, prompt gives its default.
+  function toast(t){
+    var d = document.createElement('div'); d.textContent = t;
+    d.style.cssText = 'position:fixed;left:16px;right:16px;bottom:24px;z-index:2147483647;padding:12px 16px;border:3px solid var(--vm-border);border-radius:12px;background:var(--vm-surface);color:var(--vm-text);box-shadow:var(--vm-shadow);font-weight:700';
+    (document.body || document.documentElement).appendChild(d); setTimeout(function(){ d.remove(); }, 2600);
+  }
+  window.alert = function(m){ toast(String(m)); };
+  window.confirm = function(){ return true; };
+  window.prompt = function(m, d){ return d == null ? '' : String(d); };
   window.vonmini = {
     ai: function(prompt){ return call('ai', [prompt]); },
     listen: function(){ return call('listen', []); },
@@ -159,7 +194,9 @@ pre,code{white-space:pre-wrap;overflow-wrap:anywhere}
 @keyframes vm-spin{to{transform:rotate(360deg)}}`;
 }
 
-export function wrapHtml(html: string, script: string, theme: HtmlTheme): string {
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"><style>${baseCss(theme)}</style><script>${script}</script>`;
+export function wrapHtml(html: string, script: string, theme: HtmlTheme, seed: Record<string, unknown> = {}): string {
+  // What the app saved in localStorage last time, in place before its own scripts run.
+  const seedJs = `window.__vmSeed=${JSON.stringify(seed).replace(/</g, '\\u003c')};`;
+  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"><style>${baseCss(theme)}</style><script>${seedJs}${script}</script>`;
   return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + head) : head + html;
 }

@@ -129,8 +129,67 @@ const coded = await pool(htmlIdeas, 3, async (h) => {
   }
   console.log(`${r.ok ? (issues.length ? 'WARN' : 'OK  ') : 'FAIL'} ${String(Math.round(r.ms / 1000)).padStart(3)}s  ${h}${r.ok ? `  (${r.value.length} chars)` : `  ✗ ${r.error}`}${issues.length ? `  ⚠ ${issues.join('; ')}` : ''}`);
   if (r.ok) writeFileSync(join(outDir, `${h.replace(/[^a-z0-9]+/gi, '-')}.html`), r.value);
-  return { request: h, ok: r.ok, ms: r.ms, error: r.ok ? undefined : r.error, issues };
+  return { request: h, ok: r.ok, ms: r.ms, error: r.ok ? undefined : r.error, issues, html: r.ok ? r.value : undefined, spec };
 });
+
+// First run, like a person: open each HTML app in the real app screen, type into its fields, tap
+// every button, and report errors and buttons that change nothing. Then wait for the self-repair.
+console.log(`\nFirst run of ${coded.filter((x) => x.html).length} HTML apps…`);
+const tryer = await context.newPage();
+await tryer.setViewportSize({ width: 412, height: 915 });
+const appErrors = [];
+tryer.on('console', (m) => { const t = m.text(); if (t.includes('[vm-app-error]')) appErrors.push(t.replace(/^.*\[vm-app-error\]\s*\S+\s*/, '')); });
+tryer.on('pageerror', (e) => appErrors.push(`pageerror: ${e.message}`));
+const firstRun = [];
+for (const [i, x] of coded.entries()) {
+  if (!x.html) continue;
+  const id = `eval-html-${i}`;
+  await call('save', x.spec, id, x.html);
+  appErrors.length = 0;
+  const notes = [];
+  try {
+    await tryer.goto(`${base}/app/${id}`, { waitUntil: 'load', timeout: 60000 });
+    const frame = tryer.frameLocator('iframe').first();
+    await frame.locator('body').waitFor({ timeout: 20000 });
+    await tryer.waitForTimeout(1200);
+    const bodyText = async () => (await frame.locator('body').innerText().catch(() => '')).trim();
+    // A tap can change only styling (a card flips, a cell lights up): compare the whole DOM too.
+    const bodyDom = async () => (await frame.locator('body').innerHTML().catch(() => '')).replace(/\s+/g, ' ');
+    if ((await bodyText()).length < 10) notes.push('blank first screen');
+    for (const input of (await frame.locator('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea').all()).slice(0, 6)) {
+      const kind = await input.getAttribute('type');
+      await input.fill(kind === 'number' ? '3' : 'test 3').catch(() => {});
+    }
+    const buttons = (await frame.locator('button, .vm-btn, [role=button]').all()).slice(0, 12);
+    let dead = 0;
+    for (const btn of buttons) {
+      if (!(await btn.isVisible().catch(() => false))) continue;
+      const before = await bodyDom();
+      await btn.click({ timeout: 2000 }).catch(() => {});
+      await tryer.waitForTimeout(500);
+      if ((await bodyDom()) === before) dead++;
+    }
+    if (buttons.length && dead === buttons.length) notes.push(`no button changed anything (${dead})`);
+  } catch (e) {
+    notes.push(`couldn't open: ${String(e.message).split('\n')[0]}`);
+  }
+  const errs = [...new Set(appErrors)];
+  let repaired = '';
+  if (errs.length) {
+    // The app reported errors, so it repairs itself: wait for the fix, then check again.
+    await tryer.waitForTimeout(25000);
+    appErrors.length = 0;
+    await tryer.reload({ waitUntil: 'load' }).catch(() => {});
+    await tryer.waitForTimeout(1500);
+    for (const btn of (await tryer.frameLocator('iframe').first().locator('button, .vm-btn').all()).slice(0, 12)) await btn.click({ timeout: 2000 }).catch(() => {});
+    await tryer.waitForTimeout(800);
+    repaired = appErrors.length ? `still failing after repair: ${appErrors[0]}` : 'fixed by self-repair';
+  }
+  const issues = [...notes, ...errs.slice(0, 3).map((e) => `error: ${e.slice(0, 140)}`), ...(repaired ? [repaired] : [])];
+  console.log(`${errs.length || notes.length ? (repaired === 'fixed by self-repair' ? 'FIXD' : 'FAIL') : 'OK  '} first run  ${x.request}${issues.length ? `  ⚠ ${issues.join('; ')}` : ''}`);
+  firstRun.push({ request: x.request, ok: !errs.length && !notes.length, issues: [], error: issues.join('; ') || undefined });
+}
+for (const x of coded) delete x.html;
 
 // Render every design the model made in the real app screen: it must show, with no errors.
 const designs = [
@@ -176,8 +235,8 @@ for (const [i, d] of designs.entries()) {
 console.log(`Rendered ${rendered.filter((r) => r.ok).length}/${rendered.length} cleanly.`);
 
 const count = (xs) => ({ total: xs.length, ok: xs.filter((x) => x.ok && !x.issues.length).length, warn: xs.filter((x) => x.ok && x.issues.length).length, fail: xs.filter((x) => !x.ok).length });
-const summary = { builds: count(built), chats: count(chatted), html: count(coded), render: count(rendered) };
-writeFileSync(join(outDir, 'results.json'), JSON.stringify({ summary, built, chatted, coded, rendered, logs: logs.slice(0, 200) }, null, 2));
+const summary = { builds: count(built), chats: count(chatted), html: count(coded), firstRun: count(firstRun), render: count(rendered) };
+writeFileSync(join(outDir, 'results.json'), JSON.stringify({ summary, built, chatted, coded, firstRun, rendered, logs: logs.slice(0, 200) }, null, 2));
 writeFileSync(join(outDir, 'specs.json'), JSON.stringify(built.filter((b) => b.ok).map((b) => b.value.spec).concat(chatted.filter((c) => c.ok && c.value.kind === 'edit').map((c) => c.value.spec)), null, 2));
 const md = [`## Engine eval`, '', '| | total | ok | warnings | failed |', '|---|---|---|---|---|', ...Object.entries(summary).map(([k, v]) => `| ${k} | ${v.total} | ${v.ok} | ${v.warn} | ${v.fail} |`)].join('\n');
 console.log(`\n${md}`);

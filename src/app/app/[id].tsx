@@ -810,12 +810,14 @@ function BuildingView({
 
 /** A slim bar over an app whose HTML the agent is updating (or couldn't update). */
 function UpdateBar({ state, theme, onRetry }: { state: CustomState; theme: Theme; onRetry(): void }) {
-  const working = state.kind === 'writing' || state.kind === 'pending';
+  const working = state.kind === 'writing' || state.kind === 'pending' || state.kind === 'fixing';
   return (
     <View style={[styles.updateBar, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} accessibilityLiveRegion="polite">
       {working ? <ActivityIndicator color={theme.accent} /> : <Text>⚠️</Text>}
       <Text style={[type.caption, { color: theme.text, flex: 1, fontWeight: '700' }]} numberOfLines={2}>
-        {working
+        {state.kind === 'fixing'
+          ? 'Something in this app didn’t work. Fixing it now…'
+          : working
           ? 'Updating your app… keep using it, it switches when ready.'
           : state.kind === 'needs-cloud'
             ? 'Your change will be applied when you’re online.'

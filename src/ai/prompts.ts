@@ -99,6 +99,7 @@ Hard rules:
   forms .vm-label .vm-input (inputs, textareas and selects are styled already) · buttons .vm-btn .vm-btn-secondary .vm-btn-block (plain <button> is styled too) · .vm-chip (toggle aria-pressed) · lists .vm-list > li · AI output .vm-result · .vm-badge .vm-empty .vm-spinner
   CSS variables for anything custom (canvas, SVG, games): var(--vm-bg) var(--vm-surface) var(--vm-surface-alt) var(--vm-text) var(--vm-muted) var(--vm-border) var(--vm-accent) var(--vm-accent-soft) var(--vm-on-accent) var(--vm-danger) var(--vm-success), the comic font var(--vm-display), borders var(--vm-stroke) and shadows var(--vm-shadow). In canvas code read them with getComputedStyle(document.documentElement).
 - Never set your own colours, fonts, backgrounds, gradients or shadows, and never restyle body. Extra CSS only for layout specific to this app.
+- It must work the first time: put your <script> at the end of <body>, attach handlers with addEventListener, and make every button and control do something visible. Wrap start-up code in try/catch and show a friendly message instead of a blank or frozen screen. Use only standard browser JavaScript you are sure of.
 - Render on the page right away: the first screen shows the real app (inputs, board, current stats), never a blank page or only a start button with nothing around it. Everything fits the screen width (360px and up) with no sideways scrolling.
 - Structure: a .vm-hero with the app name and one-line purpose, the main controls in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a .vm-list, an empty state with .vm-empty.
 - Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails.
@@ -120,7 +121,11 @@ Games and toys:
 - Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
-export function htmlPrompt(request: string, specJson?: string, brief?: string, currentHtml?: string) {
+export function htmlPrompt(request: string, specJson?: string, brief?: string, currentHtml?: string, errors?: string[]) {
+  if (currentHtml && errors?.length) {
+    // A repair: the app broke when it ran. Fix it, change nothing else.
+    return `This app throws these errors when it runs, so parts of it do nothing:\n${errors.map((e) => `- ${e}`).join('\n')}\nFix them so every control works, and check the rest of the script for the same kind of mistake. Change nothing else: keep its design, wording and the vonmini.store keys it uses.\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
+  }
   if (currentHtml && brief) {
     // An edit: change the app the user already has, so its look and saved data carry over.
     return `Here is the app's current HTML. Update it to match this brief, changing only what the brief asks; keep its design, layout, wording and the vonmini.store keys it uses.\nBrief: ${brief.trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;

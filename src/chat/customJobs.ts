@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { backgroundWork } from '../ai/background';
 import { buildCustomHtml, local, type RouteContext } from '../ai/hybrid';
 import { notifyIfInBackground } from '../alerts/notifications';
-import { getApp, pushVersion, saveApp, type SavedApp } from '../storage/store';
+import { getApp, pushVersion, saveApp, showsCode, type SavedApp } from '../storage/store';
 
 const busy = new Set<string>();
 /** The last failure per app, with the brief it was for (a new brief clears it). */
@@ -32,8 +32,61 @@ export function useCustomJobsVersion() {
   );
 }
 
-/** Whether the agent is building or updating this app's HTML right now. */
-export const isWriting = (appId: string) => busy.has(appId);
+/** Whether the agent is building, updating or repairing this app's HTML right now. */
+export const isWriting = (appId: string) => busy.has(appId) || fixing.has(appId);
+
+/* ------------------------------ Self-repair ------------------------------ */
+
+const fixing = new Set<string>();
+/** Errors an app reported while running, collected briefly before one repair. */
+const runtimeErrors = new Map<string, string[]>();
+const repairTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Repairs made per app this session: a fix that keeps failing must not loop. */
+const repairs = new Map<string, number>();
+const MAX_REPAIRS = 2;
+
+/**
+ * An app written in HTML hit an error while running (reported by its sandbox). Gather what follows
+ * for a moment, then have Gemini fix exactly those errors in the background: the person sees
+ * "Fixing a problem…" instead of an app where nothing happens.
+ */
+export function reportRuntimeError(appId: string, message: string, ctx: RouteContext) {
+  console.warn('[vm-app-error]', appId, message);
+  const list = runtimeErrors.get(appId) ?? [];
+  if (!list.includes(message) && list.length < 8) list.push(message);
+  runtimeErrors.set(appId, list);
+  clearTimeout(repairTimers.get(appId));
+  repairTimers.set(appId, setTimeout(() => void repairCustom(appId, ctx), 900));
+}
+
+async function repairCustom(appId: string, ctx: RouteContext) {
+  const errors = runtimeErrors.get(appId) ?? [];
+  runtimeErrors.delete(appId);
+  if (!errors.length || busy.has(appId) || fixing.has(appId) || local(ctx)) return;
+  if ((repairs.get(appId) ?? 0) >= MAX_REPAIRS) return;
+  const app = await getApp(appId);
+  if (!app?.html || !showsCode(app)) return;
+  repairs.set(appId, (repairs.get(appId) ?? 0) + 1);
+  fixing.add(appId);
+  emit();
+  try {
+    const run = backgroundWork('Fixing a problem in your app…', () => buildCustomHtml(app.request, ctx, app.spec, app.html, errors));
+    const html = await run.promise;
+    const latest = await getApp(appId);
+    // Only if it's still the same app (no edit or restore meanwhile).
+    if (!latest || latest.html !== app.html) return;
+    await saveApp({ ...latest, html });
+    await pushVersion(appId, latest.spec, ['Fixed a problem in the app.'], 'chat', 'in_cloud', undefined, html);
+  } catch {
+    // Keep the app as it is; the next error can try again (up to the limit).
+  } finally {
+    fixing.delete(appId);
+    emit();
+  }
+}
+
+/** Whether the agent is repairing this app right now. */
+export const isFixing = (appId: string) => fixing.has(appId);
 
 export type CustomState =
   | { kind: 'none' }
@@ -41,11 +94,13 @@ export type CustomState =
   | { kind: 'writing' }
   | { kind: 'needs-cloud' }
   | { kind: 'failed'; message: string }
-  | { kind: 'pending' };
+  | { kind: 'pending' }
+  | { kind: 'fixing' };
 
 /** Where this app's custom version stands. */
 export function customState(app: SavedApp, ctx: RouteContext): CustomState {
   const brief = app.spec.code;
+  if (fixing.has(app.id)) return { kind: 'fixing' };
   if (!brief) return { kind: 'none' };
   if (busy.has(app.id)) return { kind: 'writing' };
   if (app.html && app.htmlFor === brief) return { kind: 'ready' };

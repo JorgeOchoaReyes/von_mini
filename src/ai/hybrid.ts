@@ -496,7 +496,21 @@ export async function chatAboutApp(
   }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
-  let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  let turn: Awaited<ReturnType<typeof chatTurnOnce>>;
+  try {
+    turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  } catch (e) {
+    // The model's answer couldn't be read twice over (it echoed the format, or broke off): say so
+    // in words, never as a raw JSON error. Real outages (no connection, quota) still surface.
+    if (e instanceof SyntaxError || /JSON|empty reply/i.test(e instanceof Error ? e.message : '')) {
+      return {
+        kind: 'answer',
+        source: 'in_cloud',
+        text: 'I didn’t catch that one. Could you say it another way? For example: “add a note field” or “make the button bigger”.',
+      };
+    }
+    throw e;
+  }
   // Keep only what was asked for; if the model invented something, ask it once more, saying what.
   const vet = (t: typeof turn) => {
     if (!t.app) return [];
@@ -568,11 +582,11 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
   );
 }
 
-export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec, currentHtml?: string): Promise<string> {
+export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec, currentHtml?: string, errors?: string[]): Promise<string> {
   // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml), {
+  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors), {
     mode: 'only_in_cloud',
     system: HTML_SYSTEM,
   });
