@@ -312,7 +312,8 @@ export const mockEngine: AIEngine = {
 
   async generate(prompt: string, options: GenerateOptions): Promise<GenerateResult> {
     countCall();
-    await sleep(options.json ? 220 : 180);
+    // Writing an app's HTML takes a while in the cloud; long enough to see "Building your app…".
+    await sleep(options.system?.includes('self-contained mobile-first HTML') ? 1500 : options.json ? 220 : 180);
     deviceCheck(options);
     // Lets tests exercise error paths: any prompt mentioning this fails like an unreachable model.
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');

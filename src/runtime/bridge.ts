@@ -116,6 +116,7 @@ export function baseCss(t: HtmlTheme) {
 @font-face{font-family:"VM Comic";src:url(data:font/ttf;base64,${COMIC_FONT_TTF_BASE64}) format("truetype");font-display:block}
 :root{--vm-bg:${t.bg};--vm-surface:${t.surface};--vm-surface-alt:${t.surfaceAlt};--vm-text:${t.text};--vm-muted:${t.muted};--vm-subtle:${t.subtle};--vm-border:${t.border};--vm-danger:${t.danger};--vm-success:${t.success};--vm-accent:${t.accent};--vm-accent-soft:${t.accentSoft};--vm-on-accent:${t.onAccent};--vm-stroke:3px;--vm-shadow:4px 4px 0 ${t.border};--vm-shadow-sm:3px 3px 0 ${t.border};--vm-radius:14px;--vm-display:"VM Comic",Impact,"Arial Black",sans-serif;--vm-font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:${t.scheme}}
 *{box-sizing:border-box}
+html{overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{margin:0;min-height:100%;background:var(--vm-bg);color:var(--vm-text);font:16px/1.5 var(--vm-font);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
 body{padding:16px 16px 32px;max-width:720px;margin:0 auto;overflow-wrap:anywhere}
 h1,.vm-title{font-family:var(--vm-display);font-weight:400;font-size:30px;line-height:1.1;letter-spacing:.03em;margin:0 0 4px}
@@ -149,8 +150,12 @@ textarea{min-height:110px;resize:vertical}
 .vm-list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
 .vm-list>li{background:var(--vm-surface);border:var(--vm-stroke) solid var(--vm-border);border-radius:12px;padding:12px;box-shadow:var(--vm-shadow-sm)}
 .vm-spinner{width:20px;height:20px;border-radius:50%;border:3px solid var(--vm-accent-soft);border-top-color:var(--vm-accent);animation:vm-spin .8s linear infinite}
-canvas{display:block;max-width:100%;touch-action:none}
-svg{max-width:100%}
+body{width:100%;padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+img,video,canvas,svg,iframe{max-width:100%}
+img,video{height:auto}
+canvas{display:block;touch-action:none}
+table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}
+pre,code{white-space:pre-wrap;overflow-wrap:anywhere}
 @keyframes vm-spin{to{transform:rotate(360deg)}}`;
 }
 

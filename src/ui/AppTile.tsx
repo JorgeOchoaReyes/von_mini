@@ -1,8 +1,9 @@
 /** One app in a gallery (Home shelves, Arcade): icon, name, description, and its badges. */
 import { htmlUsesAI } from '../spec/offline';
 import { memo } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { isWriting, useCustomJobsVersion } from '../chat/customJobs';
 import type { SavedApp } from '../storage/store';
 import { SourceBadge } from './components';
 import { haptics } from './haptics';
@@ -24,6 +25,9 @@ export const AppTile = memo(function AppTile({
   const theme = useTheme(app.spec.accent);
   const color = (ACCENT_COLORS[app.spec.accent] ?? ACCENT_COLORS.violet)[theme.scheme];
   const spring = usePressScale(0.965);
+  // The agent is still building (or updating) it: say so on the tile.
+  useCustomJobsVersion();
+  const building = isWriting(app.id);
   return (
     <Pressable
       accessibilityRole="button"
@@ -58,6 +62,12 @@ export const AppTile = memo(function AppTile({
           </Text>
         </View>
         <View style={styles.badges}>
+          {building ? (
+            <View style={[styles.building, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+              <ActivityIndicator size="small" color={theme.accent} />
+              <Text style={[type.caption, { color: theme.text, fontWeight: '700' }]}>Building…</Text>
+            </View>
+          ) : null}
           <SourceBadge source={app.builtWith} />
           <OfflineBadge spec={app.spec} html={htmlUsesAI(app.html)} />
         </View>
@@ -78,5 +88,6 @@ const styles = StyleSheet.create({
   },
   tileIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   tileEmoji: { fontSize: 26 },
+  building: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 2, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2), alignItems: 'center' },
 });

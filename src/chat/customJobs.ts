@@ -32,6 +32,9 @@ export function useCustomJobsVersion() {
   );
 }
 
+/** Whether the agent is building or updating this app's HTML right now. */
+export const isWriting = (appId: string) => busy.has(appId);
+
 export type CustomState =
   | { kind: 'none' }
   | { kind: 'ready' }
@@ -54,7 +57,8 @@ export function customState(app: SavedApp, ctx: RouteContext): CustomState {
 
 /** Writes the custom version for the app's current brief. Safe to call repeatedly. */
 export async function writeCustom(appId: string, ctx: RouteContext): Promise<void> {
-  if (busy.has(appId)) return;
+  // Offline or in private mode it waits ("needs the internet"), and starts once the cloud is back.
+  if (busy.has(appId) || local(ctx)) return;
   const app = await getApp(appId);
   const brief = app?.spec.code;
   if (!app || !brief || (app.html && app.htmlFor === brief)) return;
