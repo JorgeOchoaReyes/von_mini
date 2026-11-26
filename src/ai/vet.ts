@@ -41,3 +41,27 @@ export function vetEdit(before: AppSpec, after: AppSpec, message: string): { spe
   return { spec, rejected };
 }
 
+
+/** "fix it", "it's broken", "doesn't work": something's wrong, but not what. */
+export const VAGUE_FIX = /^\s*(please\s+)?(fix( it| this| the app| that)?|it'?s broken|broken|(it )?(does ?n[o']?t|is ?n[o']?t) work(ing)?|not working|help)\s*[.!?]*\s*$/i;
+
+/**
+ * When a message is about blocks that are already connected (a dice block taking its count from a
+ * choice), says how the connection works, instead of "couldn't work out a change".
+ */
+export function explainConnections(spec: AppSpec, message: string): string | null {
+  const text = message.toLowerCase();
+  const byId = new Map(spec.components.filter((c) => c.id).map((c) => [c.id!, c]));
+  const what = { countFrom: 'how many dice', sidesFrom: 'how many sides', minFrom: 'the lowest number', maxFrom: 'the highest number', optionsFrom: 'what it picks from' } as const;
+  for (const c of spec.components) {
+    if (c.type !== 'random') continue;
+    for (const k of Object.keys(what) as (keyof typeof what)[]) {
+      const control = c[k] ? byId.get(c[k]!) : undefined;
+      if (!control) continue;
+      const names = [c.label, control.label, 'dice', 'roll', 'spin'].filter(Boolean).map((n) => n!.toLowerCase());
+      if (!names.some((n) => n.length > 2 && text.includes(n))) continue;
+      return `“${c.label}” already takes ${what[k]} from “${control.label}”: set that first, then tap “${c.label}”. Each roll uses whatever it's set to at that moment.`;
+    }
+  }
+  return null;
+}

@@ -13,7 +13,7 @@
 import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
-import { ASKS_CODE, vetEdit } from './vet';
+import { ASKS_CODE, explainConnections, VAGUE_FIX, vetEdit } from './vet';
 import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
@@ -469,6 +469,14 @@ export async function chatAboutApp(
   onEvent: (e: BuildEvent) => void = () => undefined,
 ): Promise<ChatReply> {
   checkLocal(ctx);
+  // "Fix it" with nothing to go on: ask what's wrong rather than change something at random.
+  if (VAGUE_FIX.test(message) && !history.length) {
+    return {
+      kind: 'answer',
+      source: 'on_device',
+      text: 'What isn’t working? Tell me which part and what it does wrong, like “the Roll button always rolls 3 dice” or “the total doesn’t add up”.',
+    };
+  }
   // "Write it as code": no model needed to say yes. The brief carries anything else they asked.
   if (ASKS_FOR_CODE_VERSION.test(message) && message.length < 200) {
     if (spec.code) {
@@ -524,7 +532,9 @@ export async function chatAboutApp(
   // it tried was something nobody asked for, say so and ask, rather than guess again.
   const unsure = 'I wasn’t sure how to do that without adding things you didn’t ask for. Which block should change, and how? For example: “make the Number of Dice choice set how many dice roll”.';
   const reply =
-    turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : rejected.length ? unsure : noChange;
+    turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply))
+      ? turn.reply
+      : (explainConnections(spec, message) ?? (rejected.length ? unsure : noChange));
   return { kind: 'answer', source: turn.source, text: reply };
 }
 
