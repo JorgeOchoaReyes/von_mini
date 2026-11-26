@@ -162,6 +162,7 @@ const GAME_ALIASES: Record<string, SpecComponent['game']> = {
 const SPEED_ALIASES: Record<string, SpecComponent['speed']> = {
   slow: 'slow', easy: 'slow', relaxed: 'slow', chill: 'slow', normal: 'normal', medium: 'normal', fast: 'fast', hard: 'fast', quick: 'fast', insane: 'fast',
 };
+const FROM_KEYS = ['countFrom', 'sidesFrom', 'minFrom', 'maxFrom', 'optionsFrom'] as const;
 const ROLL_ALIASES: Record<string, SpecComponent['roll']> = {
   dice: 'dice', die: 'dice', roll: 'dice', d6: 'dice', d20: 'dice', rolldice: 'dice',
   coin: 'coin', flip: 'coin', coinflip: 'coin', headsortails: 'coin', toss: 'coin',
@@ -322,20 +323,35 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
       case 'random': {
         // Dice, a coin, a spinner over options, or a random number. Every result saves as an entry.
         const options = [...new Set(list(comp.options ?? comp.items).map((o) => str(o, 40)).filter((o): o is string => !!o))].slice(0, 20);
-        const roll = ROLL_ALIASES[word(comp.roll ?? comp.mode ?? comp.style ?? comp.kind)] ?? (options.length >= 2 ? 'pick' : 'dice');
-        if (roll === 'pick' && options.length < 2) continue;
+        // A setting may come from another field: "countFrom": "dice_count", or "count": "{dice_count}".
+        const from = (key: 'count' | 'sides' | 'min' | 'max' | 'options') => {
+          const direct = str(comp[`${key}From`], 40);
+          const inline = typeof comp[key] === 'string' ? (comp[key] as string).match(/^\s*\{\s*([A-Za-z0-9_ -]+?)\s*\}\s*$/)?.[1] : undefined;
+          return direct ?? inline;
+        };
+        const optionsFrom = from('options');
+        const roll = ROLL_ALIASES[word(comp.roll ?? comp.mode ?? comp.style ?? comp.kind)] ?? (options.length >= 2 || optionsFrom ? 'pick' : 'dice');
+        if (roll === 'pick' && options.length < 2 && !optionsFrom) continue;
         out.id = uniqueId(str(comp.id) ?? label ?? roll);
         out.label = label ?? { dice: 'Roll', coin: 'Flip a coin', pick: 'Spin', number: 'Pick a number' }[roll!];
         out.roll = roll;
         if (roll === 'dice') {
           out.count = int(comp.count ?? comp.dice, 1, 6, 1);
           out.sides = int(comp.sides ?? comp.faces, 2, 100, 6);
+          out.countFrom = from('count');
+          out.sidesFrom = from('sides');
         } else if (roll === 'number') {
           const a = int(comp.min, -1_000_000, 1_000_000, 1);
           const b = int(comp.max, -1_000_000, 1_000_000, 100);
           out.min = Math.min(a, b);
           out.max = Math.max(a, b) === Math.min(a, b) ? Math.min(a, b) + 1 : Math.max(a, b);
-        } else if (roll === 'pick') out.options = options;
+          out.minFrom = from('min');
+          out.maxFrom = from('max');
+        } else if (roll === 'pick') {
+          // Spinning over a list typed elsewhere: keep a fallback list so it always has something.
+          out.options = options.length >= 2 ? options : ['Yes', 'No'];
+          out.optionsFrom = optionsFrom;
+        }
         out.text = str(comp.text, 120);
         break;
       }
@@ -396,6 +412,7 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
     if (c.type === 'stat' || c.type === 'chart') c.field = resolve(c.field);
     if (c.type === 'history') c.total = resolve(c.total);
     if (c.type === 'ai') c.fills = resolve(c.fills);
+    if (c.type === 'random') for (const k of FROM_KEYS) if (c[k]) c[k] = resolve(c[k]);
   }
   repairPrompts();
 
@@ -406,6 +423,9 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
       .filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist' || c.type === 'ai' || c.type === 'voice' || c.type === 'game' || c.type === 'random')
       .map((c) => c.id),
   );
+  // A dice & chance block can only take a setting from a field the user sets on this screen.
+  const controlIds = new Set(components.filter((c) => c.type === 'input' || c.type === 'choice' || c.type === 'checklist').map((c) => c.id));
+  for (const c of components) if (c.type === 'random') for (const k of FROM_KEYS) if (c[k] && !controlIds.has(c[k])) c[k] = undefined;
   // An AI can only fill a field the user could also type into.
   const fillable = new Set(components.filter((c) => c.type === 'input').map((c) => c.id));
   for (let i = components.length - 1; i >= 0; i--) {
@@ -445,7 +465,13 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
     } else throw new Error('The generated app has no inputs. Try describing it differently.');
   }
   // A game saves its own scores, so a games-only app needs no save button.
-  const fillable2 = components.some((c) => c.type === 'input' || c.type === 'choice' || c.type === 'voice' || c.type === 'checklist');
+  // Fields that only set how a dice & chance block works are controls, not things to save.
+  const controls = new Set(components.flatMap((c) => (c.type === 'random' ? FROM_KEYS.map((k) => c[k]).filter(Boolean) : [])));
+  const usedElsewhere = (id?: string) =>
+    components.some((c) => c.type !== 'random' && (c.field === id || c.total === id || c.fills === id || (c.prompt ?? '').includes(`{${id}}`)));
+  const fillable2 = components.some(
+    (c) => c.type === 'voice' || ((c.type === 'input' || c.type === 'choice' || c.type === 'checklist') && (!controls.has(c.id) || usedElsewhere(c.id))),
+  );
   if (fillable2 && !components.some((c) => c.type === 'save')) components.push({ type: 'save', label: 'Save' });
   // ...and a save button with nothing to fill in could never be pressed.
   if (!fillable2) {

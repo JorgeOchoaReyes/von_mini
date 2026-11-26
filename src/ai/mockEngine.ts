@@ -200,6 +200,15 @@ function editSpec(currentJson: string, change: string): string {
   };
 
   // Games and chance: dice turn the main game into a dice roll; other gameplay asks for a custom version.
+  // One block controlling another: a choice that sets how many dice roll.
+  if (/how many dice|number of dice/.test(c)) {
+    const dice = spec.components.find((x) => x.type === 'random');
+    if (dice) {
+      spec.components.splice(spec.components.indexOf(dice), 0, { type: 'choice', id: 'how_many', label: 'How many dice?', options: ['1', '2', '3', '4'] });
+      dice.countFrom = 'how_many';
+      return JSON.stringify(spec);
+    }
+  }
   if (/\bdice\b|\broll/.test(c)) {
     const at = spec.components.findIndex((x) => x.type === 'game' || x.type === 'random');
     const dice = { type: 'random', id: 'roll', label: 'Roll', roll: 'dice', count: /two|2/.test(c) ? 2 : 1, sides: 6 };

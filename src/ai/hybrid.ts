@@ -13,6 +13,7 @@
 import { onDeviceOnly } from '../config';
 import { describeChanges } from '../spec/diff';
 import { sanitizeSpec, extractJson } from '../spec/validate';
+import { ASKS_CODE, vetEdit } from './vet';
 import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
@@ -103,8 +104,6 @@ export function localProblem(ctx: RouteContext): string | null {
 export const ASKS_FOR_CODE_VERSION =
   /\b(write|make|turn|rewrite|redo|build|do|remake|recreate)\s+(it|this|that|the app|this app|my app)?\s*(as|in|into|with|using)\s+(code|html|javascript)\b|\b(make|give|want|build|write)\b[^.?!]{0,20}\bcustom version\b|^\s*(in |as )?code\s*[.!]?\s*$/i;
 
-/** The user asked for code / a custom version in so many words. */
-const ASKS_CODE = /\b(code|coded|html|javascript|custom (version|app|game))\b/i;
 /** Things custom code can't do either: it runs alone on the phone (no internet, camera, people). */
 const NO_CODE_TOPIC = /\b(weather|forecast|stocks?|crypto|bitcoin|live prices?|prices? live|news|photos?|pictures?|camera|selfies?|filters?|social|followers|feed)\b/i;
 /** Requests a built-in game already covers. */
@@ -485,13 +484,31 @@ export async function chatAboutApp(
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
   let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  // Keep only what was asked for; if the model invented something, ask it once more, saying what.
+  const vet = (t: typeof turn) => {
+    if (!t.app) return [];
+    const v = vetEdit(spec, t.app, message);
+    t.app = v.spec;
+    return v.rejected;
+  };
+  const rejected = vet(turn);
+  if (rejected.length) {
+    const again = `${prompt}\n\nYour last answer ${rejected.join(' and ')}. Do only what the user asked, using the blocks and their settings (a random block can take its count, sides, range or list from another field with countFrom / sidesFrom / minFrom / maxFrom / optionsFrom). If you're not sure what they mean, set "app" to null and ask one short question in "reply".`;
+    try {
+      const second = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(again, m, onEvent));
+      vet(second);
+      turn = second;
+    } catch {
+      // Keep the first answer, minus what was removed.
+    }
+  }
   const edit = (t: typeof turn) => (t.app ? describeChanges(spec, t.app) : []);
   let changes = edit(turn);
   // The model sent the app back unchanged while saying it changed something (or said nothing):
   // the edit was lost on the way. Ask once more, pointing that out, before giving up.
   // Also when it says it changed the app but sent no app at all ("I've extended the chart").
   const lost = turn.app ? !changes.length && (!turn.reply || CLAIMS_CHANGE.test(turn.reply)) : SAYS_DONE.test(turn.reply);
-  if (lost) {
+  if (lost && !rejected.length) {
     const again = `${prompt}\n\nYour last answer returned the app unchanged. If the user asked for any change, return the full app with that change applied (use "code" for what the blocks can't do). If they didn't ask for a change, set "app" to null and just reply.`;
     try {
       turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(again, m, onEvent));
@@ -503,8 +520,11 @@ export async function chatAboutApp(
   if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };
   const noChange =
     'I couldn’t work out a change from that, so the app is as it was. Try naming what to change, e.g. “add a daily total of calories” or “make the AI answers shorter”.';
-  // No change: show the model's own words, unless they claim a change that didn't happen.
-  const reply = turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : noChange;
+  // No change: show the model's own words, unless they claim a change that didn't happen. If what
+  // it tried was something nobody asked for, say so and ask, rather than guess again.
+  const unsure = 'I wasn’t sure how to do that without adding things you didn’t ask for. Which block should change, and how? For example: “make the Number of Dice choice set how many dice roll”.';
+  const reply =
+    turn.reply && !(turn.app && CLAIMS_CHANGE.test(turn.reply)) ? turn.reply : rejected.length ? unsure : noChange;
   return { kind: 'answer', source: turn.source, text: reply };
 }
 

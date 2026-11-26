@@ -660,6 +660,7 @@ export function SpecRenderer({
           <RandomCard
             key={c.id}
             c={c}
+            values={values}
             theme={theme}
             entries={entries}
             onResult={async (value) => {

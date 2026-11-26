@@ -189,6 +189,8 @@ function BlockFields({
   const c = spec.components[index];
   if (!c) return null;
   const title = componentTitle(c, index);
+  // Fields on this screen another block can take a setting from (a dice count, a list to spin).
+  const controlFields = spec.components.filter((f) => f.id && (f.type === 'choice' || f.type === 'input' || f.type === 'checklist'));
 
   return (
     <>
@@ -354,6 +356,23 @@ function BlockFields({
             onChange={(r) => emit(setRandom(spec, index, { roll: r }), `“${title}” now picks differently.`)}
             theme={theme}
           />
+          {((c.roll ?? 'dice') === 'dice' || c.roll === 'pick') && controlFields.length > 0 && (
+            <Pick<string>
+              label={c.roll === 'pick' ? 'Spin from' : 'How many dice'}
+              value={(c.roll === 'pick' ? c.optionsFrom : c.countFrom) ?? ''}
+              options={[
+                { value: '', label: c.roll === 'pick' ? 'The list below' : 'Set here' },
+                ...controlFields.map((f) => ({ value: f.id!, label: `From “${f.label ?? f.id}”` })),
+              ]}
+              onChange={(id) =>
+                emit(
+                  setRandom(spec, index, c.roll === 'pick' ? { optionsFrom: id } : { countFrom: id }),
+                  id ? `“${title}” now follows “${controlFields.find((f) => f.id === id)?.label ?? id}”.` : `“${title}” uses its own setting again.`,
+                )
+              }
+              theme={theme}
+            />
+          )}
           {(c.roll ?? 'dice') === 'dice' && (
             <>
               <Field label="How many dice (1-6)" value={String(c.count ?? 1)} onChange={(v) => emit(setRandom(spec, index, { count: parseInt(v, 10) }), `Changed the dice in “${title}”.`)} theme={theme} />
