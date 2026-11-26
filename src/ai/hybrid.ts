@@ -496,7 +496,21 @@ export async function chatAboutApp(
   }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
-  let turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  let turn: Awaited<ReturnType<typeof chatTurnOnce>>;
+  try {
+    turn = await withDeviceFallback(mode, onEvent, (m) => chatTurnOnce(prompt, m, onEvent));
+  } catch (e) {
+    // The model's answer couldn't be read twice over (it echoed the format, or broke off): say so
+    // in words, never as a raw JSON error. Real outages (no connection, quota) still surface.
+    if (e instanceof SyntaxError || /JSON|empty reply/i.test(e instanceof Error ? e.message : '')) {
+      return {
+        kind: 'answer',
+        source: 'in_cloud',
+        text: 'I didn’t catch that one. Could you say it another way? For example: “add a note field” or “make the button bigger”.',
+      };
+    }
+    throw e;
+  }
   // Keep only what was asked for; if the model invented something, ask it once more, saying what.
   const vet = (t: typeof turn) => {
     if (!t.app) return [];

@@ -153,6 +153,8 @@ for (const [i, x] of coded.entries()) {
     await frame.locator('body').waitFor({ timeout: 20000 });
     await tryer.waitForTimeout(1200);
     const bodyText = async () => (await frame.locator('body').innerText().catch(() => '')).trim();
+    // A tap can change only styling (a card flips, a cell lights up): compare the whole DOM too.
+    const bodyDom = async () => (await frame.locator('body').innerHTML().catch(() => '')).replace(/\s+/g, ' ');
     if ((await bodyText()).length < 10) notes.push('blank first screen');
     for (const input of (await frame.locator('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea').all()).slice(0, 6)) {
       const kind = await input.getAttribute('type');
@@ -162,10 +164,10 @@ for (const [i, x] of coded.entries()) {
     let dead = 0;
     for (const btn of buttons) {
       if (!(await btn.isVisible().catch(() => false))) continue;
-      const before = await bodyText();
+      const before = await bodyDom();
       await btn.click({ timeout: 2000 }).catch(() => {});
       await tryer.waitForTimeout(500);
-      if ((await bodyText()) === before) dead++;
+      if ((await bodyDom()) === before) dead++;
     }
     if (buttons.length && dead === buttons.length) notes.push(`no button changed anything (${dead})`);
   } catch (e) {
