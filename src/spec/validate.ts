@@ -486,7 +486,7 @@ export function sanitizeSpec(raw: unknown, opts: { rescue?: boolean } = {}): App
     emoji: (str(r.emoji, 8) || '✨').slice(0, 4),
     accent,
     description: str(r.description, 160) ?? '',
-    ...(str(r.code, 600) ? { code: str(r.code, 600) } : {}),
+    ...(str(r.code, 1000) ? { code: str(r.code, 1000) } : {}),
     components: normalizeLayout(components),
   };
 }

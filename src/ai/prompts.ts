@@ -127,6 +127,11 @@ export function htmlPrompt(request: string, specJson?: string, brief?: string, c
     // A repair: the app broke when it ran. Fix it, change nothing else.
     return `This app throws these errors when it runs, so parts of it do nothing:\n${errors.map((e) => `- ${e}`).join('\n')}\nFix them so every control works, and check the rest of the script for the same kind of mistake. Change nothing else: keep its design, wording and the vonmini.store keys it uses.\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
   }
+  const latest = brief?.match(/\n\nLatest change #\d+: ([\s\S]+)$/)?.[1];
+  if (currentHtml && latest) {
+    // A chat edit: make exactly this change to the app the user already has.
+    return `The user asked for this change to their app: "${latest.trim()}"\nMake that change in the HTML below so it visibly works, and change nothing else: keep its design, layout, wording and the vonmini.store keys it uses. Return the full updated HTML.\nWhat the app is: ${brief!.split('\n\nLatest change')[0].trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
+  }
   if (currentHtml && brief) {
     // An edit: change the app the user already has, so its look and saved data carry over.
     return `Here is the app's current HTML. Update it to match this brief, changing only what the brief asks; keep its design, layout, wording and the vonmini.store keys it uses.\nBrief: ${brief.trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;

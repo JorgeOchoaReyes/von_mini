@@ -7,7 +7,9 @@
  */
 import { useSyncExternalStore } from 'react';
 
-import { chatAboutApp, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
+import { chatAboutApp, local, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
+import { customError, writeCustom } from './customJobs';
+import { CODE_CHANGE } from '../spec/diff';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
 import { backgroundWork } from '../ai/background';
 import { StoppedError } from '../ai/stoppable';
@@ -61,6 +63,8 @@ export const isBusy = (appId: string) => busy.has(appId);
 export function stopMessage(appId: string) {
   stops.get(appId)?.();
 }
+/** Whether the turn in flight can still be stopped (not once the app's code is being rewritten). */
+export const canStop = (appId: string) => stops.has(appId);
 export const chatSteps = (appId: string) => progress.get(appId) ?? [];
 
 /** Lets the builder tell subscribers that it changed an app outside the chat. */
@@ -108,16 +112,40 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
       }
       await saveApp({ ...latest, spec: reply.spec, builtWith: reply.source });
       await pushVersion(appId, reply.spec, reply.changes, 'chat', reply.source, app.spec);
+      // An app made of HTML only changes once its code is rewritten: keep showing progress until
+      // it really is, and only then say it's done (or say plainly that it isn't).
+      const brief = reply.spec.code;
+      if (brief && brief !== app.spec.code) {
+        if (local(ctx)) {
+          await appendMessage(appId, {
+            role: 'assistant',
+            kind: 'answer',
+            text: 'Got it. I’ll make this change to the app as soon as you’re online.',
+          });
+          return;
+        }
+        stops.delete(appId);
+        applyEvent(appId, { type: 'step', step: { id: 'html', label: 'Updating the app… this takes a little while', state: 'active' } });
+        await writeCustom(appId, ctx);
+        const written = await getApp(appId);
+        if (written?.spec.code !== brief) return; // Changed again meanwhile; that change reports itself.
+        if (written.htmlFor !== brief) {
+          const why = customError(appId, brief) ?? 'It didn’t finish.';
+          throw new Error(`I couldn’t update the app: ${why} Tap Retry on the App tab, or ask again.`);
+        }
+      }
+      // Say what was done in their words, not a generic line.
+      const changes = reply.changes.map((l) => (l === CODE_CHANGE ? `Made your change: “${message.slice(0, 160)}”` : l));
       void notifyIfInBackground({
         title: `${reply.spec.emoji} ${reply.spec.name} updated`,
-        body: reply.changes[0] ?? 'Your change is done. Tap to see it.',
+        body: changes[0] ?? 'Your change is done. Tap to see it.',
         url: `/app/${appId}`,
       });
       await appendMessage(appId, {
         role: 'assistant',
         kind: 'edit',
         source: reply.source,
-        text: reply.changes.join('\n'),
+        text: changes.join('\n'),
         prevSpec: app.spec,
         nextSpec: reply.spec,
       });

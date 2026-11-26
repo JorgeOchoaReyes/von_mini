@@ -367,7 +367,10 @@ const MOCK_BUGGY_HTML = `<!doctype html><html><head></head><body><div class="vm-
 function respond(prompt: string, options: GenerateOptions): string {
   if (options.system?.includes('self-contained mobile-first HTML')) {
     const repair = prompt.includes('throws these errors');
-    return '```html\n' + (!repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML) + '\n```';
+    // A chat edit shows what it applied, so tests can see the app really changed.
+    const asked = prompt.match(/asked for this change to their app: "([^"]+)"/)?.[1];
+    const html = !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
+    return '```html\n' + (asked ? html.replace('</body>', `<div class="vm-card">Change applied: ${asked}</div></body>`) : html) + '\n```';
   }
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
