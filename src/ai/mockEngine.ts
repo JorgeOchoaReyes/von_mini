@@ -355,11 +355,20 @@ const MOCK_HTML = `<!doctype html><html><head><meta name="viewport" content="wid
 <body><div class="vm-stack"><div class="vm-hero"><div class="vm-title">Tap Rush</div><div class="vm-muted">Tap the target as fast as you can.</div></div>
 <div class="vm-card vm-stack"><div class="vm-headline">Score <span id="score">0</span> · Best <span id="best">0</span></div>
 <button id="tap" class="vm-btn vm-btn-block">Tap!</button></div></div>
+<div class="vm-muted" id="opens"></div>
 <script>let s=0,b=0;vonmini.store.get('best').then(v=>{b=v||0;document.getElementById('best').textContent=b});
-document.getElementById('tap').onclick=()=>{s++;document.getElementById('score').textContent=s;if(s>b){b=s;document.getElementById('best').textContent=b;vonmini.store.set('best',b)}};</script></body></html>`;
+const n=+(localStorage.getItem('opens')||0)+1;localStorage.setItem('opens',n);document.getElementById('opens').textContent='Opened '+n+' times';
+document.getElementById('tap').onclick=()=>{s++;document.getElementById('score').textContent=s;if(s===3)alert('Nice streak!');if(s>b){b=s;document.getElementById('best').textContent=b;vonmini.store.set('best',b)}};</script></body></html>`;
+
+/** An app whose button throws, to exercise the self-repair (asked for with "buggy" in tests). */
+const MOCK_BUGGY_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Buggy Dice</div></div>
+<button id="roll" class="vm-btn vm-btn-block">Roll</button><script>document.getElementById('roll').addEventListener('click',()=>{rollTheDice()});</script></body></html>`;
 
 function respond(prompt: string, options: GenerateOptions): string {
-  if (options.system?.includes('self-contained mobile-first HTML')) return '```html\n' + MOCK_HTML + '\n```';
+  if (options.system?.includes('self-contained mobile-first HTML')) {
+    const repair = prompt.includes('throws these errors');
+    return '```html\n' + (!repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML) + '\n```';
+  }
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
   if (options.system?.includes('Classify')) return '{"intent":"change"}';
   if (options.system?.includes('talking out loud')) {

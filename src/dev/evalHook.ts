@@ -33,8 +33,16 @@ export function installEvalHook() {
       return { ...r, ms: Date.now() - t0 };
     },
     /** Saves a design as an app on this device, so the script can open it and check it renders. */
-    async save(spec: AppSpec, id: string) {
-      await saveApp({ id, request: spec.name, spec, builtWith: 'in_cloud', createdAt: Date.now(), updatedAt: Date.now() });
+    async save(spec: AppSpec, id: string, html?: string) {
+      await saveApp({
+        id,
+        request: spec.name,
+        spec: html ? { ...spec, code: spec.code ?? 'eval' } : spec,
+        ...(html ? { html, htmlFor: spec.code ?? 'eval' } : {}),
+        builtWith: 'in_cloud',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
       return id;
     },
     async html(request: string, spec: AppSpec) {

@@ -1,8 +1,9 @@
 // Web: runs a custom HTML app in a sandboxed iframe (scripts only, opaque origin).
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppAI } from '../ai/appMode';
 import type { Accent } from '../spec/types';
+import { kvGet } from '../storage/store';
 import { useTheme } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
 
@@ -10,6 +11,17 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
   const frame = useRef<HTMLIFrameElement>(null);
   const ai = useAppAI();
   // Drawn with the app's own theme (and its light/dark mode), so it looks like the rest of von mini.
+  // What the app kept in localStorage, loaded before it starts (see the bridge's storage).
+  const [seed, setSeed] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void kvGet(appId, '__ls')
+      .then((v) => alive && setSeed(v && typeof v === 'object' ? (v as Record<string, unknown>) : {}))
+      .catch(() => alive && setSeed({}));
+    return () => {
+      alive = false;
+    };
+  }, [appId, html]);
   const fresh = useTheme(accent);
   // useTheme returns a new object each render; only a different scheme or accent may reload the
   // app (a reload restarts whatever is running inside it).
@@ -31,8 +43,9 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
         bridgeScript("(function(m){ parent.postMessage(m, '*'); })") +
           `window.addEventListener('message', function(e){ var m=e.data; if(m && m.__vmReply) window.__vmReply(m.id, m.ok, m.v); });`,
         theme,
+        seed ?? {},
       ),
-    [html, theme],
+    [html, theme, seed],
   );
 
   useEffect(() => {
@@ -53,6 +66,8 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
     return () => window.removeEventListener('message', onMessage);
   }, [appId]);
 
+  // Start the app only once its saved data is in place.
+  if (!seed) return null;
   return (
     <iframe
       ref={frame}
