@@ -1,6 +1,8 @@
 package expo.modules.nanobridge
 
+import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
@@ -26,6 +28,8 @@ import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderF
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -40,14 +44,30 @@ import kotlinx.coroutines.tasks.await
  * where the preview is not available yet.
  */
 @OptIn(PublicPreviewAPI::class)
+private const val CRASH_PREFS = "vm_native_crash"
+@Volatile private var crashRecorderInstalled = false
+
 class NanoBridgeModule : Module() {
   private var firebaseReady = false
-  private val models = mutableMapOf<String, GenerativeModel>()
+  // Read from several threads at once (status checks while a request starts): must be thread-safe.
+  private val models = ConcurrentHashMap<String, GenerativeModel>()
 
   override fun definition() = ModuleDefinition {
     Name("NanoBridge")
 
     Events("onDownloadProgress", "onStreamChunk")
+
+    // A native crash otherwise leaves no trace the app can show. Keep its stack trace, so the next
+    // launch can say exactly what failed (see takeNativeCrash and src/diagnostics/crashNotes.ts).
+    OnCreate { installCrashRecorder() }
+
+    /** The last native crash's stack trace, once (then forgotten), or null. */
+    Function("takeNativeCrash") {
+      val prefs = appContext.reactContext?.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE) ?: return@Function null
+      val last = prefs.getString("last", null)
+      prefs.edit().remove("last").apply()
+      last
+    }
 
     /**
      * Starts the foreground service that keeps the app alive while a build or edit runs, so it
@@ -140,7 +160,14 @@ class NanoBridgeModule : Module() {
     /** Runs one prompt with the requested inference mode. */
     AsyncFunction("generate") Coroutine {
         prompt: String, cloudModel: String, mode: String, system: String?, json: Boolean, modelOption: String ->
-      val response = model(cloudModel, mode, system, json, modelOption).generateContent(prompt)
+      val response = try {
+        model(cloudModel, mode, system, json, modelOption).generateContent(prompt)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        // An Error (not just an Exception) must fail this request, never the whole app.
+        throw Exception(e.message ?: e.javaClass.simpleName, e)
+      }
       mapOf(
         "text" to (response.text ?: ""),
         "source" to if (response.inferenceSource == InferenceSource.ON_DEVICE) "on_device" else "in_cloud",
@@ -172,15 +199,23 @@ class NanoBridgeModule : Module() {
           }
         }
         sendEvent("onStreamChunk", mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to null))
-      } catch (e: Exception) {
-        sendEvent(
-          "onStreamChunk",
-          mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to (e.message ?: "stream failed")),
-        )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        // Any Throwable (an Error too): end this stream with a message, never crash the app.
+        Log.e("NanoBridge", "stream failed", e)
+        try {
+          sendEvent(
+            "onStreamChunk",
+            mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to (e.message ?: e.javaClass.simpleName)),
+          )
+        } catch (_: Throwable) {
+        }
       }
     }
   }
 
+  @Synchronized
   private fun ensureFirebase() {
     if (firebaseReady) return
     val context = appContext.reactContext ?: throw IllegalStateException("React context is not ready")
@@ -200,6 +235,23 @@ class NanoBridgeModule : Module() {
     firebaseReady = true
   }
 
+  private fun installCrashRecorder() {
+    if (crashRecorderInstalled) return
+    val context = appContext.reactContext?.applicationContext ?: return
+    crashRecorderInstalled = true
+    val previous = Thread.getDefaultUncaughtExceptionHandler()
+    Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+      try {
+        context.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE).edit()
+          .putString("last", "${error.javaClass.name} on ${thread.name}: ${Log.getStackTraceString(error)}".take(4000))
+          .commit()
+      } catch (_: Throwable) {
+      }
+      previous?.uncaughtException(thread, error)
+    }
+  }
+
+  @Synchronized
   private fun model(
     cloudModel: String,
     mode: String,
