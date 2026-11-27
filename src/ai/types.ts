@@ -35,6 +35,11 @@ export interface AIEngine {
   readonly runtime: 'chrome' | 'android-aicore' | 'none';
   /** True when `stream()` yields real incremental output rather than one final chunk. */
   readonly streaming: boolean;
+  /**
+   * False when streaming a long answer is too costly to risk (older Android builds resend the whole
+   * text with every chunk, which ran the app out of memory on a big app). Absent means it's fine.
+   */
+  longStreams?(): boolean;
   status(): Promise<DeviceStatus>;
   /** Starts (or waits for) the on-device model download. */
   download(onProgress?: (downloaded: number, total: number) => void): Promise<DeviceStatus>;
