@@ -85,3 +85,51 @@ export function isCompleteHtml(html: string): boolean {
   const closes = (html.match(/<\/script>/gi) ?? []).length;
   return /<\/html>\s*$/i.test(html) && opens === closes;
 }
+
+/**
+ * Applies edit blocks to an app's HTML, so a change only needs the lines that change:
+ *
+ *   <<<<<<< SEARCH
+ *   exact existing lines
+ *   =======
+ *   replacement lines
+ *   >>>>>>> REPLACE
+ *
+ * Each SEARCH must match exactly once (an exact match first, then one that ignores indentation and
+ * trailing spaces). Returns null when there are no blocks or any block doesn't fit, so the caller
+ * can fall back to writing the whole file.
+ */
+export function applyPatches(html: string, reply: string): string | null {
+  const blocks = [...reply.matchAll(/<{5,}\s*SEARCH\s*\n([\s\S]*?)\n?={5,}\s*\n([\s\S]*?)\n?>{5,}\s*REPLACE/g)];
+  if (!blocks.length) return null;
+  let out = html;
+  for (const [, search, replace] of blocks) {
+    if (!search.trim()) return null;
+    const at = out.indexOf(search);
+    if (at >= 0 && out.indexOf(search, at + 1) < 0) {
+      out = out.slice(0, at) + replace + out.slice(at + search.length);
+      continue;
+    }
+    // Same lines, different indentation or trailing spaces.
+    const norm = (l: string) => l.trim();
+    const want = search.split('\n').map(norm);
+    const lines = out.split('\n');
+    const hits: number[] = [];
+    for (let i = 0; i + want.length <= lines.length; i++) {
+      if (want.every((w, j) => norm(lines[i + j]) === w)) hits.push(i);
+    }
+    if (hits.length !== 1) return null;
+    lines.splice(hits[0], want.length, ...replace.split('\n'));
+    out = lines.join('\n');
+  }
+  return out;
+}
+
+/** Joins a continuation onto text that was cut off, dropping any part the model repeated. */
+export function joinContinuation(head: string, tail: string): string {
+  const max = Math.min(400, head.length, tail.length);
+  for (let n = max; n >= 12; n--) {
+    if (head.endsWith(tail.slice(0, n))) return head + tail.slice(n);
+  }
+  return head + tail;
+}

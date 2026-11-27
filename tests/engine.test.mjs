@@ -108,3 +108,22 @@ test('a custom app cut off by the output limit is recognised as incomplete', asy
   assert.equal(isCompleteHtml('<!doctype html><html><body><script>function go(){ for (let i = 0; i <'), false);
   assert.equal(isCompleteHtml('<!doctype html><html><body><script>a()</script><script>b()</body></html>'), false);
 });
+
+test('edit blocks change only what they target, and refuse when they do not fit', async () => {
+  const { applyPatches } = await import('../src/ai/htmlSafety.ts');
+  const html = '<!doctype html><html><body>\n  <button id="go">Start</button>\n  <script>\n    let turn = "you";\n  </script>\n</body></html>';
+  const ok = applyPatches(html, '<<<<<<< SEARCH\n  <button id="go">Start</button>\n=======\n  <button id="go">Go</button>\n>>>>>>> REPLACE');
+  assert.ok(ok.includes('>Go</button>') && ok.includes('let turn'));
+  // Indentation differences still match.
+  const loose = applyPatches(html, '<<<<<<< SEARCH\nlet turn = "you";\n=======\n    let turn = "ai";\n>>>>>>> REPLACE');
+  assert.ok(loose.includes('let turn = "ai"'));
+  // A block that matches nothing (or several places) means: write the whole file instead.
+  assert.equal(applyPatches(html, '<<<<<<< SEARCH\nnot in the file\n=======\nx\n>>>>>>> REPLACE'), null);
+  assert.equal(applyPatches(html, 'no blocks here'), null);
+});
+
+test('a continuation joins without repeating what was already written', async () => {
+  const { joinContinuation } = await import('../src/ai/htmlSafety.ts');
+  assert.equal(joinContinuation('function draw() { ctx.fillRect(0, 0, w, h);', 'ctx.fillRect(0, 0, w, h); }\n</script></body></html>'), 'function draw() { ctx.fillRect(0, 0, w, h); }\n</script></body></html>');
+  assert.equal(joinContinuation('abc', 'def'), 'abcdef');
+});

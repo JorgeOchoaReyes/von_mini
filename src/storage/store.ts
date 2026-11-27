@@ -44,6 +44,8 @@ export interface ChatMessage {
   /** For an edit: the app right after it, so undo can tell whether anything changed since. */
   nextSpec?: AppSpec;
   undone?: boolean;
+  /** For a change to an app's code: how writing it went ("1m 42s · 312 lines"). */
+  stats?: string;
 }
 
 const APPS_KEY = 'vm:apps';
