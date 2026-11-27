@@ -237,6 +237,9 @@ async function* withTimeouts<T>(source: AsyncIterable<T>, firstMs: number, idleM
   }
 }
 
+/** How long writing (or rewriting) a whole HTML app may take. */
+const HTML_MS = 4 * 60_000;
+
 /** How long a single non-streamed request may take before we stop waiting for it. */
 export const REQUEST_MS = 60_000;
 
@@ -666,7 +669,14 @@ export async function buildCustomHtml(request: string, ctx: RouteContext, spec?:
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
   const prompt = htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors);
   const write = async (p: string) => {
-    const { text } = await engine.generate(p, { mode: 'only_in_cloud', system: HTML_SYSTEM, model: rcString('html_model') });
+    // A whole app can take a minute or two to write, but never forever: a request that silently
+    // died (a dropped connection, the phone pausing it) must end in a message with a Retry.
+    const { text } = await withDeadline(
+      engine.generate(p, { mode: 'only_in_cloud', system: HTML_SYSTEM, model: rcString('html_model') }),
+      HTML_MS,
+    ).catch((e: unknown) => {
+      throw e instanceof StalledError ? new Error('Writing the app took longer than 4 minutes, so I stopped waiting. Try again; a shorter request is quicker.') : e;
+    });
     const fenced = text.match(/```(?:html)?\s*([\s\S]*?)(?:```|$)/i);
     const out = (fenced ? fenced[1] : text).trim();
     // Anything after the document (a closing remark) is dropped.
