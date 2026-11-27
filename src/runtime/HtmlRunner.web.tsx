@@ -58,7 +58,7 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
       } catch {
         return;
       }
-      if (!isBridgeRequest(req)) return;
+      if (!isBridgeRequest(req) || req.method === 'alive') return;
       const res = await handleBridge(appId, req, aiRef.current);
       win.postMessage({ __vmReply: true, id: req.id, ok: res.ok, v: res.ok ? res.value : res.error }, '*');
     };

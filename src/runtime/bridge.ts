@@ -14,7 +14,7 @@ import { COMIC_FONT_TTF_BASE64 } from './comicFont';
 export interface BridgeRequest {
   __vm: true;
   id: number;
-  method: 'ai' | 'store.get' | 'store.set' | 'listen' | 'speak' | 'stopSpeaking' | 'converse' | 'error';
+  method: 'ai' | 'store.get' | 'store.set' | 'listen' | 'speak' | 'stopSpeaking' | 'converse' | 'error' | 'alive';
   args: unknown[];
 }
 
@@ -61,6 +61,8 @@ export async function handleBridge(
       case 'store.set':
         await kvSet(appId, String(req.args[0]), req.args[1] ?? null);
         return { ok: true, value: null };
+      case 'alive':
+        return { ok: true, value: null };
       // The app hit an error: noted, and repaired in the background (see customJobs).
       case 'error':
         reportRuntimeError(appId, String(req.args[0] ?? 'Error').slice(0, 500), ctx);
@@ -93,6 +95,8 @@ export const bridgeScript = (post: string) => `
   // Errors reach the host, so an app that breaks is repaired instead of silently doing nothing.
   function report(msg){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'error', args:[String(msg).slice(0, 500)]})); } catch (e) {} }
   window.addEventListener('error', function(e){ report((e.message || 'Error') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+  // A heartbeat, so the host can tell a frozen app (an endless loop) from a quiet one.
+  setInterval(function(){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'alive', args:[]})); } catch (e) {} }, 1000);
   window.addEventListener('unhandledrejection', function(e){ var r = e.reason; report('Unhandled promise: ' + ((r && r.message) || r)); });
   // Storage the sandbox blocks, made to work: localStorage is kept through vonmini.store (seeded by
   // the host before the app starts), sessionStorage lives for the visit.
