@@ -15,7 +15,9 @@ import com.google.firebase.ai.OnDeviceModelStatus
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.ThinkingLevel
 import com.google.firebase.ai.type.generationConfig
+import com.google.firebase.ai.type.thinkingConfig
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
@@ -208,11 +210,15 @@ class NanoBridgeModule : Module() {
     val key = listOf(cloudModel, mode, system.orEmpty(), json.toString(), modelOption).joinToString("\u0000")
     return models.getOrPut(key) {
       ensureFirebase()
+      val html = isHtmlWriter(system)
       FirebaseAI.getInstance(backend = GenerativeBackend.googleAI()).generativeModel(
         modelName = cloudModel,
         generationConfig = generationConfig {
           if (json) responseMimeType = "application/json"
-          maxOutputTokens = maxOutputTokensFor(mode, json)
+          maxOutputTokens = if (html) HTML_MAX_OUTPUT_TOKENS else maxOutputTokensFor(mode, json)
+          // Writing an app's code: think briefly, then write. Its thinking counts against the same
+          // output limit, and long deliberation is what made big games slow or cut off.
+          if (html && !cloudModel.contains("lite")) thinkingConfig = thinkingConfig { thinkingLevel = ThinkingLevel.LOW }
         },
         systemInstruction = system?.let { content { text(it) } },
         onDeviceConfig = OnDeviceConfig(mode = inferenceMode(mode), modelOption = modelOptionOf(modelOption)),
@@ -221,10 +227,20 @@ class NanoBridgeModule : Module() {
   }
 
   /**
+   * Whether this model writes a whole HTML app, recognised by its system prompt (HTML_SYSTEM and
+   * HTML_PATCH_SYSTEM in src/ai/prompts.ts both start with this). Keeps the native signatures as
+   * they are.
+   */
+  private fun isHtmlWriter(system: String?): Boolean =
+    system?.startsWith("You write one self-contained mobile-first HTML file") == true
+
+  /**
    * Caps cloud output so one request can't run up the bill. Keep in sync with
    * `maxOutputTokensFor` in src/ai/engine.web.ts. Derived from the existing arguments so the
    * native signatures (and over-the-air JS compatibility) stay unchanged.
    */
+  private val HTML_MAX_OUTPUT_TOKENS = 32_768 // a whole custom HTML app; keep in sync with engine.web.ts
+
   private fun maxOutputTokensFor(mode: String, json: Boolean): Int = when {
     mode == "only_in_cloud" -> 16_384 // a whole custom HTML app
     json -> 4_096 // an app spec or an edit

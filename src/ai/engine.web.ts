@@ -1,6 +1,6 @@
 // Web engine: Firebase AI Logic JS SDK with hybrid inference.
 // On-device requests run on Chrome's built-in Gemini Nano; cloud requests go to Gemini.
-import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource, type GenerativeModel } from 'firebase/ai';
+import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource, ThinkingLevel, type GenerativeModel } from 'firebase/ai';
 
 import { firebaseApp } from '../firebase/app';
 import { rcString } from '../remote/remoteConfig';
@@ -26,8 +26,12 @@ function firebaseAI() {
  * Caps cloud output so one request can't run up the bill. Keep in sync with
  * `maxOutputTokensFor` in modules/nano-bridge (Android).
  */
-function maxOutputTokensFor(mode: GenerateOptions['mode'], json: boolean): number {
-  if (mode === 'only_in_cloud') return 16_384; // a whole custom HTML app
+/** Writing a whole HTML app (see `isHtmlWriter` in modules/nano-bridge, which matches this too). */
+const isHtmlWriter = (system?: string) => !!system?.startsWith('You write one self-contained mobile-first HTML file');
+
+function maxOutputTokensFor(mode: GenerateOptions['mode'], json: boolean, system?: string): number {
+  if (isHtmlWriter(system)) return 32_768; // a whole custom HTML app
+  if (mode === 'only_in_cloud') return 16_384;
   if (json) return 4_096; // an app spec or an edit
   return 1_024; // AI buttons, chat answers, voice replies
 }
@@ -46,7 +50,9 @@ function model({ mode, system, json, schema, model: modelName }: GenerateOptions
         systemInstruction: system,
         generationConfig: {
           ...(json ? { responseMimeType: 'application/json' } : {}),
-          maxOutputTokens: maxOutputTokensFor(mode, !!json),
+          maxOutputTokens: maxOutputTokensFor(mode, !!json, system),
+          // Writing an app's code: think briefly, then write (its thinking counts against the limit).
+          ...(isHtmlWriter(system) && !cloudModel.includes('lite') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
         },
       },
       onDeviceParams: {
