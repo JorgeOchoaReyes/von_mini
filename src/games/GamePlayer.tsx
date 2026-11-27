@@ -87,6 +87,31 @@ function useFrames(step: (dt: number) => void, running: boolean) {
 
 type Input = 'left' | 'right' | 'up' | 'down' | 'tap' | 'drag';
 
+/**
+ * An emoji centred on (cx, cy) in a fixed square. Android sizes an unsized absolute Text to the
+ * space left of it, so near the right edge an emoji wrapped or clipped out of sight (enemies
+ * "disappearing", a basket drawn away from where it catches). A fixed box also makes what you see
+ * line up with where the game checks hits, on every platform.
+ */
+function sprite(cx: number, cy: number, fontSize: number) {
+  const box = Math.ceil(fontSize * 1.4);
+  return {
+    position: 'absolute',
+    left: cx - box / 2,
+    top: cy - box / 2,
+    width: box,
+    height: box,
+    fontSize,
+    lineHeight: box,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  } as const;
+}
+
+/** How far a finger moves before it counts as a swipe. */
+const SWIPE_PX = 18;
+
 /** What a bordered board adds around its cells: the border on both sides plus 1px padding. */
 const BOARD_EDGE = 2 * stroke + 2;
 
@@ -96,7 +121,7 @@ const BOARD_EDGE = 2 * stroke + 2;
  *   - otherwise a release is a swipe (left/right/up/down) or a tap (with its x on the board).
  */
 function useControls(onInput: (i: Input, n?: number) => void, opts: { drag?: boolean } = {}) {
-  const touch = useRef({ x: 0, y: 0, lastX: 0, dragged: false });
+  const touch = useRef({ x: 0, y: 0, lastX: 0, dragged: false, swiped: false, last: null as Input | null });
   const { drag } = opts;
   return {
     onStartShouldSetResponder: () => true,
@@ -104,11 +129,26 @@ function useControls(onInput: (i: Input, n?: number) => void, opts: { drag?: boo
     onResponderTerminationRequest: () => false,
     onResponderGrant: (e: GestureResponderEvent) => {
       const { pageX, pageY } = e.nativeEvent;
-      touch.current = { x: pageX, y: pageY, lastX: pageX, dragged: false };
+      touch.current = { x: pageX, y: pageY, lastX: pageX, dragged: false, swiped: false, last: null };
     },
     onResponderMove: (e: GestureResponderEvent) => {
       const t = touch.current;
-      if (!drag) return;
+      if (!drag) {
+        // A swipe counts as soon as the finger has moved far enough, not when it lifts: turning
+        // the snake or changing lanes waited for the release, which felt slow. Keep the finger
+        // down and swipe again to turn again.
+        const dx = e.nativeEvent.pageX - t.x;
+        const dy = e.nativeEvent.pageY - t.y;
+        const dir: Input = Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : dx > 0 ? 'right' : 'left';
+        // Carrying on the same way takes a longer stroke, so one swipe moves one lane.
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < (dir === t.last ? SWIPE_PX * 3 : SWIPE_PX)) return;
+        onInput(dir);
+        t.last = dir;
+        t.x = e.nativeEvent.pageX;
+        t.y = e.nativeEvent.pageY;
+        t.swiped = true;
+        return;
+      }
       const { pageX } = e.nativeEvent;
       onInput('drag', pageX - t.lastX);
       t.lastX = pageX;
@@ -118,7 +158,7 @@ function useControls(onInput: (i: Input, n?: number) => void, opts: { drag?: boo
       const t = touch.current;
       const dx = e.nativeEvent.pageX - t.x;
       const dy = e.nativeEvent.pageY - t.y;
-      if (t.dragged && drag) return;
+      if ((t.dragged && drag) || t.swiped) return;
       if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return onInput('tap', e.nativeEvent.locationX);
       if (Math.abs(dy) > Math.abs(dx)) return onInput(dy > 0 ? 'down' : 'up');
       onInput(dx > 0 ? 'right' : 'left');
@@ -604,16 +644,16 @@ function RunnerGame(p: GameProps) {
         )),
       )}
       {s.coins.map((c) => (
-        <Text key={c.id} pointerEvents="none" style={[styles.sprite, { fontSize: size * 0.6, left: c.lane * laneW + (laneW - size * 0.72) / 2, top: c.y * h - size * 0.3 }]}>
+        <Text key={c.id} pointerEvents="none" style={sprite((c.lane + 0.5) * laneW, c.y * h, size * 0.6)}>
           🪙
         </Text>
       ))}
       {s.obstacles.map((o) => (
-        <Text key={o.id} pointerEvents="none" style={[styles.sprite, { fontSize: size, left: o.lane * laneW + (laneW - size * 1.2) / 2, top: o.y * h - size / 2 }]}>
+        <Text key={o.id} pointerEvents="none" style={sprite((o.lane + 0.5) * laneW, o.y * h, size)}>
           {item}
         </Text>
       ))}
-      <Text pointerEvents="none" style={[styles.sprite, { fontSize: size, left: s.x * laneW + (laneW - size * 1.2) / 2, top: G.RUNNER_Y * h - size / 2 }]}>
+      <Text pointerEvents="none" style={sprite((s.x + 0.5) * laneW, G.RUNNER_Y * h, size)}>
         {player}
       </Text>
       <FxLayer events={s.fx} width={w} height={h} theme={theme} />
@@ -744,7 +784,7 @@ function FlyerGame(p: GameProps) {
       {/* Most animal emoji face left; mirror so the flyer faces where it's going. */}
       <Text
         pointerEvents="none"
-        style={[styles.sprite, { fontSize: size * 0.8, left: G.FLYER_X * w - size / 2, top: s.y * h - size / 2, transform: [{ scaleX: -1 }, { rotate: `${-Math.max(-25, Math.min(60, s.vy * 60))}deg` }] }]}
+        style={[sprite(G.FLYER_X * w, s.y * h, size * 0.8), { transform: [{ scaleX: -1 }, { rotate: `${-Math.max(-25, Math.min(60, s.vy * 60))}deg` }] }]}
       >
         {player}
       </Text>
@@ -857,14 +897,14 @@ function ShooterGame(p: GameProps) {
         <Text
           key={e.id}
           pointerEvents="none"
-          style={[styles.sprite, { fontSize: e.tough ? size * 1.3 : size, left: e.x * w - size * (e.tough ? 0.78 : 0.6), top: e.y * h - size * (e.tough ? 0.78 : 0.6), opacity: e.tough && e.hp < 2 ? 0.7 : 1 }]}
+          style={[sprite(e.x * w, e.y * h, e.tough ? size * 1.3 : size), { opacity: e.tough && e.hp < 2 ? 0.7 : 1 }]}
         >
           {item}
         </Text>
       ))}
       <Text
         pointerEvents="none"
-        style={[styles.sprite, { fontSize: size * 1.1, left: s.ship * w - size * 0.66, top: G.SHIP_Y * h - size * 0.66, opacity: s.grace > 0 ? 0.4 : 1, transform: [{ rotate: player === '🚀' ? '-45deg' : '0deg' }] }]}
+        style={[sprite(s.ship * w, G.SHIP_Y * h, size * 1.1), { opacity: s.grace > 0 ? 0.4 : 1, transform: [{ rotate: player === '🚀' ? '-45deg' : '0deg' }] }]}
       >
         {player}
       </Text>
@@ -899,11 +939,11 @@ function CatchGame(p: GameProps) {
   return (
     <View {...controls} accessibilityLabel="Catcher" style={[styles.track, { width: w, height: h, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
       {s.items.map((it) => (
-        <Text key={it.id} pointerEvents="none" style={[styles.sprite, { fontSize: it.kind === 'gold' ? size * 1.15 : size, left: it.x * w - size * 0.6, top: it.y * h - size * 0.6 }]}>
+        <Text key={it.id} pointerEvents="none" style={sprite(it.x * w, it.y * h, it.kind === 'gold' ? size * 1.15 : size)}>
           {it.kind === 'bad' ? '💣' : it.kind === 'gold' ? '⭐' : item}
         </Text>
       ))}
-      <Text pointerEvents="none" style={[styles.sprite, { fontSize: size * 1.3, left: s.basket * w - size * 0.78, top: G.BASKET_Y * h - size * 0.7 }]}>
+      <Text pointerEvents="none" style={sprite(s.basket * w, G.BASKET_Y * h, size * 1.3)}>
         {player}
       </Text>
       <MultBadge mult={mult} theme={theme} />

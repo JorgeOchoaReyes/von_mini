@@ -398,3 +398,20 @@ test('every game survives minutes of random play without bad numbers', () => {
     assert.ok(Array.isArray(s.fx));
   }
 });
+
+test('the basket catches a fruit it slides under at the last moment', () => {
+  // The fruit is already level with the basket's line when the basket arrives under it.
+  let s = { ...G.newCatch(), spawnAcc: 99, items: [{ id: 1, x: 0.3, y: G.BASKET_Y + 0.01, kind: 'good' }], basket: 0.3 };
+  s = G.catchTick(s, 1 / 60, 1, seeded(1));
+  assert.equal(s.caught, 1);
+  assert.equal(s.lives, G.START_LIVES);
+});
+
+test('an enemy that gets past flies off the board before it costs a life', () => {
+  let s = { ...G.newShooter(), spawnAcc: 99, ship: 0.1, enemies: [{ id: 1, x: 0.8, y: 0.96, vx: 0, hp: 1, tough: false }] };
+  s = G.shooterTick(s, 1 / 60, 1, seeded(1));
+  assert.equal(s.enemies.length, 1, 'still on screen at the bottom edge');
+  for (let i = 0; i < 60 && s.enemies.length; i++) s = G.shooterTick({ ...s, spawnAcc: 99 }, 1 / 60, 1, seeded(1));
+  assert.equal(s.enemies.length, 0);
+  assert.equal(s.lives, G.START_LIVES - 1);
+});
