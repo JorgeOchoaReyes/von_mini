@@ -979,9 +979,12 @@ export function shooterTick(s: ShooterState, dt: number, speed = 1, rng: Rng = M
     let hit = false;
     enemies = enemies.filter((e) => {
       const rams = e.y > SHIP_Y - 0.04 && e.y < SHIP_Y + 0.04 && Math.abs(e.x - s.ship) < 0.08;
-      if (rams || e.y > 0.97) {
+      // One that gets past flies off the bottom before it counts, so it's seen leaving rather
+      // than vanishing just above the edge.
+      const past = e.y > 1.04;
+      if (rams || past) {
         hit = true;
-        fx.push({ x: rams ? s.ship : e.x, y: rams ? SHIP_Y : 0.97, color: RED, big: rams });
+        fx.push(rams ? { x: s.ship, y: SHIP_Y, color: RED, big: true } : { x: e.x, y: 0.95, color: RED, text: 'Missed!' });
         return false;
       }
       return true;
@@ -1002,7 +1005,10 @@ export function shooterTick(s: ShooterState, dt: number, speed = 1, rng: Rng = M
  * ------------------------------------------------------------------ */
 
 export const BASKET_Y = 0.9;
-const CATCH_HALF_W = 0.11;
+const CATCH_HALF_W = 0.12;
+/** The basket's mouth, as heights above and below its line. */
+const CATCH_ABOVE = 0.05;
+const CATCH_BELOW = 0.03;
 
 export interface Falling {
   id: number;
@@ -1051,9 +1057,10 @@ export function catchTick(s: CatchState, dt: number, speed = 1, rng: Rng = Math.
     for (const it of items) {
       const prevY = it.y;
       const y = it.y + fall * h;
-      // Caught when it crosses the basket's rim this step, so speed can't carry it through.
-      const crossed = prevY < BASKET_Y && y >= BASKET_Y;
-      if (crossed && Math.abs(it.x - s.basket) < CATCH_HALF_W) {
+      // Caught anywhere in the basket's mouth, not only on one line: sliding under a fruit just
+      // as it reaches the basket counts. Checked over the whole step, so speed can't skip it.
+      const inMouth = prevY <= BASKET_Y + CATCH_BELOW && y >= BASKET_Y - CATCH_ABOVE;
+      if (inMouth && Math.abs(it.x - s.basket) < CATCH_HALF_W) {
         if (it.kind === 'bad') {
           lives--;
           streak = 0;
