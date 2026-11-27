@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,7 +22,7 @@ import { speak, stopSpeaking } from '../voice/tts';
 import { clockTime, replyTime } from '../ui/time';
 import { canStopCustom, customProgress, customStartedAt, htmlSteps, isFixing, isWriting, stopCustom, useCustomJobsVersion } from './customJobs';
 import { useStickToBottom } from '../ui/useStickToBottom';
-import { canStop, chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
+import { canStop, chatSteps, clearChat, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
   { label: 'What does this app do?', icon: 'help-circle-outline' },
@@ -164,6 +166,19 @@ export function ChatPanel({
 
   const local = ai.privateMode || !ai.online;
 
+  /** Deletes this app's chat after asking. Versions stay in History. */
+  const askClear = () => {
+    const body = 'The messages are deleted. Every change stays in History, so you can still put any version back.';
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete this chat?\n\n${body}`)) void clearChat(appId);
+      return;
+    }
+    Alert.alert('Delete this chat?', body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void clearChat(appId) },
+    ]);
+  };
+
   return (
     // The app screen lifts its content above the keyboard (useKeyboardInset), so no avoiding view here.
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -173,6 +188,18 @@ export function ChatPanel({
         {...stick}
         keyboardShouldPersistTaps="handled"
       >
+        {messages.length > 0 && !busy && !agentWorking && (
+          <Pressable
+            onPress={askClear}
+            hitSlop={8}
+            style={[styles.row, styles.clear]}
+            accessibilityRole="button"
+            accessibilityLabel="Clear chat"
+          >
+            <Icon name="trash-outline" size={14} color={theme.subtle} />
+            <Text style={[type.caption, { color: theme.subtle }]}>Clear chat</Text>
+          </Pressable>
+        )}
         {messages.length === 0 && (
           <View style={styles.intro}>
             <View style={[styles.introIcon, { backgroundColor: theme.accentSoft }]}>
@@ -371,6 +398,7 @@ const styles = StyleSheet.create({
   introIcon: { width: 64, height: 64, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2), justifyContent: 'center', marginTop: space(2) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
+  clear: { alignSelf: 'flex-end', gap: space(1), paddingVertical: space(1) },
   bubble: { maxWidth: '82%', borderRadius: radius.lg, paddingHorizontal: space(4), paddingVertical: space(3), gap: space(2) },
   mine: { alignSelf: 'flex-end', maxWidth: '86%' },
   time: { marginTop: 2, marginRight: space(2) },
