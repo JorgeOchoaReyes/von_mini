@@ -32,6 +32,11 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
+
+/** Where a native crash's stack trace is kept for the next launch (see takeNativeCrash). */
+private const val CRASH_PREFS = "vm_native_crash"
+@Volatile private var crashRecorderInstalled = false
+
 /**
  * Bridges Firebase AI Logic's Android SDK (hybrid inference) to JavaScript.
  *
@@ -44,9 +49,6 @@ import kotlinx.coroutines.tasks.await
  * where the preview is not available yet.
  */
 @OptIn(PublicPreviewAPI::class)
-private const val CRASH_PREFS = "vm_native_crash"
-@Volatile private var crashRecorderInstalled = false
-
 class NanoBridgeModule : Module() {
   private var firebaseReady = false
   // Read from several threads at once (status checks while a request starts): must be thread-safe.
