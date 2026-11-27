@@ -525,6 +525,18 @@
         "stat"
       ],
       "code": false
+    },
+    {
+      "request": "an endless game where a frog crosses busy roads and rivers",
+      "has": []
+    },
+    {
+      "request": "a space shooter game with waves of enemies and power-ups",
+      "has": []
+    },
+    {
+      "request": "a platformer game where a fox jumps between platforms collecting gems",
+      "has": []
     }
   ],
   "chats": [
@@ -786,6 +798,9 @@
     "tic tac toe against the computer",
     "a word guessing game with 6 tries",
     "a reaction time test",
-    "split expenses with roommates and show who owes who"
+    "split expenses with roommates and show who owes who",
+    "an endless game where a frog crosses busy roads and rivers",
+    "a space shooter game with waves of enemies and power-ups",
+    "a platformer game where a fox jumps between platforms collecting gems"
   ]
 }
