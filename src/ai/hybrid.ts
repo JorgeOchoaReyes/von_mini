@@ -19,14 +19,16 @@ import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
 import { engine, isQuotaError, retryAfterMs } from './engineSelect';
-import { cleanCustomHtml, isCompleteHtml } from './htmlSafety';
+import { applyPatches, cleanCustomHtml, isCompleteHtml, joinContinuation } from './htmlSafety';
 import { chartDaysAsked, isVagueRequest } from './requestRules';
 import {
   ACTION_SYSTEM,
   CHAT_TURN_RULES,
   chatTurnJsonSchema,
   chatTurnPrompt,
+  HTML_PATCH_SYSTEM,
   HTML_SYSTEM,
+  PATCH_FORMAT,
   SPEC_SYSTEM,
   editSpecPrompt,
   htmlPrompt,
@@ -684,13 +686,14 @@ export async function buildCustomHtml(
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
   const prompt = htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors);
-  const opts = { mode: 'only_in_cloud' as const, system: HTML_SYSTEM, model: rcString('html_model') };
+  const baseOpts = { mode: 'only_in_cloud' as const, model: rcString('html_model') };
   /**
    * Streams the code so every step is visible and a dead request is noticed within seconds (no new
    * code for a while). It never gives up by itself: a dropped connection is started again, and the
    * person decides when to stop.
    */
-  const stream = async (p: string, first: HtmlStage): Promise<string> => {
+  const stream = async (p: string, first: HtmlStage, system: string = HTML_SYSTEM): Promise<string> => {
+    const opts = { ...baseOpts, system };
     let streamWorks = true;
     let stage: HtmlStage = first;
     onProgress?.({ stage, lines: 0 });
@@ -719,19 +722,38 @@ export async function buildCustomHtml(
       }
     }
   };
-  const write = async (p: string, first: HtmlStage) => {
-    const text = await stream(p, first);
+  const extract = (text: string) => {
     const fenced = text.match(/```(?:html)?\s*([\s\S]*?)(?:```|$)/i);
     const out = (fenced ? fenced[1] : text).trim();
     // Anything after the document (a closing remark) is dropped.
     const end = out.search(/<\/html>\s*(?![\s\S]*<\/html>)/i);
     return end >= 0 ? out.slice(0, end + 7) : out;
   };
-  let html = await write(prompt, 'reading');
-  // A big game can run past the output limit and stop mid-script: ask once more for a tighter one.
+  /** The whole file; if it's cut off by the output limit, it carries on from where it stopped. */
+  const writeWhole = async (p: string, first: HtmlStage) => {
+    let html = extract(await stream(p, first));
+    for (let more = 0; more < 2 && html && !isCompleteHtml(html); more++) {
+      const rest = await stream(
+        `${p}\n\nYour answer was cut off by the length limit. Here is how it ends:\n<<<END\n${html.slice(-1500)}\nEND>>>\nContinue the file exactly from where it stops. Output ONLY the rest (no repeat of what's above, no fences, no commentary), and finish it with </html>. Be compact.`,
+        'shortening',
+      );
+      html = extract(joinContinuation(html, rest.replace(/^```(?:html)?\s*/i, '')));
+    }
+    return html;
+  };
+  let html: string | null = null;
+  // A change or a fix to an existing app: only the lines that change, which takes seconds rather than
+  // rewriting the whole file. If the blocks don't fit the file, write it whole instead.
+  if (currentHtml) {
+    const reply = await stream(`${prompt}\n\n${PATCH_FORMAT}`, 'reading', HTML_PATCH_SYSTEM);
+    html = /<!doctype html/i.test(reply) ? extract(reply) : applyPatches(currentHtml, reply);
+    if (html && !isCompleteHtml(html)) html = null;
+  }
+  html ??= await writeWhole(prompt, 'reading');
+  // Still cut off: once more, written to be noticeably shorter.
   if (!isCompleteHtml(html)) {
-    html = await write(
-      `${prompt}\n\nYour last answer was cut off before </html> because it was too long. Write the whole file again, complete, in noticeably fewer lines: keep every feature, but use compact code (shared helpers, data tables instead of repeated code, short CSS).`,
+    html = await writeWhole(
+      `${prompt}\n\nYour last answer was too long to fit. Write the whole file again, complete, in noticeably fewer lines: keep every feature, but use compact code (shared helpers, data tables instead of repeated code, short CSS).`,
       'shortening',
     );
   }

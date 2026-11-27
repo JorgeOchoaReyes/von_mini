@@ -369,6 +369,10 @@ function respond(prompt: string, options: GenerateOptions): string {
     const repair = prompt.includes('throws these errors');
     // A chat edit shows what it applied, so tests can see the app really changed.
     const asked = prompt.match(/asked for this change to their app: "([^"]+)"/)?.[1];
+    // Edits answer with an edit block, like the real model is asked to.
+    if (asked && prompt.includes('>>>>>>> REPLACE')) {
+      return `<<<<<<< SEARCH\n</body>\n=======\n<div class="vm-card">Change applied: ${asked}</div></body>\n>>>>>>> REPLACE`;
+    }
     const html = !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
     return '```html\n' + (asked ? html.replace('</body>', `<div class="vm-card">Change applied: ${asked}</div></body>`) : html) + '\n```';
   }

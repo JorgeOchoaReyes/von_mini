@@ -122,8 +122,9 @@ Apps (anything that isn't a game):
 Games and toys:
 - A game is not an app: no .vm-hero and no cards around the play area. The game fills the page: a slim HUD row (score, best, lives or level, a pause button) above a play area that takes the full width and most of the screen height, with on-screen controls below it if the game needs them. Menus, pause and game-over are overlays on top of the play area.
 - Draw on a <canvas> sized to its box (devicePixelRatio aware, resized on orientation change) and animate with requestAnimationFrame; or use DOM for board and card games.
-- Depth, not a toy: a difficulty curve that keeps it interesting for minutes, levels or waves with something new in each (a new obstacle, enemy or rule), at least one power-up or special item, combos or streak bonuses, and a reason to play again (best score, unlocked levels or skins kept with vonmini.store).
-- Juice: smooth movement and easing, particles or a short flash on hits and pickups, a light screen shake on crashes, floating "+10" text, and short sound effects made with Web Audio oscillators (muted until the first tap, with a mute toggle in the HUD).
+- Match the ambition to the request: build what was asked for, complete and solid, and keep the file compact (aim for under ~600 lines). "Simple" means small. Extras only where they make this kind of game better.
+- Action and arcade games (things move in real time): a difficulty curve, levels or waves with something new in each, a power-up or special item, combos, and juice: smooth movement, particles or a flash on hits, a light screen shake on crashes, floating "+10" text, short Web Audio sound effects (muted until the first tap, with a mute toggle).
+- Board, card, word and puzzle games (chess, checkers, sudoku, solitaire): correct and complete rules first (every legal move, check, win and draw), a computer opponent when there are two sides that answers within a second (heuristics or a shallow search, no deep search that freezes the page), the last move highlighted, legal moves shown on tap, and undo. No particles, power-ups or levels unless asked.
 - Touch first: tap, drag and swipe with pointer events; big hit areas; no hover. Arrow keys and space as extras.
 - A "Tap to start" overlay that shows how to play in one line, a game-over overlay with the score, best and a Play again button, and pause when the page is hidden.
 - Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
@@ -133,6 +134,15 @@ Games and toys:
 - Stay light so the phone never runs out of memory or freezes: no list, DOM or canvas that grows forever (reuse or remove what's off screen), no loop without a certain end (a "fill the screen" loop must stop at a fixed count), and add event listeners once, not every frame.
 - Steady motion: advance the game by elapsed time (dt from requestAnimationFrame timestamps, capped at 0.1 s), never by a fixed amount per frame.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
+
+/** For a change or fix to an existing app: reply with edit blocks instead of the whole file. */
+export const PATCH_FORMAT = `Reply with ONLY edit blocks that make this change in the current HTML, in this exact format (as many blocks as needed):
+<<<<<<< SEARCH
+(lines copied exactly from the current HTML, enough to be unique; keep each block short)
+=======
+(the new lines)
+>>>>>>> REPLACE
+Change only what's needed and keep everything else as it is. If the change really needs most of the file rewritten, reply instead with the whole new file starting with <!doctype html>.`;
 
 export function htmlPrompt(request: string, specJson?: string, brief?: string, currentHtml?: string, errors?: string[]) {
   if (currentHtml && errors?.length) {
@@ -184,3 +194,9 @@ export const chatTurnJsonSchema = (app: object) => ({
 
 export const ACTION_SYSTEM =
   'You are a helpful assistant inside a small personal app. Answer briefly and directly. Plain text only, no markdown headings.';
+
+/** The same rules, but answering a change with edit blocks instead of a whole new file. */
+export const HTML_PATCH_SYSTEM = HTML_SYSTEM.replace(
+  '- Output ONLY the HTML document, starting with <!doctype html>.',
+  '- You are changing an app that already exists: output ONLY edit blocks (SEARCH/REPLACE) as the user message explains, or the whole file only if the change needs most of it rewritten.',
+).replace(/\n- Plan before you code:[^\n]*/, '');
