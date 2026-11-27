@@ -647,6 +647,11 @@ export async function chatAboutApp(
   return { kind: 'answer', source: turn.source, text: reply };
 }
 
+/** The model stopped because it reached its output limit (reported as an error on Android). */
+export function isMaxTokens(e: unknown): boolean {
+  return /MAX_TOKENS|max.?output.?tokens|maximum.{0,20}tokens/i.test(e instanceof Error ? e.message : String(e));
+}
+
 /** A question about the app ("how do I score?", "what does the shield do"), not a change. */
 const IS_QUESTION = /\?\s*$|^\s*(what|how|why|when|where|who|which|does|do|is|are|should|explain)\b/i;
 
@@ -693,7 +698,7 @@ export async function buildCustomHtml(
    * person decides when to stop.
    */
   const stream = async (p: string, first: HtmlStage, system: string = HTML_SYSTEM): Promise<string> => {
-    const opts = { ...baseOpts, system };
+    let opts = { ...baseOpts, system };
     let streamWorks = true;
     let stage: HtmlStage = first;
     onProgress?.({ stage, lines: 0 });
@@ -704,6 +709,7 @@ export async function buildCustomHtml(
           onProgress?.({ stage: 'coding', lines: 0 });
           return (await withDeadline(engine.generate(p, opts), HTML_MS)).text;
         }
+        // (A MAX_TOKENS error below is handled in the catch: it means the output limit was hit.)
         for await (const chunk of withTimeouts(engine.stream(p, opts), HTML_FIRST_MS, HTML_IDLE_MS)) {
           text = chunk.text;
           // The file opens with its design (an HTML comment), then the code.
@@ -713,6 +719,18 @@ export async function buildCustomHtml(
         }
         return text;
       } catch (e) {
+        // The output limit was hit. With code already written, that's a cut-off file: keep it, and
+        // the caller continues from where it stopped. With nothing written, the model spent the whole
+        // limit thinking: write it once more with the everyday model, which barely thinks.
+        if (isMaxTokens(e)) {
+          if (text) return text;
+          const lighter = rcString('cloud_model');
+          if (opts.model === lighter) throw new Error('The app needed more room than Gemini allows in one answer. Try asking for a simpler version.');
+          console.warn('HTML model used its whole output limit thinking; retrying on', lighter);
+          opts = { ...opts, model: lighter };
+          onProgress?.({ stage: 'reading', lines: 0 });
+          continue;
+        }
         if (!(e instanceof StalledError)) throw e;
         // Nothing came back at all: streaming itself may not work here (seen on one Android phone),
         // so ask without streaming. Otherwise the connection died mid-way: start again.
@@ -723,8 +741,10 @@ export async function buildCustomHtml(
     }
   };
   const extract = (text: string) => {
+    // From the document's start (any fence or remark before it is dropped)...
+    const start = text.search(/<!doctype html|<html[\s>]/i);
     const fenced = text.match(/```(?:html)?\s*([\s\S]*?)(?:```|$)/i);
-    const out = (fenced ? fenced[1] : text).trim();
+    const out = (start >= 0 ? text.slice(start) : fenced ? fenced[1] : text).replace(/\n?```\s*$/, '').trim();
     // Anything after the document (a closing remark) is dropped.
     const end = out.search(/<\/html>\s*(?![\s\S]*<\/html>)/i);
     return end >= 0 ? out.slice(0, end + 7) : out;
@@ -746,7 +766,10 @@ export async function buildCustomHtml(
   // rewriting the whole file. If the blocks don't fit the file, write it whole instead.
   if (currentHtml) {
     const reply = await stream(`${prompt}\n\n${PATCH_FORMAT}`, 'reading', HTML_PATCH_SYSTEM);
-    html = /<!doctype html/i.test(reply) ? extract(reply) : applyPatches(currentHtml, reply);
+    // Blocks that were cut off mid-way would apply only part of the change: write the file whole.
+    const whole = /<!doctype html/i.test(reply);
+    const finished = whole || />{5,}\s*REPLACE\s*(```)?\s*$/.test(reply.trim());
+    html = !finished ? null : whole ? extract(reply) : applyPatches(currentHtml, reply);
     if (html && !isCompleteHtml(html)) html = null;
   }
   html ??= await writeWhole(prompt, 'reading');
