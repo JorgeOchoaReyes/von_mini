@@ -71,9 +71,10 @@ async function waitForRateLimit(e: unknown, attempt: number): Promise<boolean> {
 
 function fallbackModel(o: GenerateOptions, e: unknown): string | null {
   if (o.mode === 'only_on_device' || !isQuotaError(e)) return null;
-  const fb = rcString('cloud_model_fallback').trim();
   const used = o.model ?? rcString('cloud_model');
-  return fb && fb !== used ? fb : null;
+  // The first model in line that isn't the one that just ran out (the HTML model may itself be
+  // the fallback, so then fall back to the everyday model).
+  return [rcString('cloud_model_fallback'), rcString('cloud_model')].map((m) => m.trim()).find((m) => m && m !== used) ?? null;
 }
 
 /**

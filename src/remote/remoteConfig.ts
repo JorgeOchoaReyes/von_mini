@@ -8,6 +8,7 @@
  *
  *   cloud_model        Gemini model used when Firebase AI Logic runs in the cloud
  *   cloud_model_fallback  model to retry on when cloud_model's quota is used up
+ *   html_model         Gemini model that writes apps and games as HTML (code needs a stronger model)
  *   build_mode         how new apps are designed: prefer_in_cloud (default) or prefer_on_device
  *   spec_rules_extra   extra design rules appended to the app-designer prompt
  *   voice_input        "false" hides speech input (a kill switch if recognition misbehaves)
@@ -23,6 +24,8 @@ export const RC_DEFAULTS = {
   cloud_model: cloudModel,
   // Used when cloud_model's quota is exhausted (each model has its own free-tier daily quota).
   cloud_model_fallback: 'gemini-3.8-flash',
+  // Writing a whole app or game in code is the hardest job: it gets a stronger model than chat.
+  html_model: 'gemini-3.8-flash',
   build_mode: 'prefer_in_cloud',
   spec_rules_extra: '',
   voice_input: 'true',

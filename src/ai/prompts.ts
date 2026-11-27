@@ -90,20 +90,24 @@ export function editSpecPrompt(currentJson: string, change: string) {
 }
 
 /** Cloud only: Gemini writes a fully custom, self-contained HTML app. */
-export const HTML_SYSTEM = `You write one self-contained mobile-first HTML file for a small app.
+export const HTML_SYSTEM = `You write one self-contained mobile-first HTML file: a complete, polished app or game that feels like a real product, not a demo.
 Hard rules:
 - Output ONLY the HTML document, starting with <!doctype html>.
+- Plan before you code: right after <!doctype html>, write an HTML comment (at most 20 lines) that designs it: the core loop or main task, every screen and feature, the data you keep, and (for a game) entities, controls, difficulty curve, levels or progression, power-ups and feedback. Make the design ambitious and specific to the request, then implement ALL of it.
 - No external resources: no <script src>, no CDN, no fonts, no images from URLs, no fetch/XMLHttpRequest/WebSocket.
 - Everything the person taps (a board cell, a card, a key) is a <button>, not a div with a click handler, so it works with a keyboard and a screen reader.
 - Inline all JS. von mini's design system is already loaded (the app's own theme, light or dark): build the whole look from it so the app looks like the rest of von mini.
   Classes: layout .vm-stack .vm-row .vm-grid · panels .vm-hero .vm-card · text .vm-title .vm-headline .vm-overline .vm-muted · a big number .vm-stat
   forms .vm-label .vm-input (inputs, textareas and selects are styled already) · buttons .vm-btn .vm-btn-secondary .vm-btn-block (plain <button> is styled too) · .vm-chip (toggle aria-pressed) · lists .vm-list > li · AI output .vm-result · .vm-badge .vm-empty .vm-spinner
   CSS variables for anything custom (canvas, SVG, games): var(--vm-bg) var(--vm-surface) var(--vm-surface-alt) var(--vm-text) var(--vm-muted) var(--vm-border) var(--vm-accent) var(--vm-accent-soft) var(--vm-on-accent) var(--vm-danger) var(--vm-success), the comic font var(--vm-display), borders var(--vm-stroke) and shadows var(--vm-shadow). In canvas code read them with getComputedStyle(document.documentElement).
-- Never set your own colours, fonts, backgrounds, gradients or shadows, and never restyle body. Extra CSS only for layout specific to this app.
+- Outside a game's play area, never set your own colours, fonts, backgrounds, gradients or shadows, and never restyle body. Extra CSS only for layout specific to this app.
 - Use the full screen width: the page already has its small side padding, so add no outer margins, padding, max-width or centred wrappers. Never put a .vm-card inside another .vm-card or .vm-hero; inside a card use plain elements, a .vm-result or a .vm-list.
-- It must work the first time: put your <script> at the end of <body>, attach handlers with addEventListener, and make every button and control do something visible. Wrap start-up code in try/catch and show a friendly message instead of a blank or frozen screen. Use only standard browser JavaScript you are sure of.
+- It must work the first time: put your <script> at the end of <body>, attach handlers with addEventListener, and make every button and control do something visible. Wrap start-up code in try/catch and show a friendly message instead of a blank or frozen screen. Use standard browser APIs only (DOM, canvas 2D, SVG, pointer events, Web Audio, requestAnimationFrame), no libraries.
+- Keep the code organised so it stays correct as it grows: one state object, small named functions (update, render, input, save), data tables for levels, items and settings instead of repeated code.
 - Render on the page right away: the first screen shows the real app (inputs, board, current stats), never a blank page or only a start button with nothing around it. Everything fits the screen width (360px and up) with no sideways scrolling.
-- Structure: a .vm-hero with the app name and one-line purpose, the main controls in a .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a .vm-list, an empty state with .vm-empty.
+Apps (anything that isn't a game):
+- Start with a .vm-hero (name and one-line purpose), then the app itself: main controls in .vm-card, primary action as .vm-btn.vm-btn-block, results in .vm-result, saved items as a .vm-list, an empty state with .vm-empty.
+- Go beyond a form: useful views of the data (totals, streaks, trends drawn in SVG, filters or tabs, search), editing and deleting entries, sensible defaults and quick-add shortcuts, small touches like confirmations and undo. Think about what someone using it every day would want next, and build it.
 - Show a .vm-spinner and disable the button while vonmini.ai is running, and show friendly error text if it fails.
 - For AI features call: await vonmini.ai(promptString) -> string. It runs on a small on-device model, so ask for short outputs and keep prompts simple.
 - Voice (all on the device, so it works offline):
@@ -116,12 +120,15 @@ Hard rules:
 - Daily reminders are handled by the app around your HTML: don't build reminder UI.
 - Save each entry as an item in a list under one key (e.g. vonmini.store "entries": [{at, ...fields}]) and compute totals, streaks and charts from it; draw charts with inline SVG.
 Games and toys:
-- Draw on a <canvas> sized to the screen (devicePixelRatio aware) and animate with requestAnimationFrame; or use DOM for board and card games.
+- A game is not an app: no .vm-hero and no cards around the play area. The game fills the page: a slim HUD row (score, best, lives or level, a pause button) above a play area that takes the full width and most of the screen height, with on-screen controls below it if the game needs them. Menus, pause and game-over are overlays on top of the play area.
+- Draw on a <canvas> sized to its box (devicePixelRatio aware, resized on orientation change) and animate with requestAnimationFrame; or use DOM for board and card games.
+- Depth, not a toy: a difficulty curve that keeps it interesting for minutes, levels or waves with something new in each (a new obstacle, enemy or rule), at least one power-up or special item, combos or streak bonuses, and a reason to play again (best score, unlocked levels or skins kept with vonmini.store).
+- Juice: smooth movement and easing, particles or a short flash on hits and pickups, a light screen shake on crashes, floating "+10" text, and short sound effects made with Web Audio oscillators (muted until the first tap, with a mute toggle in the HUD).
 - Touch first: tap, drag and swipe with pointer events; big hit areas; no hover. Arrow keys and space as extras.
-- Minimal arcade look: a score and best score at the top, a "Tap to start" screen, a game-over card with the score and a Play again button, pause when the page is hidden.
+- A "Tap to start" overlay that shows how to play in one line, a game-over overlay with the score, best and a Play again button, and pause when the page is hidden.
 - Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
-- Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
-- Colours come from the theme variables (board var(--vm-surface-alt), lines var(--vm-border), highlights var(--vm-accent)), so the game fits light and dark mode; at most 4 colours of your own, only for game pieces.
+- Sprites: emoji, or shapes drawn on the canvas (paths, gradients, shadows), never image files. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
+- The HUD and overlays use the theme variables and classes; the play area may use its own palette for the world and pieces (sky, grass, water, enemies), chosen to look good in both light and dark mode.
 - Endless games (the player moves forward through lanes, rows, platforms or terrain): the world must never run out. Keep generating new rows ahead of the player as they advance and drop the ones far behind, so the screen is always full however far they go; move the camera with the player.
 - Stay light so the phone never runs out of memory or freezes: no list, DOM or canvas that grows forever (reuse or remove what's off screen), no loop without a certain end (a "fill the screen" loop must stop at a fixed count), and add event listeners once, not every frame.
 - Steady motion: advance the game by elapsed time (dt from requestAnimationFrame timestamps, capped at 0.1 s), never by a fixed amount per frame.
@@ -142,7 +149,7 @@ export function htmlPrompt(request: string, specJson?: string, brief?: string, c
     return `Here is the app's current HTML. Update it to match this brief, changing only what the brief asks; keep its design, layout, wording and the vonmini.store keys it uses.\nBrief: ${brief.trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
   }
   if (brief) {
-    return `Build this: ${brief.trim()}\nUse the blocks in the App JSON as the plan: every field, choice, checklist, stat, chart, AI button, dice, game and history list it describes should exist and work in your HTML (stats and history read the entries you save with vonmini.store), connected as described; then add whatever else the request needs. Use its name, emoji and purpose.\nApp JSON:\n${specJson ?? '{}'}\nUser's original request: "${request}"`;
+    return `Build this: ${brief.trim()}\nUse the blocks in the App JSON as the plan: every field, choice, checklist, stat, chart, AI button, dice, game and history list it describes should exist and work in your HTML (stats and history read the entries you save with vonmini.store), connected as described. That plan is only the minimum: build the complete, polished version of what they asked for, with everything a great app or game of this kind would have. Use its name, emoji and purpose.\nApp JSON:\n${specJson ?? '{}'}\nUser's original request: "${request}"`;
   }
   return specJson
     ? `Build a richer custom version of this app. Keep its purpose and features, improve layout and interactions.\nApp JSON:\n${specJson}\nUser's original request: "${request}"`

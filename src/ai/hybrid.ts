@@ -19,7 +19,7 @@ import { parseChatTurn } from './chatTurn';
 import { appSpecJsonSchema, type AppSpec } from '../spec/types';
 import { rcString } from '../remote/remoteConfig';
 import { engine, isQuotaError, retryAfterMs } from './engineSelect';
-import { cleanCustomHtml } from './htmlSafety';
+import { cleanCustomHtml, isCompleteHtml } from './htmlSafety';
 import { chartDaysAsked, isVagueRequest } from './requestRules';
 import {
   ACTION_SYSTEM,
@@ -662,12 +662,23 @@ export async function buildCustomHtml(request: string, ctx: RouteContext, spec?:
   // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
-  const { text } = await engine.generate(htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors), {
-    mode: 'only_in_cloud',
-    system: HTML_SYSTEM,
-  });
-  const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i);
-  const html = (fenced ? fenced[1] : text).trim();
+  const prompt = htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors);
+  const write = async (p: string) => {
+    const { text } = await engine.generate(p, { mode: 'only_in_cloud', system: HTML_SYSTEM, model: rcString('html_model') });
+    const fenced = text.match(/```(?:html)?\s*([\s\S]*?)(?:```|$)/i);
+    const out = (fenced ? fenced[1] : text).trim();
+    // Anything after the document (a closing remark) is dropped.
+    const end = out.search(/<\/html>\s*(?![\s\S]*<\/html>)/i);
+    return end >= 0 ? out.slice(0, end + 7) : out;
+  };
+  let html = await write(prompt);
+  // A big game can run past the output limit and stop mid-script: ask once more for a tighter one.
+  if (!isCompleteHtml(html)) {
+    html = await write(
+      `${prompt}\n\nYour last answer was cut off before </html> because it was too long. Write the whole file again, complete, in noticeably fewer lines: keep every feature, but use compact code (shared helpers, data tables instead of repeated code, short CSS).`,
+    );
+  }
   if (!/<html|<!doctype/i.test(html)) throw new Error('Gemini did not return an HTML document. Try again.');
+  if (!isCompleteHtml(html)) throw new Error('The app came out too long and was cut off. Try asking for a slightly simpler version.');
   return cleanCustomHtml(html);
 }
