@@ -555,6 +555,17 @@ export async function chatAboutApp(
     const { code: _gone, ...blocks } = spec;
     return { kind: 'edit', spec: blocks, changes: describeChanges(spec, blocks), reply: 'Back to the simpler version.', source: 'on_device' };
   }
+  // An app built in code is its HTML; the JSON is only its plan, which the chat model sees. It
+  // can't tell why "the road stops appearing after a few jumps", so it would answer that it doesn't
+  // understand. Anything that isn't a question goes straight to the code, in the user's words.
+  if (spec.code && !IS_QUESTION.test(message)) {
+    const last = history[history.length - 1];
+    // A short answer ("yes, do that") means something only next to what it answers.
+    const ask =
+      message.trim().length < 40 && last?.role === 'assistant' ? `${message.trim()} (replying to: "${last.text.slice(0, 240)}")` : message;
+    const next = { ...spec, code: withLatestChange(spec.code, ask) };
+    return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Updating the app.', source: 'in_cloud' };
+  }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
   const mode = modeFor('edit', ctx);
   let turn: Awaited<ReturnType<typeof chatTurnOnce>>;
@@ -624,6 +635,9 @@ export async function chatAboutApp(
       : (explainConnections(spec, message) ?? (rejected.length ? unsure : noChange));
   return { kind: 'answer', source: turn.source, text: reply };
 }
+
+/** A question about the app ("how do I score?", "what does the shield do"), not a change. */
+const IS_QUESTION = /\?\s*$|^\s*(what|how|why|when|where|who|which|does|do|is|are|should|explain)\b/i;
 
 /** "Go back to the blocks", "use the widgets again", "stop using code". */
 const BACK_TO_BLOCKS = /\b(back to|go back to|use|switch to|return to)\s+(the\s+)?(blocks?|built.?in|widgets?|original|normal|simple)( version| app)?\b|\b(stop using|remove|undo|drop)\s+(the\s+)?(code|custom)( version)?\b/i;

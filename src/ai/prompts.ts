@@ -122,6 +122,7 @@ Games and toys:
 - Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
 - Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
 - Colours come from the theme variables (board var(--vm-surface-alt), lines var(--vm-border), highlights var(--vm-accent)), so the game fits light and dark mode; at most 4 colours of your own, only for game pieces.
+- Endless games (the player moves forward through lanes, rows, platforms or terrain): the world must never run out. Keep generating new rows ahead of the player as they advance and drop the ones far behind, so the screen is always full however far they go; move the camera with the player.
 - Steady motion: advance the game by elapsed time (dt from requestAnimationFrame timestamps, capped at 0.1 s), never by a fixed amount per frame.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
@@ -133,7 +134,7 @@ export function htmlPrompt(request: string, specJson?: string, brief?: string, c
   const latest = brief?.match(/\n\nLatest change #\d+: ([\s\S]+)$/)?.[1];
   if (currentHtml && latest) {
     // A chat edit: make exactly this change to the app the user already has.
-    return `The user asked for this change to their app: "${latest.trim()}"\nMake that change in the HTML below so it visibly works, and change nothing else: keep its design, layout, wording and the vonmini.store keys it uses. Return the full updated HTML.\nWhat the app is: ${brief!.split('\n\nLatest change')[0].trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
+    return `The user asked for this change to their app: "${latest.trim()}"\nIf they describe something that doesn't work or looks wrong (a bug), find its cause in the script and fix it; otherwise make the change. It must visibly work, everywhere it applies (for a game: from the start, and however long it is played). Change nothing else: keep its design, layout, wording and the vonmini.store keys it uses. Return the full updated HTML.\nWhat the app is: ${brief!.split('\n\nLatest change')[0].trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
   }
   if (currentHtml && brief) {
     // An edit: change the app the user already has, so its look and saved data carry over.
