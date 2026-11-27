@@ -570,11 +570,8 @@ export async function chatAboutApp(
   // can't tell why "the road stops appearing after a few jumps", so it would answer that it doesn't
   // understand. Anything that isn't a question goes straight to the code, in the user's words.
   if (spec.code && !IS_QUESTION.test(message)) {
-    const last = history[history.length - 1];
-    // A short answer ("yes, do that") means something only next to what it answers.
-    const ask =
-      message.trim().length < 40 && last?.role === 'assistant' ? `${message.trim()} (replying to: "${last.text.slice(0, 240)}")` : message;
-    const next = { ...spec, code: withLatestChange(spec.code, ask) };
+    // The recent chat goes along, so a follow-up ("no, the legs too", "yes, do that") makes sense.
+    const next = { ...spec, code: withLatestChange(spec.code, message, history) };
     return { kind: 'edit', spec: next, changes: describeChanges(spec, next), reply: 'Updating the app.', source: 'in_cloud' };
   }
   const prompt = chatTurnPrompt(JSON.stringify(spec), history.slice(-6), message);
@@ -631,7 +628,7 @@ export async function chatAboutApp(
   // would never show. Carry the ask into the brief so the code is rebuilt with it.
   // Also when the model replied but sent no app: a code app can still take any change in its code.
   if (spec.code && (turn.app ? turn.app.code === spec.code : !rejected.length && SAYS_DONE.test(turn.reply))) {
-    turn.app = { ...(turn.app ?? spec), code: withLatestChange(spec.code, message) };
+    turn.app = { ...(turn.app ?? spec), code: withLatestChange(spec.code, message, history) };
     changes = describeChanges(spec, turn.app);
   }
   if (turn.app && changes.length) return { kind: 'edit', spec: turn.app, changes, reply: turn.reply, source: turn.source };

@@ -1,3 +1,4 @@
+import { briefBase, briefEarlier } from './brief';
 import { ACCENTS } from '../spec/types';
 
 /**
@@ -153,7 +154,11 @@ export function htmlPrompt(request: string, specJson?: string, brief?: string, c
   const latest = brief?.match(/\n\nLatest change #\d+: ([\s\S]+)$/)?.[1];
   if (currentHtml && latest) {
     // A chat edit: make exactly this change to the app the user already has.
-    return `The user asked for this change to their app: "${latest.trim()}"\nIf they describe something that doesn't work or looks wrong (a bug), find its cause in the script and fix it; otherwise make the change. It must visibly work, everywhere it applies (for a game: from the start, and however long it is played). Change nothing else: keep its design, layout, wording and the vonmini.store keys it uses. Return the full updated HTML.\nWhat the app is: ${brief!.split('\n\nLatest change')[0].trim()}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
+    const earlier = briefEarlier(brief!);
+    const chat = earlier
+      ? `\nThe chat so far, for context only (those earlier asks are already in the HTML; use it to understand what the new ask refers to, like "too", "that" or "no, darker"):\n${earlier}\n`
+      : '';
+    return `The user asked for this change to their app: "${latest.trim()}"\n${chat}If they describe something that doesn't work or looks wrong (a bug), find its cause in the script and fix it; otherwise make the change. It must visibly work, everywhere it applies (for a game: from the start, and however long it is played). Change nothing else: keep its design, layout, wording and the vonmini.store keys it uses. Return the full updated HTML.\nWhat the app is: ${briefBase(brief!)}\nApp JSON (the plan):\n${specJson ?? '{}'}\nCurrent HTML:\n${currentHtml.slice(0, 40000)}`;
   }
   if (currentHtml && brief) {
     // An edit: change the app the user already has, so its look and saved data carry over.
