@@ -6,6 +6,7 @@
  * exercised on a machine that has no Gemini Nano (for example CI, or a Linux VM used to take
  * screenshots for the submission). It answers with the same shapes the real engine returns.
  */
+import { rcString } from '../remote/remoteConfig';
 import type { AIEngine, DeviceStatus, GenerateChunk, GenerateOptions, GenerateResult } from './types';
 
 export const mockEnabled = __DEV__ && process.env.EXPO_PUBLIC_MOCK_ENGINE === 'true';
@@ -324,6 +325,20 @@ export const mockEngine: AIEngine = {
     countCall();
     deviceCheck(options);
     if (prompt.includes('mock-fail')) throw new Error('The AI could not be reached (mock failure).');
+    const html = options.system?.includes('self-contained mobile-first HTML');
+    const limit = new Error('Content generation stopped. Reason: MAX_TOKENS');
+    // The output limit, the way Android reports it: the strong model spends it all thinking.
+    if (html && prompt.includes('mock-thinkall') && options.model && options.model !== rcString('cloud_model')) throw limit;
+    // Or the file is cut off part-way and must be continued.
+    if (html && prompt.includes('mock-cutoff')) {
+      const all = respond(prompt.replace(/mock-cutoff/g, ''), options);
+      if (prompt.includes('cut off by the length limit')) {
+        yield { text: all.slice(all.indexOf('<div class="vm-muted" id="opens">')), source: 'in_cloud' };
+        return;
+      }
+      yield { text: all.slice(0, all.indexOf('<div class="vm-muted" id="opens">')), source: 'in_cloud' };
+      throw limit;
+    }
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
     // end to end), so the streaming UI is exercised realistically rather than flashing past.
