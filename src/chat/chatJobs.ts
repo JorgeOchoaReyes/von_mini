@@ -16,6 +16,7 @@ import { backgroundWork } from '../ai/background';
 import { StoppedError } from '../ai/stoppable';
 import {
   appendMessage,
+  clearMessages,
   getApp,
   listMessages,
   pushVersion,
@@ -65,6 +66,13 @@ export function stopMessage(appId: string) {
   stops.get(appId)?.();
 }
 /** Whether the turn in flight can still be stopped (not once the app's code is being rewritten). */
+/** Deletes the app's chat (not while a message is being worked on). */
+export async function clearChat(appId: string): Promise<void> {
+  if (busy.has(appId)) return;
+  await clearMessages(appId);
+  emit();
+}
+
 export const canStop = (appId: string) => stops.has(appId);
 export const chatSteps = (appId: string) => progress.get(appId) ?? [];
 

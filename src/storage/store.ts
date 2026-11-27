@@ -184,6 +184,9 @@ export async function appendMessage(appId: string, msg: Omit<ChatMessage, 'id' |
   return full;
 }
 
+/** Deletes an app's chat. Its versions stay in History, so every change can still be put back. */
+export const clearMessages = (appId: string) => AsyncStorage.removeItem(chatKey(appId));
+
 export async function updateMessage(appId: string, id: string, patch: Partial<ChatMessage>): Promise<void> {
   const all = await listMessages(appId);
   await writeJson(
