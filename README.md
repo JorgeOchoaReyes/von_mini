@@ -309,6 +309,7 @@ page (with a QR code) in the run summary. Secrets live only in GitHub (set them 
 | `EXPO_TOKEN` | an access token from expo.dev → Settings → Access tokens |
 | `GOOGLE_SERVICES_JSON` | the contents of `google-services.json` |
 | `EXPO_PUBLIC_ENV` | the `EXPO_PUBLIC_*` lines of a `.env` file (Firebase web config, etc.) |
+| `APPCHECK_DEBUG_TOKEN` | optional, for the **Engine eval** workflow only: a web App Check debug token (Firebase console > App Check > Manage debug tokens). App Check is enforced, so without it the eval's cloud calls are all refused. It is added only to the eval's throwaway web build. |
 
 `google-services.json` and `.env` stay git-ignored; [`.easignore`](.easignore) lets EAS upload the
 copies the workflow writes. Don't put the App Check debug token in `EXPO_PUBLIC_ENV`: every

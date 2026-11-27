@@ -342,8 +342,10 @@ async function withDeviceFallback<T>(
       onEvent({ type: 'fallback' });
       return run('only_on_device');
     }
-    if (isQuotaError(e)) throw explainCloudError(e);
+    // Refused on purpose (quota, App Check) isn't "busy": say what it really is.
+    if (isQuotaError(e) || isAppCheckRejection(e)) throw explainCloudError(e);
     if (isCloudUnavailable(e)) {
+      console.warn('Cloud unavailable:', (e instanceof Error ? e.message : String(e)).slice(0, 400));
       throw new UnreachableError(
         e instanceof StalledError
           ? 'Gemini in the cloud didn’t answer in time, and this device has no on-device model to fall back to. Try again in a minute.'
