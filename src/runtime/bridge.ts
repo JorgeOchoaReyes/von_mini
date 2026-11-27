@@ -102,6 +102,24 @@ export const bridgeScript = (post: string) => `
     try { ${post}(JSON.stringify({__vm:true, id:0, method:'error', args:[msg]})); } catch (e) {}
   }
   window.addEventListener('error', function(e){ report((e.message || 'Error') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+  // Growth watch: an endless game that keeps adding rows, sprites or listeners without removing them
+  // grows until the phone kills it (and can take von mini down with it). Catch it early and say
+  // exactly what's wrong, so the self-repair fixes it while it's still running.
+  var grewNodes = false, grewHeap = false;
+  setInterval(function(){
+    try {
+      var nodes = document.getElementsByTagName('*').length;
+      if (!grewNodes && nodes > 15000) {
+        grewNodes = true;
+        report('The app keeps growing: ' + nodes + ' page elements and rising. It adds elements (rows, sprites, particles, list items) without removing the ones it no longer needs; remove or reuse them, and keep lists bounded.');
+      }
+      var mem = performance && performance.memory;
+      if (!grewHeap && mem && mem.usedJSHeapSize > 250 * 1024 * 1024) {
+        grewHeap = true;
+        report('The app keeps growing: ' + Math.round(mem.usedJSHeapSize / 1048576) + ' MB of memory and rising. Something is kept forever (arrays of rows or entities, canvases, timers or listeners added every frame); drop what is far off screen and keep everything bounded.');
+      }
+    } catch (e) {}
+  }, 5000);
   // A heartbeat, so the host can tell a frozen app (an endless loop) from a quiet one.
   setInterval(function(){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'alive', args:[]})); } catch (e) {} }, 1000);
   window.addEventListener('unhandledrejection', function(e){ var r = e.reason; report('Unhandled promise: ' + ((r && r.message) || r)); });
