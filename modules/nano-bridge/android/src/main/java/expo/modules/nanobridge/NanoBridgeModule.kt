@@ -2,6 +2,7 @@ package expo.modules.nanobridge
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.util.Log
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
@@ -35,6 +36,8 @@ import kotlinx.coroutines.tasks.await
 
 /** Where a native crash's stack trace is kept for the next launch (see takeNativeCrash). */
 private const val CRASH_PREFS = "vm_native_crash"
+/** How often a stream sends what is new (fewer, smaller events than one per chunk). */
+private const val STREAM_EVENT_MS = 120L
 @Volatile private var crashRecorderInstalled = false
 
 /**
@@ -176,41 +179,55 @@ class NanoBridgeModule : Module() {
       )
     }
 
+    /** True: streams send only the new text (`delta`), not the whole text so far. */
+    Function("streamsDeltas") { true }
+
     /**
-     * Streams one prompt. Each chunk is sent as an `onStreamChunk` event tagged with `streamId`
-     * so several streams can be in flight at once; the JS side assembles them.
+     * Streams one prompt. Chunks are sent as `onStreamChunk` events tagged with `streamId`, so
+     * several streams can be in flight at once. Each event carries only the text that is new since
+     * the last one (`delta`), at most every [STREAM_EVENT_MS]: sending the whole text so far with
+     * every chunk made hundreds of ever-larger copies of a big app, which backed up in memory and
+     * ran the app out of it.
      */
     AsyncFunction("streamGenerate") Coroutine {
         prompt: String, cloudModel: String, mode: String, system: String?, json: Boolean, modelOption: String, streamId: String ->
-      var last = ""
+      val all = StringBuilder()
+      val pending = StringBuilder()
+      var lastSent = 0L
+      var source = "in_cloud"
+      fun flush(done: Boolean, error: String? = null) {
+        val event = mutableMapOf<String, Any?>(
+          "streamId" to streamId,
+          "text" to pending.toString(),
+          "delta" to true,
+          "done" to done,
+          "source" to source,
+        )
+        if (done) event["error"] = error
+        pending.setLength(0)
+        lastSent = SystemClock.uptimeMillis()
+        sendEvent("onStreamChunk", event)
+      }
       try {
         model(cloudModel, mode, system, json, modelOption).generateContentStream(prompt).collect { response ->
           val piece = response.text ?: ""
-          if (piece.isNotEmpty()) {
-            // Some SDK versions emit cumulative text and others emit deltas; normalise to cumulative.
-            last = if (piece.startsWith(last)) piece else last + piece
-            sendEvent(
-              "onStreamChunk",
-              mapOf(
-                "streamId" to streamId,
-                "text" to last,
-                "done" to false,
-                "source" to if (response.inferenceSource == InferenceSource.ON_DEVICE) "on_device" else "in_cloud",
-              ),
-            )
-          }
+          if (piece.isEmpty()) return@collect
+          source = if (response.inferenceSource == InferenceSource.ON_DEVICE) "on_device" else "in_cloud"
+          // Some SDK versions emit cumulative text and others deltas: keep only what's new.
+          val cumulative = all.isNotEmpty() && piece.length > all.length && piece.regionMatches(0, all.toString(), 0, all.length)
+          val fresh = if (cumulative) piece.substring(all.length) else piece
+          all.append(fresh)
+          pending.append(fresh)
+          if (SystemClock.uptimeMillis() - lastSent >= STREAM_EVENT_MS) flush(false)
         }
-        sendEvent("onStreamChunk", mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to null))
+        flush(true)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Throwable) {
         // Any Throwable (an Error too): end this stream with a message, never crash the app.
         Log.e("NanoBridge", "stream failed", e)
         try {
-          sendEvent(
-            "onStreamChunk",
-            mapOf("streamId" to streamId, "text" to last, "done" to true, "error" to (e.message ?: e.javaClass.simpleName)),
-          )
+          flush(true, e.message ?: e.javaClass.simpleName)
         } catch (_: Throwable) {
         }
       }
