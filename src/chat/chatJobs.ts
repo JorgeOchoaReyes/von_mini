@@ -126,7 +126,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
         }
         stops.delete(appId);
         applyEvent(appId, { type: 'step', step: { id: 'html', label: 'Updating the app… this takes a little while', state: 'active' } });
-        await writeCustom(appId, ctx);
+        await writeCustom(appId, ctx, { quiet: true });
         const written = await getApp(appId);
         if (written?.spec.code !== brief) return; // Changed again meanwhile; that change reports itself.
         if (written.htmlFor !== brief) {

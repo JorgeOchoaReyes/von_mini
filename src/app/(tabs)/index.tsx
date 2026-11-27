@@ -162,7 +162,8 @@ export default function Home() {
       builtRef.current = true;
       haptics.success();
       setRequest('');
-      void notifyIfInBackground({
+      // An app built in code is announced by writeCustom once it really works; offline it waits.
+      if (!app.spec.code) void notifyIfInBackground({
         title: `${spec.emoji} ${spec.name} is ready`,
         body: 'Your app is built. Tap to open it.',
         url: `/app/${app.id}`,
