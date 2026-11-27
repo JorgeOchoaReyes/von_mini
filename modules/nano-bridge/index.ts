@@ -5,10 +5,14 @@ export type DeviceModel = 'nano4' | 'nano4_fast' | 'stable';
 
 export type NanoBridgeEvents = {
   onDownloadProgress: (event: { downloaded: number; total: number }) => void;
-  /** One chunk of a streamed response. `text` is everything produced so far for that streamId. */
+  /**
+   * One chunk of a streamed response. Older APKs send everything produced so far for that
+   * streamId in `text`; newer ones set `delta` and send only the new part.
+   */
   onStreamChunk: (event: {
     streamId: string;
     text: string;
+    delta?: boolean;
     done: boolean;
     source?: 'on_device' | 'in_cloud';
     error?: string | null;
@@ -33,6 +37,8 @@ declare class NanoBridgeModule extends NativeModule<NanoBridgeEvents> {
   ): Promise<{ text: string; source: 'on_device' | 'in_cloud' }>;
   /** The last native crash's stack trace (then forgotten), or null. Newer APKs only. */
   takeNativeCrash?(): string | null;
+  /** True when streams send only the new text (`delta`). Newer APKs only. */
+  streamsDeltas?(): boolean;
   /** Keeps the app alive in the background while work runs (a foreground service). Newer APKs only. */
   startKeepAlive?(title: string): boolean;
   stopKeepAlive?(): void;

@@ -12,6 +12,8 @@ const missing =
 interface StreamEvent {
   streamId: string;
   text: string;
+  /** Set by newer APKs: `text` is only the new part. */
+  delta?: boolean;
   done: boolean;
   source?: 'on_device' | 'in_cloud';
   error?: string | null;
@@ -22,6 +24,14 @@ let streamSeq = 0;
 export const engine: AIEngine = {
   runtime: NanoBridge ? 'android-aicore' : 'none',
   streaming: true,
+
+  longStreams() {
+    try {
+      return NanoBridge?.streamsDeltas?.() === true;
+    } catch {
+      return false;
+    }
+  },
 
   async status() {
     if (!NanoBridge) return 'unsupported';
@@ -99,12 +109,13 @@ export const engine: AIEngine = {
       let lastText = '';
       let source: 'on_device' | 'in_cloud' = options.mode === 'only_in_cloud' ? 'in_cloud' : 'on_device';
       for (;;) {
-        // Each event carries the whole text so far: when several are waiting, only the newest matters.
-        // (Handing each one on made a long app's code cost far too much work on the JS thread.)
+        // Newer APKs send only the new part (joined here); older ones the whole text so far, where
+        // only the newest of several waiting events matters.
         if (queue.length) {
           for (const e of queue) {
             if (e.source) source = e.source;
-            if (e.text) lastText = e.text;
+            if (e.delta) lastText += e.text;
+            else if (e.text) lastText = e.text;
           }
           queue.length = 0;
           if (lastText) yield { text: lastText, source };

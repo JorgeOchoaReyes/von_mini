@@ -244,7 +244,7 @@ const HTML_FIRST_MS = 150_000;
 /** No new code for this long while writing means the connection died. */
 const HTML_IDLE_MS = 45_000;
 /** Without streaming, how long the whole app may take. */
-const HTML_MS = 5 * 60_000;
+const HTML_MS = 10 * 60_000;
 
 /** How long a single non-streamed request may take before we stop waiting for it. */
 export const REQUEST_MS = 60_000;
@@ -696,7 +696,8 @@ export async function buildCustomHtml(
    */
   const stream = async (p: string, first: HtmlStage, system: string = HTML_SYSTEM): Promise<string> => {
     let opts = { ...baseOpts, system };
-    let streamWorks = true;
+    // Where streaming a long file is too costly (older Android builds), ask for it in one piece.
+    let streamWorks = engine.longStreams?.() ?? true;
     let stage: HtmlStage = first;
     onProgress?.({ stage, lines: 0 });
     for (;;) {
