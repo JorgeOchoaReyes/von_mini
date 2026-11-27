@@ -63,6 +63,7 @@ It's built on **Firebase AI Logic hybrid inference**: Gemini in the cloud when i
 | Settings says the phone **can't run Gemini Nano** | On-device AI needs a phone with Android's AICore (recent Pixel or Galaxy flagships, for example). An app can't install Nano on other phones. | Nothing: AI runs in the cloud and every feature still works. |
 | Settings says Nano **isn't downloaded yet** | Your phone supports it; the model (a few GB) comes from AICore. | It downloads automatically on Wi-Fi, or tap **Download Gemini Nano**. |
 | "This model is currently experiencing **high demand**" | Gemini in the cloud is overloaded. On a Nano phone, von mini switches to the device automatically. | Try again in a minute. The project owner can switch the cloud model in Remote Config (`cloud_model`). |
+| Every **reply voice** in Settings sounds the same | Android plays its default voice when the chosen one isn't downloaded yet, or when another speech engine (e.g. Samsung's) ignores the choice. The app can't tell which voices are installed. | In Android Settings > **Text-to-speech output**, choose **Speech Services by Google**, then its gear > **Install voice data** > English and download it. Voices can also start working on their own once Android finishes downloading them. |
 
 ## Why
 
