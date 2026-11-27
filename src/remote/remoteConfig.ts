@@ -15,6 +15,7 @@
  *   sharing            "false" hides app sharing
  *   build_as_code      "false" keeps new apps as blocks only (a kill switch for HTML apps)
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 
 import { cloudModel } from '../config';
@@ -40,7 +41,38 @@ let status: 'defaults' | 'remote' | 'cached' = 'defaults';
 let version = 0;
 const listeners = new Set<() => void>();
 
-export const rcString = (k: RcKey): string => values[k] ?? RC_DEFAULTS[k];
+/**
+ * Models chosen on this phone in Settings (Models). They win over Remote Config for this phone only;
+ * "Default" removes the choice so the Remote Config value applies again.
+ */
+export type ModelKey = 'cloud_model' | 'html_model';
+const OVERRIDES_KEY = 'vm:model-overrides';
+let overrides: Partial<Record<ModelKey, string>> = {};
+AsyncStorage.getItem(OVERRIDES_KEY)
+  .then((raw) => {
+    const v = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    for (const k of ['cloud_model', 'html_model'] as ModelKey[]) if (typeof v[k] === 'string' && v[k]) overrides[k] = v[k] as string;
+    version++;
+    listeners.forEach((l) => l());
+  })
+  .catch(() => undefined);
+
+/** The model chosen on this phone for `k`, if any. */
+export const modelOverride = (k: ModelKey): string | undefined => overrides[k];
+/** The value Remote Config (or the bundled default) gives, ignoring a choice on this phone. */
+export const rcRemoteString = (k: RcKey): string => values[k] ?? RC_DEFAULTS[k];
+
+/** Chooses a model on this phone; `undefined` goes back to the Remote Config value. */
+export function setModelOverride(k: ModelKey, model: string | undefined) {
+  overrides = { ...overrides };
+  if (model) overrides[k] = model;
+  else delete overrides[k];
+  void AsyncStorage.setItem(OVERRIDES_KEY, JSON.stringify(overrides)).catch(() => undefined);
+  version++;
+  listeners.forEach((l) => l());
+}
+
+export const rcString = (k: RcKey): string => (k === 'cloud_model' || k === 'html_model' ? overrides[k] : undefined) ?? rcRemoteString(k);
 export const rcBool = (k: RcKey): boolean => rcString(k).trim().toLowerCase() !== 'false';
 
 /** Where the current values came from, for the Settings screen. */
