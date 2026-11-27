@@ -123,6 +123,7 @@ Games and toys:
 - Use emoji as sprites; no images. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
 - Colours come from the theme variables (board var(--vm-surface-alt), lines var(--vm-border), highlights var(--vm-accent)), so the game fits light and dark mode; at most 4 colours of your own, only for game pieces.
 - Endless games (the player moves forward through lanes, rows, platforms or terrain): the world must never run out. Keep generating new rows ahead of the player as they advance and drop the ones far behind, so the screen is always full however far they go; move the camera with the player.
+- Stay light so the phone never runs out of memory or freezes: no list, DOM or canvas that grows forever (reuse or remove what's off screen), no loop without a certain end (a "fill the screen" loop must stop at a fixed count), and add event listeners once, not every frame.
 - Steady motion: advance the game by elapsed time (dt from requestAnimationFrame timestamps, capped at 0.1 s), never by a fixed amount per frame.
 - Never copy an existing commercial game's name, characters or look; make an original game in that style.`;
 
