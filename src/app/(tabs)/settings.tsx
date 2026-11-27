@@ -213,7 +213,7 @@ export default function Settings() {
                   ? 'Last settings fetched from Firebase'
                   : 'Built-in defaults'
             }
-            body={`Cloud model ${rc.string('cloud_model')} · new apps designed ${
+            body={`Chat model ${rc.string('cloud_model')} · apps and games written by ${rc.string('html_model')} · new apps designed ${
               rc.string('build_mode') === 'prefer_on_device' ? 'on-device first' : 'in the cloud first'
             } · voice input ${rc.bool('voice_input') ? 'on' : 'off'} · sharing ${rc.bool('sharing') ? 'on' : 'off'}.`}
             theme={theme}
