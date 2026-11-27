@@ -7,8 +7,8 @@
  */
 import { useSyncExternalStore } from 'react';
 
-import { chatAboutApp, local, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
-import { customError, stopCustom, wasStopped, writeCustom } from './customJobs';
+import { chatAboutApp, local, type BuildEvent, type HtmlProgress, type ProgressStep, type RouteContext } from '../ai/hybrid';
+import { customError, htmlSteps, stopCustom, wasStopped, writeCustom } from './customJobs';
 import { CODE_CHANGE } from '../spec/diff';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
 import { backgroundWork } from '../ai/background';
@@ -126,13 +126,20 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
         }
         // Stop now stops the code being written; the change is then undone.
         stops.set(appId, () => stopCustom(appId));
-        applyEvent(appId, { type: 'step', step: { id: 'html', label: 'Updating the app… this takes a little while', state: 'active' } });
-        await writeCustom(appId, ctx, { quiet: true });
+        // The chat's own steps are done; now show the code being written, step by step.
+        const before = (progress.get(appId) ?? []).map((st) => ({ ...st, state: 'done' as const }));
+        const showHtml = (p?: HtmlProgress) => {
+          if (!busy.has(appId)) return;
+          progress.set(appId, [...before, ...htmlSteps(p, 'update')]);
+          emit();
+        };
+        showHtml();
+        await writeCustom(appId, ctx, { quiet: true, onProgress: showHtml });
         let written = await getApp(appId);
         // Finished without writing this change and without an error (another job ran instead):
         // write it now rather than report a failure that didn't happen.
         if (written?.spec.code === brief && written.htmlFor !== brief && !customError(appId, brief) && !wasStopped(appId, brief)) {
-          await writeCustom(appId, ctx, { quiet: true });
+          await writeCustom(appId, ctx, { quiet: true, onProgress: showHtml });
           written = await getApp(appId);
         }
         if (written?.spec.code !== brief) return; // Changed again meanwhile; that change reports itself.

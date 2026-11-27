@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { backgroundWork } from '../ai/background';
-import { buildCustomHtml, local, type RouteContext } from '../ai/hybrid';
+import { buildCustomHtml, local, type HtmlProgress, type ProgressStep, type RouteContext } from '../ai/hybrid';
 import { StoppedError } from '../ai/stoppable';
 import { notifyIfInBackground } from '../alerts/notifications';
 import { getApp, pushVersion, saveApp, showsCode, type SavedApp } from '../storage/store';
@@ -31,6 +31,36 @@ export function useCustomJobsVersion() {
     },
     () => version,
   );
+}
+
+/** What the agent is doing right now for each app (stage and lines written), for the steps shown. */
+const progress = new Map<string, HtmlProgress>();
+export const customProgress = (appId: string) => progress.get(appId);
+/** Records progress, re-rendering only when the stage changes or every few lines. */
+function track(appId: string, onProgress?: (p: HtmlProgress) => void) {
+  return (p: HtmlProgress) => {
+    const prev = progress.get(appId);
+    progress.set(appId, p);
+    if (!prev || prev.stage !== p.stage || Math.floor(prev.lines / 10) !== Math.floor(p.lines / 10)) emit();
+    onProgress?.(p);
+  };
+}
+
+/**
+ * The steps shown while an app's code is written: done ones ticked, the current one live (with the
+ * lines written so far). `fixing` labels a self-repair.
+ */
+export function htmlSteps(p: HtmlProgress | undefined, kind: 'build' | 'update' | 'fix'): ProgressStep[] {
+  const stage = p?.stage ?? 'reading';
+  const at = { reading: 0, reconnecting: 0, planning: 1, coding: 2, shortening: 2 }[stage];
+  const lines = p && p.lines > 0 ? ` · ${p.lines} lines` : '';
+  const labels = [
+    stage === 'reconnecting' ? 'Connection dropped, starting again…' : kind === 'fix' ? 'Reading what went wrong' : 'Reading your request',
+    kind === 'build' ? 'Planning the design' : kind === 'fix' ? 'Finding the cause' : 'Planning the change',
+    stage === 'shortening' ? `Making the code shorter so it fits${lines}` : `Writing the code${lines}`,
+    'Checking it works',
+  ];
+  return labels.map((label, i) => ({ id: `html-${i}`, label, state: i < at ? ('done' as const) : ('active' as const) })).slice(0, at + 1);
 }
 
 /** Stop handles for the code being written or repaired, by app. */
@@ -85,7 +115,7 @@ async function repairCustom(appId: string, ctx: RouteContext) {
   fixing.add(appId);
   emit();
   try {
-    const run = backgroundWork('Fixing a problem in your app…', () => buildCustomHtml(app.request, ctx, app.spec, app.html, errors));
+    const run = backgroundWork('Fixing a problem in your app…', () => buildCustomHtml(app.request, ctx, app.spec, app.html, errors, track(appId)));
     stops.set(appId, run.stop);
     emit();
     const html = await run.promise;
@@ -98,6 +128,7 @@ async function repairCustom(appId: string, ctx: RouteContext) {
     // Keep the app as it is; the next error can try again (up to the limit).
   } finally {
     stops.delete(appId);
+    progress.delete(appId);
     fixing.delete(appId);
     emit();
   }
@@ -136,14 +167,18 @@ const jobs = new Map<string, Promise<void>>();
  * Writes the custom version for the app's current brief. Safe to call repeatedly: a call while one
  * is running returns that same job, so the chat can wait for the update it asked for.
  */
-export function writeCustom(appId: string, ctx: RouteContext, opts: { quiet?: boolean } = {}): Promise<void> {
+export function writeCustom(
+  appId: string,
+  ctx: RouteContext,
+  opts: { quiet?: boolean; onProgress?: (p: HtmlProgress) => void } = {},
+): Promise<void> {
   // Offline or in private mode it waits ("needs the internet"), and starts once the cloud is back.
   // One job per app at a time. If one is already running, wait for it, then write for whatever the
   // brief is by then (a change asked for meanwhile must not be dropped; it's a no-op if done).
   const running = jobs.get(appId);
   if (running) return running.then(() => writeCustom(appId, ctx, opts));
   if (local(ctx)) return Promise.resolve();
-  const job = write(appId, ctx, opts.quiet).finally(() => jobs.delete(appId));
+  const job = write(appId, ctx, opts.quiet, opts.onProgress).finally(() => jobs.delete(appId));
   jobs.set(appId, job);
   return job;
 }
@@ -154,7 +189,7 @@ export const customError = (appId: string, brief: string) => {
   return e && e.brief === brief ? e.message : undefined;
 };
 
-async function write(appId: string, ctx: RouteContext, quiet = false): Promise<void> {
+async function write(appId: string, ctx: RouteContext, quiet = false, onProgress?: (p: HtmlProgress) => void): Promise<void> {
   const app = await getApp(appId);
   const brief = app?.spec.code;
   if (!app || !brief || (app.html && app.htmlFor === brief)) return;
@@ -166,7 +201,7 @@ async function write(appId: string, ctx: RouteContext, quiet = false): Promise<v
   try {
     // Changing an app that's already built in code updates that code, so its look and data carry over.
     const base = app.html && app.htmlFor !== undefined && app.htmlFor !== '-' ? app.html : undefined;
-    const run = backgroundWork(base ? 'Updating your app…' : 'Building your app…', () => buildCustomHtml(app.request, ctx, app.spec, base), {
+    const run = backgroundWork(base ? 'Updating your app…' : 'Building your app…', () => buildCustomHtml(app.request, ctx, app.spec, base, undefined, track(appId, onProgress)), {
       resumeNote: { title: `${app.spec.emoji} ${app.spec.name}`, body: 'Your phone paused writing the custom version. Open von mini to finish it.', url: `/app/${appId}` },
     });
     stops.set(appId, run.stop);
@@ -194,6 +229,7 @@ async function write(appId: string, ctx: RouteContext, quiet = false): Promise<v
     else errors.set(appId, { brief, message: e instanceof Error ? e.message : String(e) });
   } finally {
     stops.delete(appId);
+    progress.delete(appId);
     busy.delete(appId);
     emit();
   }

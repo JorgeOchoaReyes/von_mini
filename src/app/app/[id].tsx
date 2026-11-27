@@ -37,7 +37,7 @@ import { OfflineBadge } from '../../ui/OfflineBadge';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
 import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
-import { canStopCustom, customState, stopCustom, useCustomJobsVersion, writeCustom, type CustomState } from '../../chat/customJobs';
+import { canStopCustom, customProgress, customState, htmlSteps, stopCustom, useCustomJobsVersion, writeCustom, type CustomState } from '../../chat/customJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecEditor } from '../../runtime/SpecEditor';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
@@ -45,7 +45,7 @@ import { describeChanges } from '../../spec/diff';
 import { findIndex } from '../../spec/edit';
 import type { AppSpec } from '../../spec/types';
 import { getApp, pushVersion, saveApp, showsCode, type SavedApp, type Version } from '../../storage/store';
-import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, type IconName } from '../../ui/components';
+import { Button, Card, Chip, Icon, IconButton, ModePill, Segmented, SourceBadge, StepList, type IconName } from '../../ui/components';
 import { canDelete, confirmDeleteApp, isChangedStarter } from '../../ui/deleteApp';
 import { haptics } from '../../ui/haptics';
 import { useKeyboardInset } from '../../ui/useKeyboardInset';
@@ -460,6 +460,7 @@ export default function AppScreen() {
       {/* While the agent updates the app, it stays usable, with a bar saying so. */}
       {custom.kind !== 'none' && custom.kind !== 'ready' && (
         <UpdateBar
+          appId={app.id}
           state={custom}
           theme={appTheme}
           onRetry={() => void writeCustom(app.id, ai)}
@@ -687,6 +688,7 @@ function Tabs({
 
 const styles = StyleSheet.create({
   building: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space(6), gap: space(3) },
+  buildSteps: { alignSelf: 'stretch', borderWidth: stroke, borderRadius: radius.lg, padding: space(4) },
   buildingIcon: { width: 88, height: 88, borderRadius: radius.xl, borderWidth: stroke, alignItems: 'center', justifyContent: 'center' },
   updateBar: { flexDirection: 'row', alignItems: 'center', gap: space(2), marginHorizontal: space(4), marginBottom: space(2), paddingHorizontal: space(3), paddingVertical: space(2), borderRadius: radius.md, borderWidth: stroke },
   customCard: { borderWidth: stroke, borderRadius: radius.lg, padding: space(4), gap: space(2) },
@@ -793,10 +795,12 @@ function BuildingView({
       <Text style={[type.title, { color: theme.text, textAlign: 'center' }]}>{app.spec.name}</Text>
       {working ? (
         <>
-          <ActivityIndicator size="large" color={theme.accent} />
           <Text style={[type.headline, { color: theme.text, textAlign: 'center' }]}>Building your app…</Text>
+          <View style={[styles.buildSteps, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <StepList steps={htmlSteps(customProgress(app.id), 'build')} theme={theme} />
+          </View>
           <Text style={[type.body, { color: theme.muted, textAlign: 'center' }]}>
-            Usually under a minute. You can leave: it keeps going, and you’ll get a notification when it’s ready.
+            A game can take a couple of minutes. You can leave: it keeps going, and you’ll get a notification when it’s ready.
           </Text>
           {onStop && <Button label="Stop" icon="stop" variant="secondary" theme={theme} onPress={onStop} />}
         </>
@@ -822,16 +826,30 @@ function BuildingView({
 }
 
 /** A slim bar over an app whose HTML the agent is updating (or couldn't update). */
-function UpdateBar({ state, theme, onRetry, onStop }: { state: CustomState; theme: Theme; onRetry(): void; onStop?: () => void }) {
+function UpdateBar({
+  appId,
+  state,
+  theme,
+  onRetry,
+  onStop,
+}: {
+  appId: string;
+  state: CustomState;
+  theme: Theme;
+  onRetry(): void;
+  onStop?: () => void;
+}) {
   const working = state.kind === 'writing' || state.kind === 'pending' || state.kind === 'fixing';
+  // The step it's on right now ("Writing the code · 180 lines"), so it's clearly moving.
+  const step = htmlSteps(customProgress(appId), state.kind === 'fixing' ? 'fix' : 'update').at(-1)?.label;
   return (
     <View style={[styles.updateBar, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} accessibilityLiveRegion="polite">
       {working ? <ActivityIndicator color={theme.accent} /> : <Text>⚠️</Text>}
       <Text style={[type.caption, { color: theme.text, flex: 1, fontWeight: '700' }]} numberOfLines={2}>
         {state.kind === 'fixing'
-          ? 'Something in this app didn’t work. Fixing it now…'
+          ? `Fixing a problem in this app: ${step}`
           : working
-          ? 'Updating your app… keep using it, it switches when ready.'
+          ? `Updating your app: ${step}. Keep using it; it switches when ready.`
           : state.kind === 'needs-cloud'
             ? 'Your change will be applied when you’re online.'
             : state.kind === 'stopped'

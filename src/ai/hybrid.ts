@@ -237,8 +237,12 @@ async function* withTimeouts<T>(source: AsyncIterable<T>, firstMs: number, idleM
   }
 }
 
-/** How long writing (or rewriting) a whole HTML app may take. */
-const HTML_MS = 4 * 60_000;
+/** Writing a whole HTML app: the model may think a while before the first line, then code flows. */
+const HTML_FIRST_MS = 150_000;
+/** No new code for this long while writing means the connection died. */
+const HTML_IDLE_MS = 45_000;
+/** Without streaming, how long the whole app may take. */
+const HTML_MS = 5 * 60_000;
 
 /** How long a single non-streamed request may take before we stop waiting for it. */
 export const REQUEST_MS = 60_000;
@@ -663,31 +667,72 @@ export async function runAction(prompt: string, ctx: RouteContext): Promise<Gene
   );
 }
 
-export async function buildCustomHtml(request: string, ctx: RouteContext, spec?: AppSpec, currentHtml?: string, errors?: string[]): Promise<string> {
+/** Where writing an app's code stands, for the steps shown while it works. */
+export type HtmlStage = 'reading' | 'planning' | 'coding' | 'shortening' | 'reconnecting';
+export type HtmlProgress = { stage: HtmlStage; lines: number };
+
+export async function buildCustomHtml(
+  request: string,
+  ctx: RouteContext,
+  spec?: AppSpec,
+  currentHtml?: string,
+  errors?: string[],
+  /** What's happening right now (and lines written), so the screen shows real steps. */
+  onProgress?: (p: HtmlProgress) => void,
+): Promise<string> {
   // The design may carry a brief for exactly what to write (see AppSpec.code).
   if (onDeviceOnly) throw new Error('Custom apps need the cloud, and this build runs in offline (on-device only) mode.');
   if (local(ctx)) throw new Error('Custom apps are written by Gemini in the cloud. Connect to the internet and turn off private mode.');
   const prompt = htmlPrompt(request, spec && JSON.stringify({ ...spec, code: undefined }), spec?.code, currentHtml, errors);
-  const write = async (p: string) => {
-    // A whole app can take a minute or two to write, but never forever: a request that silently
-    // died (a dropped connection, the phone pausing it) must end in a message with a Retry.
-    const { text } = await withDeadline(
-      engine.generate(p, { mode: 'only_in_cloud', system: HTML_SYSTEM, model: rcString('html_model') }),
-      HTML_MS,
-    ).catch((e: unknown) => {
-      throw e instanceof StalledError ? new Error('Writing the app took longer than 4 minutes, so I stopped waiting. Try again; a shorter request is quicker.') : e;
-    });
+  const opts = { mode: 'only_in_cloud' as const, system: HTML_SYSTEM, model: rcString('html_model') };
+  /**
+   * Streams the code so every step is visible and a dead request is noticed within seconds (no new
+   * code for a while). It never gives up by itself: a dropped connection is started again, and the
+   * person decides when to stop.
+   */
+  const stream = async (p: string, first: HtmlStage): Promise<string> => {
+    let streamWorks = true;
+    let stage: HtmlStage = first;
+    onProgress?.({ stage, lines: 0 });
+    for (;;) {
+      let text = '';
+      try {
+        if (!streamWorks) {
+          onProgress?.({ stage: 'coding', lines: 0 });
+          return (await withDeadline(engine.generate(p, opts), HTML_MS)).text;
+        }
+        for await (const chunk of withTimeouts(engine.stream(p, opts), HTML_FIRST_MS, HTML_IDLE_MS)) {
+          text = chunk.text;
+          // The file opens with its design (an HTML comment), then the code.
+          const planning = /<!--(?![\s\S]*-->)/.test(text) || !/<(style|body|script|div|main|canvas)\b/i.test(text);
+          if (stage !== 'shortening') stage = planning ? 'planning' : 'coding';
+          onProgress?.({ stage, lines: planning ? 0 : text.split('\n').length });
+        }
+        return text;
+      } catch (e) {
+        if (!(e instanceof StalledError)) throw e;
+        // Nothing came back at all: streaming itself may not work here (seen on one Android phone),
+        // so ask without streaming. Otherwise the connection died mid-way: start again.
+        if (!text && streamWorks) streamWorks = false;
+        onProgress?.({ stage: 'reconnecting', lines: 0 });
+        if (stage !== 'shortening') stage = 'reading';
+      }
+    }
+  };
+  const write = async (p: string, first: HtmlStage) => {
+    const text = await stream(p, first);
     const fenced = text.match(/```(?:html)?\s*([\s\S]*?)(?:```|$)/i);
     const out = (fenced ? fenced[1] : text).trim();
     // Anything after the document (a closing remark) is dropped.
     const end = out.search(/<\/html>\s*(?![\s\S]*<\/html>)/i);
     return end >= 0 ? out.slice(0, end + 7) : out;
   };
-  let html = await write(prompt);
+  let html = await write(prompt, 'reading');
   // A big game can run past the output limit and stop mid-script: ask once more for a tighter one.
   if (!isCompleteHtml(html)) {
     html = await write(
       `${prompt}\n\nYour last answer was cut off before </html> because it was too long. Write the whole file again, complete, in noticeably fewer lines: keep every feature, but use compact code (shared helpers, data tables instead of repeated code, short CSS).`,
+      'shortening',
     );
   }
   if (!/<html|<!doctype/i.test(html)) throw new Error('Gemini did not return an HTML document. Try again.');
