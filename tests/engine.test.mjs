@@ -101,3 +101,10 @@ test('a vague request gets no custom code', async () => {
   for (const r of ['app', 'an app', 'something', 'help!']) assert.ok(isVagueRequest(r), r);
   for (const r of ['a pomodoro timer', 'app for my habits', 'chess']) assert.ok(!isVagueRequest(r), r);
 });
+
+test('a custom app cut off by the output limit is recognised as incomplete', async () => {
+  const { isCompleteHtml } = await import('../src/ai/htmlSafety.ts');
+  assert.equal(isCompleteHtml('<!doctype html><html><body><script>go()</script></body></html>'), true);
+  assert.equal(isCompleteHtml('<!doctype html><html><body><script>function go(){ for (let i = 0; i <'), false);
+  assert.equal(isCompleteHtml('<!doctype html><html><body><script>a()</script><script>b()</body></html>'), false);
+});

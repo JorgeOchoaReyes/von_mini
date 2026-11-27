@@ -78,3 +78,10 @@ export function stripExternal(html: string): string {
       .replace(new RegExp(String.raw`@import\s+(?:url\()?\s*["']?${REMOTE}[^;]*;`, 'gi'), '')
   );
 }
+
+/** Whether a written HTML app is whole: every <script> closed and the document ended. */
+export function isCompleteHtml(html: string): boolean {
+  const opens = (html.match(/<script\b/gi) ?? []).length;
+  const closes = (html.match(/<\/script>/gi) ?? []).length;
+  return /<\/html>\s*$/i.test(html) && opens === closes;
+}

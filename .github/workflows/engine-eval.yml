@@ -36,10 +36,19 @@ jobs:
       - name: Write config from secrets
         env:
           APP_ENV: ${{ secrets.EXPO_PUBLIC_ENV }}
+          # A web App Check debug token (Firebase console > App Check > Manage debug tokens), only for
+          # this throwaway eval build: App Check is enforced, so without it every Gemini call is refused.
+          # Kept out of EXPO_PUBLIC_ENV so it is never compiled into a shipped app or update.
+          APPCHECK_DEBUG_TOKEN: ${{ secrets.APPCHECK_DEBUG_TOKEN }}
         run: |
           if [ -z "$APP_ENV" ]; then echo "::error::Missing the EXPO_PUBLIC_ENV secret."; exit 1; fi
-          printf '%s\n' "$APP_ENV" | grep -vE '^(EXPO_PUBLIC_ENGINE_EVAL|EXPO_PUBLIC_MOCK_ENGINE|EXPO_PUBLIC_ON_DEVICE_ONLY)=' > .env
+          printf '%s\n' "$APP_ENV" | grep -vE '^(EXPO_PUBLIC_ENGINE_EVAL|EXPO_PUBLIC_MOCK_ENGINE|EXPO_PUBLIC_ON_DEVICE_ONLY|EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN)=' > .env
           printf 'EXPO_PUBLIC_ENGINE_EVAL=true\nEXPO_PUBLIC_MOCK_ENGINE=false\nEXPO_PUBLIC_ON_DEVICE_ONLY=false\n' >> .env
+          if [ -n "$APPCHECK_DEBUG_TOKEN" ]; then
+            printf 'EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN=%s\n' "$APPCHECK_DEBUG_TOKEN" >> .env
+          else
+            echo "::warning::No APPCHECK_DEBUG_TOKEN secret: with App Check enforced, every cloud call will be refused."
+          fi
 
       - name: Web build with the eval hook
         run: npx expo export --platform web --output-dir dist
