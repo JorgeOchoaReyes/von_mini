@@ -36,31 +36,64 @@ export function useCustomJobsVersion() {
 /** What the agent is doing right now for each app (stage and lines written), for the steps shown. */
 const progress = new Map<string, HtmlProgress>();
 export const customProgress = (appId: string) => progress.get(appId);
+
+/** How a write went, so slow or failed builds can be understood (shown with the result). */
+export type WriteStats = { startedAt: number; ms: number; lines: number; shortened: boolean; reconnects: number };
+const running = new Map<string, WriteStats>();
+const finished = new Map<string, WriteStats>();
+/** When the current write for this app started (for a live timer). */
+export const customStartedAt = (appId: string) => running.get(appId)?.startedAt;
+/** How the last finished write for this app went. */
+export const lastWriteStats = (appId: string) => finished.get(appId);
+/** "1m 42s · 312 lines · shortened to fit · reconnected 1×" */
+export function describeStats(s: WriteStats): string {
+  const secs = Math.round(s.ms / 1000);
+  const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+  return [time, s.lines ? `${s.lines} lines` : '', s.shortened ? 'shortened to fit' : '', s.reconnects ? `reconnected ${s.reconnects}×` : '']
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** Records progress, re-rendering only when the stage changes or every few lines. */
 function track(appId: string, onProgress?: (p: HtmlProgress) => void) {
+  const stats: WriteStats = { startedAt: Date.now(), ms: 0, lines: 0, shortened: false, reconnects: 0 };
+  running.set(appId, stats);
   return (p: HtmlProgress) => {
     const prev = progress.get(appId);
     progress.set(appId, p);
+    if (p.stage === 'shortening') stats.shortened = true;
+    if (p.stage === 'reconnecting' && prev?.stage !== 'reconnecting') stats.reconnects++;
+    if (p.lines) stats.lines = p.lines;
     if (!prev || prev.stage !== p.stage || Math.floor(prev.lines / 10) !== Math.floor(p.lines / 10)) emit();
     onProgress?.(p);
   };
+}
+/** Ends the stats for this app's write (whatever the outcome). */
+function endStats(appId: string) {
+  const s = running.get(appId);
+  if (s) finished.set(appId, { ...s, ms: Date.now() - s.startedAt });
+  running.delete(appId);
 }
 
 /**
  * The steps shown while an app's code is written: done ones ticked, the current one live (with the
  * lines written so far). `fixing` labels a self-repair.
  */
-export function htmlSteps(p: HtmlProgress | undefined, kind: 'build' | 'update' | 'fix'): ProgressStep[] {
+export function htmlSteps(p: HtmlProgress | undefined, kind: 'build' | 'update' | 'fix', startedAt?: number): ProgressStep[] {
   const stage = p?.stage ?? 'reading';
   const at = { reading: 0, reconnecting: 0, planning: 1, coding: 2, shortening: 2 }[stage];
   const lines = p && p.lines > 0 ? ` · ${p.lines} lines` : '';
+  const elapsed = startedAt ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : null;
+  const clock = elapsed === null ? '' : ` · ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
   const labels = [
     stage === 'reconnecting' ? 'Connection dropped, starting again…' : kind === 'fix' ? 'Reading what went wrong' : 'Reading your request',
     kind === 'build' ? 'Planning the design' : kind === 'fix' ? 'Finding the cause' : 'Planning the change',
     stage === 'shortening' ? `Making the code shorter so it fits${lines}` : `Writing the code${lines}`,
     'Checking it works',
   ];
-  return labels.map((label, i) => ({ id: `html-${i}`, label, state: i < at ? ('done' as const) : ('active' as const) })).slice(0, at + 1);
+  return labels
+    .map((label, i) => ({ id: `html-${i}`, label: i === at ? label + clock : label, state: i < at ? ('done' as const) : ('active' as const) }))
+    .slice(0, at + 1);
 }
 
 /** Stop handles for the code being written or repaired, by app. */
@@ -127,6 +160,7 @@ async function repairCustom(appId: string, ctx: RouteContext) {
   } catch {
     // Keep the app as it is; the next error can try again (up to the limit).
   } finally {
+    endStats(appId);
     stops.delete(appId);
     progress.delete(appId);
     fixing.delete(appId);
@@ -228,6 +262,7 @@ async function write(appId: string, ctx: RouteContext, quiet = false, onProgress
     if (e instanceof StoppedError) stopped.set(appId, brief);
     else errors.set(appId, { brief, message: e instanceof Error ? e.message : String(e) });
   } finally {
+    endStats(appId);
     stops.delete(appId);
     progress.delete(appId);
     busy.delete(appId);

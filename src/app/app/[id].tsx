@@ -37,7 +37,7 @@ import { OfflineBadge } from '../../ui/OfflineBadge';
 import { ChangeSummary, ChatPanel } from '../../chat/ChatPanel';
 import { HistoryPanel } from '../../chat/HistoryPanel';
 import { isBusy, notifyAppsChanged, registerFlusher, useChatVersion } from '../../chat/chatJobs';
-import { canStopCustom, customProgress, customState, htmlSteps, stopCustom, useCustomJobsVersion, writeCustom, type CustomState } from '../../chat/customJobs';
+import { canStopCustom, customProgress, customStartedAt, customState, htmlSteps, stopCustom, useCustomJobsVersion, writeCustom, type CustomState } from '../../chat/customJobs';
 import { HtmlRunner } from '../../runtime/HtmlRunner';
 import { SpecEditor } from '../../runtime/SpecEditor';
 import { SpecRenderer } from '../../runtime/SpecRenderer';
@@ -787,6 +787,7 @@ function BuildingView({
   onUseSimple(): void;
 }) {
   const working = state.kind === 'writing' || state.kind === 'pending' || state.kind === 'ready';
+  useTick(working);
   return (
     <View style={[styles.building, { backgroundColor: theme.bg }]} accessibilityLiveRegion="polite">
       <View style={[styles.buildingIcon, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -797,7 +798,7 @@ function BuildingView({
         <>
           <Text style={[type.headline, { color: theme.text, textAlign: 'center' }]}>Building your app…</Text>
           <View style={[styles.buildSteps, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <StepList steps={htmlSteps(customProgress(app.id), 'build')} theme={theme} />
+            <StepList steps={htmlSteps(customProgress(app.id), 'build', customStartedAt(app.id))} theme={theme} />
           </View>
           <Text style={[type.body, { color: theme.muted, textAlign: 'center' }]}>
             A game can take a couple of minutes. You can leave: it keeps going, and you’ll get a notification when it’s ready.
@@ -825,6 +826,16 @@ function BuildingView({
   );
 }
 
+/** Re-renders every second while `active`, for a live clock. */
+function useTick(active: boolean) {
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+}
+
 /** A slim bar over an app whose HTML the agent is updating (or couldn't update). */
 function UpdateBar({
   appId,
@@ -841,7 +852,8 @@ function UpdateBar({
 }) {
   const working = state.kind === 'writing' || state.kind === 'pending' || state.kind === 'fixing';
   // The step it's on right now ("Writing the code · 180 lines"), so it's clearly moving.
-  const step = htmlSteps(customProgress(appId), state.kind === 'fixing' ? 'fix' : 'update').at(-1)?.label;
+  useTick(working);
+  const step = htmlSteps(customProgress(appId), state.kind === 'fixing' ? 'fix' : 'update', customStartedAt(appId)).at(-1)?.label;
   return (
     <View style={[styles.updateBar, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} accessibilityLiveRegion="polite">
       {working ? <ActivityIndicator color={theme.accent} /> : <Text>⚠️</Text>}

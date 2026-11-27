@@ -17,6 +17,7 @@ import { FadeUp } from '../ui/motion';
 import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
+import { clockTime, replyTime } from '../ui/time';
 import { useStickToBottom } from '../ui/useStickToBottom';
 import { canStop, chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
@@ -186,7 +187,7 @@ export function ChatPanel({
           </View>
         )}
 
-        {messages.map((m) => {
+        {messages.map((m, idx) => {
           if (m.role === 'user') {
             return (
               <FadeUp key={m.id} distance={8} style={styles.mine}>
@@ -195,9 +196,12 @@ export function ChatPanel({
                     {m.text}
                   </Text>
                 </SpeechBubble>
+                <Text style={[type.caption, styles.time, { color: theme.subtle, textAlign: 'right' }]}>{clockTime(m.at)}</Text>
               </FadeUp>
             );
           }
+          // The message this reply answers, to show how long it took.
+          const askedAt = messages.slice(0, idx).reverse().find((x) => x.role === 'user')?.at;
           const isEdit = m.kind === 'edit';
           const isError = m.kind === 'error';
           return (
@@ -253,6 +257,10 @@ export function ChatPanel({
                     )}
                   </View>
                 )}
+                <Text style={[type.caption, { color: theme.subtle }]}>
+                  {replyTime(m.at, askedAt)}
+                  {m.stats ? ` · code: ${m.stats}` : ''}
+                </Text>
                 </View>
               </SpeechBubble>
             </FadeUp>
@@ -330,6 +338,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
   bubble: { maxWidth: '82%', borderRadius: radius.lg, paddingHorizontal: space(4), paddingVertical: space(3), gap: space(2) },
   mine: { alignSelf: 'flex-end', maxWidth: '86%' },
+  time: { marginTop: 2, marginRight: space(2) },
   theirsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space(2) },
   theirs: { flexShrink: 1 },
   avatar: { width: 28, height: 28, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },

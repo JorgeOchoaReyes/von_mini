@@ -8,6 +8,7 @@
  */
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
+import { clockTime, replyTime } from '../../ui/time';
 import { useStickToBottom } from '../../ui/useStickToBottom';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -255,6 +256,11 @@ export default function ChatScreen() {
                       <TypingDots color={theme.muted} />
                     )}
                     {!mine && t.source ? <SourceBadge source={t.source} /> : null}
+                    {t.text ? (
+                      <Text style={[type.caption, { color: mine ? t.error ? theme.subtle : theme.onAccent : theme.subtle, opacity: mine ? 0.75 : 1 }]}>
+                        {mine ? clockTime(t.at) : replyTime(t.at, turns.slice(0, i).reverse().find((x) => x.role === 'user')?.at)}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
               );
