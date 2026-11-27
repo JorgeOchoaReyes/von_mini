@@ -81,6 +81,7 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
     }
     if (!isBridgeRequest(req) || req.method === 'alive') return;
     const res = await handleBridge(appId, req, ai);
+    if (req.id === 0) return; // a report, nothing waits for an answer
     const payload = JSON.stringify(res.ok ? res.value : res.error);
     ref.current?.injectJavaScript(`window.__vmReply(${req.id}, ${res.ok}, ${payload}); true;`);
   };

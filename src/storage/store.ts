@@ -3,6 +3,7 @@
  * and by localStorage on web, so apps and their data never need the network.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
 import type { InferenceSource } from '../ai/types';
 import type { AppSpec } from '../spec/types';
@@ -121,6 +122,10 @@ export async function deleteApp(id: string): Promise<void> {
     APPS_KEY,
     mine.filter((a) => a.id !== id),
   );
+  // A save still waiting to be written must not bring the app's data back.
+  clearTimeout(kvTimers.get(id));
+  kvTimers.delete(id);
+  kvCache.delete(id);
   await AsyncStorage.multiRemove([entriesKey(id), kvKey(id), chatKey(id), versionsKey(id)]);
 }
 
@@ -211,15 +216,55 @@ export function deleteEntry(appId: string, entryId: string): Promise<Entry[]> {
 }
 
 /** Key-value store exposed to custom HTML apps through the bridge. */
+/**
+ * Each app's own saved data (vonmini.store), kept in memory once read and written to disk shortly
+ * after a change, batched: a game saving often must not re-read and re-write its whole store each
+ * time.
+ */
+const kvCache = new Map<string, Promise<Record<string, unknown>>>();
+const kvTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const kvStore = (appId: string) => {
+  let kv = kvCache.get(appId);
+  if (!kv) {
+    kv = readJson<Record<string, unknown>>(kvKey(appId), {});
+    kvCache.set(appId, kv);
+  }
+  return kv;
+};
+
 export async function kvGet(appId: string, key: string): Promise<unknown> {
-  const kv = await readJson<Record<string, unknown>>(kvKey(appId), {});
+  const kv = await kvStore(appId);
   return kv[key] ?? null;
 }
 
 export async function kvSet(appId: string, key: string, value: unknown): Promise<void> {
-  const kv = await readJson<Record<string, unknown>>(kvKey(appId), {});
-  kv[String(key).slice(0, 100)] = value;
+  const kv = await kvStore(appId);
+  const k = String(key).slice(0, 100);
+  const before = kv[k];
+  kv[k] = value;
   const raw = JSON.stringify(kv);
-  if (raw.length > 1_000_000) throw new Error('App storage is full (1 MB limit).');
-  await AsyncStorage.setItem(kvKey(appId), raw);
+  if (raw.length > 1_000_000) {
+    kv[k] = before;
+    throw new Error('App storage is full (1 MB limit).');
+  }
+  // Soon, not on every call: a burst of saves is written once.
+  if (!kvTimers.has(appId)) kvTimers.set(appId, setTimeout(() => writeKv(appId), 200));
 }
+
+function writeKv(appId: string) {
+  clearTimeout(kvTimers.get(appId));
+  kvTimers.delete(appId);
+  const kv = kvCache.get(appId);
+  if (kv) void kv.then((v) => AsyncStorage.setItem(kvKey(appId), JSON.stringify(v))).catch(() => undefined);
+}
+
+/** Writes every app's pending saves now (von mini going to the background or closing). */
+export function flushAppData() {
+  for (const appId of [...kvTimers.keys()]) writeKv(appId);
+}
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pagehide', flushAppData);
+}
+AppState.addEventListener('change', (s) => {
+  if (s !== 'active') flushAppData();
+});

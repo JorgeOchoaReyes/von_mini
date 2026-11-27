@@ -710,12 +710,23 @@ export async function buildCustomHtml(
           return (await withDeadline(engine.generate(p, opts), HTML_MS)).text;
         }
         // (A MAX_TOKENS error below is handled in the catch: it means the output limit was hit.)
+        // Cheap on purpose: a big app streams hundreds of chunks, each with the whole text so far.
+        let lines = 1;
+        let counted = 0;
+        let coding = false;
         for await (const chunk of withTimeouts(engine.stream(p, opts), HTML_FIRST_MS, HTML_IDLE_MS)) {
           text = chunk.text;
-          // The file opens with its design (an HTML comment), then the code.
-          const planning = /<!--(?![\s\S]*-->)/.test(text) || !/<(style|body|script|div|main|canvas)\b/i.test(text);
-          if (stage !== 'shortening') stage = planning ? 'planning' : 'coding';
-          onProgress?.({ stage, lines: planning ? 0 : text.split('\n').length });
+          // The file opens with its design (an HTML comment), then the code: look only at its start.
+          if (!coding) {
+            const head = text.slice(0, 12_000);
+            const open = head.indexOf('<!--');
+            coding = /<(style|body|script|div|main|canvas)\b/i.test(head) && (open < 0 || head.indexOf('-->', open) >= 0);
+          }
+          // Count only the new part's line breaks.
+          for (let i = counted; i < text.length; i++) if (text.charCodeAt(i) === 10) lines++;
+          counted = text.length;
+          if (stage !== 'shortening') stage = coding ? 'coding' : 'planning';
+          onProgress?.({ stage, lines: coding ? lines : 0 });
         }
         return text;
       } catch (e) {

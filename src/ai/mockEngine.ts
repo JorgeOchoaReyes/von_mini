@@ -339,6 +339,18 @@ export const mockEngine: AIEngine = {
       yield { text: all.slice(0, all.indexOf('<div class="vm-muted" id="opens">')), source: 'in_cloud' };
       throw limit;
     }
+    // A big app (~150 KB, many comments), streamed in many chunks the way a long game arrives.
+    if (html && prompt.includes('mock-big')) {
+      const body = Array.from({ length: 1500 }, (_, i) => `<!-- row ${i} --><div class="vm-muted" data-i="${i}">Lane ${i} of the long road</div>`).join('\n');
+      const big = respond(prompt.replace(/mock-big/g, ''), options).replace('</body>', `${body}\n</body>`);
+      const step = Math.max(200, Math.round(big.length / 600));
+      for (let i = step; i < big.length; i += step) {
+        await sleep(2);
+        yield { text: big.slice(0, i), source: 'in_cloud' };
+      }
+      yield { text: big, source: 'in_cloud' };
+      return;
+    }
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
     // end to end), so the streaming UI is exercised realistically rather than flashing past.
@@ -375,6 +387,13 @@ const MOCK_HTML = `<!doctype html><html><head><meta name="viewport" content="wid
 const n=+(localStorage.getItem('opens')||0)+1;localStorage.setItem('opens',n);document.getElementById('opens').textContent='Opened '+n+' times';
 document.getElementById('tap').onclick=()=>{s++;document.getElementById('score').textContent=s;if(s===3)alert('Nice streak!');if(s>b){b=s;document.getElementById('best').textContent=b;vonmini.store.set('best',b)}};</script></body></html>`;
 
+/** An endless game that saves every frame and throws every frame (asked for with "mock-flood"). */
+const MOCK_FLOOD_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Flood Run</div></div>
+<div class="vm-card">Frame <span id="f">0</span> · saved <span id="s">-</span></div>
+<script>let f=0;vonmini.store.get('state').then(v=>{document.getElementById('s').textContent=v?v.f:'none'});
+function loop(){f++;document.getElementById('f').textContent=f;vonmini.store.set('state',{f:f,rows:new Array(50).fill(f)});requestAnimationFrame(loop);if(location.hash==='#err'||window.__vmErrFlood)undefinedThing.go();}
+requestAnimationFrame(loop);</script></body></html>`;
+
 /** An app whose button throws, to exercise the self-repair (asked for with "buggy" in tests). */
 const MOCK_BUGGY_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Buggy Dice</div></div>
 <button id="roll" class="vm-btn vm-btn-block">Roll</button><script>document.getElementById('roll').addEventListener('click',()=>{rollTheDice()});</script></body></html>`;
@@ -388,7 +407,7 @@ function respond(prompt: string, options: GenerateOptions): string {
     if (asked && prompt.includes('>>>>>>> REPLACE')) {
       return `<<<<<<< SEARCH\n</body>\n=======\n<div class="vm-card">Change applied: ${asked}</div></body>\n>>>>>>> REPLACE`;
     }
-    const html = !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
+    const html = !repair && /mock-flood/.test(prompt) ? MOCK_FLOOD_HTML.replace('window.__vmErrFlood', /mock-flood-err/.test(prompt) ? 'true' : 'false') : !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
     return '```html\n' + (asked ? html.replace('</body>', `<div class="vm-card">Change applied: ${asked}</div></body>`) : html) + '\n```';
   }
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);

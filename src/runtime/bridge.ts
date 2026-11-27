@@ -93,7 +93,14 @@ export const bridgeScript = (post: string) => `
     ok ? p[0](v) : p[1](new Error(v));
   };
   // Errors reach the host, so an app that breaks is repaired instead of silently doing nothing.
-  function report(msg){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'error', args:[String(msg).slice(0, 500)]})); } catch (e) {} }
+  // Each different error once, and few in all: a game that throws every frame must not flood the host.
+  var reported = {}, reportCount = 0;
+  function report(msg){
+    msg = String(msg).slice(0, 500);
+    if (reported[msg] || reportCount >= 12) return;
+    reported[msg] = true; reportCount++;
+    try { ${post}(JSON.stringify({__vm:true, id:0, method:'error', args:[msg]})); } catch (e) {}
+  }
   window.addEventListener('error', function(e){ report((e.message || 'Error') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
   // A heartbeat, so the host can tell a frozen app (an endless loop) from a quiet one.
   setInterval(function(){ try { ${post}(JSON.stringify({__vm:true, id:0, method:'alive', args:[]})); } catch (e) {} }, 1000);
@@ -110,6 +117,16 @@ export const bridgeScript = (post: string) => `
       get length(){ return Object.keys(data).length; }
     };
   }
+  var pendingSets = {}, setTimer = null;
+  function clone(v){ try { return v === undefined ? null : JSON.parse(JSON.stringify(v)); } catch (e) { return null; } }
+  function flushSets(){
+    setTimer = null;
+    var batch = pendingSets; pendingSets = {};
+    for (var key in batch) call('store.set', [key, batch[key]]).catch(function(){});
+  }
+  // Nothing saved is lost when the app is closed or hidden mid-way.
+  window.addEventListener('pagehide', function(){ if (setTimer) { clearTimeout(setTimer); flushSets(); } });
+  document.addEventListener('visibilitychange', function(){ if (document.hidden && setTimer) { clearTimeout(setTimer); flushSets(); } });
   var lsData = {}, seed = window.__vmSeed || {}, saveTimer;
   for (var sk in seed) lsData[sk] = String(seed[sk]);
   var ls = makeStorage(lsData, function(){ clearTimeout(saveTimer); saveTimer = setTimeout(function(){ call('store.set', ['__ls', lsData]).catch(function(){}); }, 150); });
@@ -130,9 +147,19 @@ export const bridgeScript = (post: string) => `
     speak: function(text){ return call('speak', [String(text)]); },
     stopSpeaking: function(){ return call('stopSpeaking', []); },
     converse: function(persona, history, speakIt){ return call('converse', [persona, history, speakIt !== false]); },
+    // Saves are merged per key and sent at most every 400 ms: a game that saves every frame must
+    // not flood the host (that queued up writes until the phone ran out of memory).
     store: {
-      get: function(k){ return call('store.get', [k]); },
-      set: function(k, v){ return call('store.set', [k, v]); }
+      get: function(k){
+        k = String(k);
+        if (Object.prototype.hasOwnProperty.call(pendingSets, k)) return Promise.resolve(clone(pendingSets[k]));
+        return call('store.get', [k]);
+      },
+      set: function(k, v){
+        pendingSets[String(k)] = clone(v);
+        if (!setTimer) setTimer = setTimeout(flushSets, 400);
+        return Promise.resolve(null);
+      }
     }
   };
 })();`;
