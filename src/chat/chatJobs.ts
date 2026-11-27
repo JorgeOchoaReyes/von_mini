@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { chatAboutApp, local, type BuildEvent, type ProgressStep, type RouteContext } from '../ai/hybrid';
-import { customError, writeCustom } from './customJobs';
+import { customError, stopCustom, wasStopped, writeCustom } from './customJobs';
 import { CODE_CHANGE } from '../spec/diff';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
 import { backgroundWork } from '../ai/background';
@@ -124,11 +124,23 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
           });
           return;
         }
-        stops.delete(appId);
+        // Stop now stops the code being written; the change is then undone.
+        stops.set(appId, () => stopCustom(appId));
         applyEvent(appId, { type: 'step', step: { id: 'html', label: 'Updating the app… this takes a little while', state: 'active' } });
         await writeCustom(appId, ctx, { quiet: true });
-        const written = await getApp(appId);
+        let written = await getApp(appId);
+        // Finished without writing this change and without an error (another job ran instead):
+        // write it now rather than report a failure that didn't happen.
+        if (written?.spec.code === brief && written.htmlFor !== brief && !customError(appId, brief) && !wasStopped(appId, brief)) {
+          await writeCustom(appId, ctx, { quiet: true });
+          written = await getApp(appId);
+        }
         if (written?.spec.code !== brief) return; // Changed again meanwhile; that change reports itself.
+        if (written.htmlFor !== brief && wasStopped(appId, brief)) {
+          await saveApp({ ...written, spec: app.spec });
+          await pushVersion(appId, app.spec, ['Stopped a change before it was made.'], 'restore', written.builtWith, reply.spec);
+          throw new StoppedError();
+        }
         if (written.htmlFor !== brief) {
           const why = customError(appId, brief) ?? 'It didn’t finish.';
           throw new Error(`I couldn’t update the app: ${why} Tap Retry on the App tab, or ask again.`);

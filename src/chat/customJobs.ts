@@ -9,6 +9,7 @@ import { useSyncExternalStore } from 'react';
 
 import { backgroundWork } from '../ai/background';
 import { buildCustomHtml, local, type RouteContext } from '../ai/hybrid';
+import { StoppedError } from '../ai/stoppable';
 import { notifyIfInBackground } from '../alerts/notifications';
 import { getApp, pushVersion, saveApp, showsCode, type SavedApp } from '../storage/store';
 
@@ -31,6 +32,20 @@ export function useCustomJobsVersion() {
     () => version,
   );
 }
+
+/** Stop handles for the code being written or repaired, by app. */
+const stops = new Map<string, () => void>();
+/** The brief whose writing the person stopped: it isn't started again by itself. */
+const stopped = new Map<string, string>();
+
+/** Stops the code being written (or repaired) for this app. The app stays as it was. */
+export function stopCustom(appId: string) {
+  stops.get(appId)?.();
+}
+/** Whether the person stopped the writing of this brief. */
+export const wasStopped = (appId: string, brief: string) => stopped.get(appId) === brief;
+/** Whether there's code being written for this app that can be stopped. */
+export const canStopCustom = (appId: string) => stops.has(appId);
 
 /** Whether the agent is building, updating or repairing this app's HTML right now. */
 export const isWriting = (appId: string) => busy.has(appId) || fixing.has(appId);
@@ -71,6 +86,8 @@ async function repairCustom(appId: string, ctx: RouteContext) {
   emit();
   try {
     const run = backgroundWork('Fixing a problem in your app…', () => buildCustomHtml(app.request, ctx, app.spec, app.html, errors));
+    stops.set(appId, run.stop);
+    emit();
     const html = await run.promise;
     const latest = await getApp(appId);
     // Only if it's still the same app (no edit or restore meanwhile).
@@ -80,6 +97,7 @@ async function repairCustom(appId: string, ctx: RouteContext) {
   } catch {
     // Keep the app as it is; the next error can try again (up to the limit).
   } finally {
+    stops.delete(appId);
     fixing.delete(appId);
     emit();
   }
@@ -95,7 +113,8 @@ export type CustomState =
   | { kind: 'needs-cloud' }
   | { kind: 'failed'; message: string }
   | { kind: 'pending' }
-  | { kind: 'fixing' };
+  | { kind: 'fixing' }
+  | { kind: 'stopped' };
 
 /** Where this app's custom version stands. */
 export function customState(app: SavedApp, ctx: RouteContext): CustomState {
@@ -104,6 +123,7 @@ export function customState(app: SavedApp, ctx: RouteContext): CustomState {
   if (!brief) return { kind: 'none' };
   if (busy.has(app.id)) return { kind: 'writing' };
   if (app.html && app.htmlFor === brief) return { kind: 'ready' };
+  if (stopped.get(app.id) === brief) return { kind: 'stopped' };
   const err = errors.get(app.id);
   if (err && err.brief === brief) return { kind: 'failed', message: err.message };
   if (local(ctx)) return { kind: 'needs-cloud' };
@@ -118,8 +138,10 @@ const jobs = new Map<string, Promise<void>>();
  */
 export function writeCustom(appId: string, ctx: RouteContext, opts: { quiet?: boolean } = {}): Promise<void> {
   // Offline or in private mode it waits ("needs the internet"), and starts once the cloud is back.
+  // One job per app at a time. If one is already running, wait for it, then write for whatever the
+  // brief is by then (a change asked for meanwhile must not be dropped; it's a no-op if done).
   const running = jobs.get(appId);
-  if (running) return running;
+  if (running) return running.then(() => writeCustom(appId, ctx, opts));
   if (local(ctx)) return Promise.resolve();
   const job = write(appId, ctx, opts.quiet).finally(() => jobs.delete(appId));
   jobs.set(appId, job);
@@ -138,6 +160,8 @@ async function write(appId: string, ctx: RouteContext, quiet = false): Promise<v
   if (!app || !brief || (app.html && app.htmlFor === brief)) return;
   busy.add(appId);
   errors.delete(appId);
+  // Asked for again (Retry, a new change): a stop no longer holds.
+  stopped.delete(appId);
   emit();
   try {
     // Changing an app that's already built in code updates that code, so its look and data carry over.
@@ -145,10 +169,18 @@ async function write(appId: string, ctx: RouteContext, quiet = false): Promise<v
     const run = backgroundWork(base ? 'Updating your app…' : 'Building your app…', () => buildCustomHtml(app.request, ctx, app.spec, base), {
       resumeNote: { title: `${app.spec.emoji} ${app.spec.name}`, body: 'Your phone paused writing the custom version. Open von mini to finish it.', url: `/app/${appId}` },
     });
+    stops.set(appId, run.stop);
+    emit();
     const html = await run.promise;
     // The design may have changed meanwhile; only keep this if it's still the brief asked for.
     const latest = await getApp(appId);
-    if (!latest || latest.spec.code !== brief) return;
+    if (!latest) return;
+    if (latest.spec.code !== brief) {
+      // Changed while this was written (a chat change during the first build): keep the first
+      // version if there's none yet, so the next job updates it rather than starting over.
+      if (!latest.html || latest.htmlFor === '-') await saveApp({ ...latest, html, htmlFor: brief });
+      return;
+    }
     await saveApp({ ...latest, html, htmlFor: brief });
     // The app now is its code version: record it, so History can go back to the blocks (or here).
     await pushVersion(appId, latest.spec, [base ? 'Updated the app with your change.' : 'Built the app.'], 'chat', 'in_cloud', undefined, html);
@@ -158,8 +190,10 @@ async function write(appId: string, ctx: RouteContext, quiet = false): Promise<v
       url: `/app/${appId}`,
     });
   } catch (e) {
-    errors.set(appId, { brief, message: e instanceof Error ? e.message : String(e) });
+    if (e instanceof StoppedError) stopped.set(appId, brief);
+    else errors.set(appId, { brief, message: e instanceof Error ? e.message : String(e) });
   } finally {
+    stops.delete(appId);
     busy.delete(appId);
     emit();
   }
