@@ -7,6 +7,7 @@ import { AppState, Text, View } from 'react-native';
 import { useAppAI } from '../ai/appMode';
 import type { Accent } from '../spec/types';
 import { reportRuntimeError } from '../chat/customJobs';
+import { clearRunning, noteRunning } from '../diagnostics/crashNotes';
 import { kvGet } from '../storage/store';
 import { space, type, useTheme } from '../ui/theme';
 import { bridgeScript, handleBridge, isBridgeRequest, wrapHtml } from './bridge';
@@ -85,6 +86,12 @@ export function HtmlRunner({ appId, html, accent }: { appId: string; html: strin
     const payload = JSON.stringify(res.ok ? res.value : res.error);
     ref.current?.injectJavaScript(`window.__vmReply(${req.id}, ${res.ok}, ${payload}); true;`);
   };
+
+  // Noted while it runs, so if von mini goes down with it, the next launch says so.
+  useEffect(() => {
+    noteRunning(appId);
+    return () => clearRunning(appId);
+  }, [appId]);
 
   // Start the app only once its saved data is in place.
   if (!seed) return <View style={{ flex: 1 }} />;
