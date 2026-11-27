@@ -99,11 +99,15 @@ export const engine: AIEngine = {
       let lastText = '';
       let source: 'on_device' | 'in_cloud' = options.mode === 'only_in_cloud' ? 'in_cloud' : 'on_device';
       for (;;) {
-        while (queue.length) {
-          const e = queue.shift()!;
-          if (e.source) source = e.source;
-          if (e.text) lastText = e.text;
-          if (e.text) yield { text: lastText, source };
+        // Each event carries the whole text so far: when several are waiting, only the newest matters.
+        // (Handing each one on made a long app's code cost far too much work on the JS thread.)
+        if (queue.length) {
+          for (const e of queue) {
+            if (e.source) source = e.source;
+            if (e.text) lastText = e.text;
+          }
+          queue.length = 0;
+          if (lastText) yield { text: lastText, source };
         }
         if (finished) break;
         await new Promise<void>((r) => {

@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 
 import { AIProvider } from '../ai/AIContext';
 import { initAlerts } from '../alerts/notifications';
+import { installCrashCatcher, reportPreviousCrash } from '../diagnostics/crashNotes';
 import { installEvalHook } from '../dev/evalHook';
 import { loadRemoteConfig } from '../remote/remoteConfig';
 import { loadSchemePref, useTheme } from '../ui/theme';
@@ -29,6 +30,8 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
   // Activate Remote Config values once per launch; bundled defaults apply until (or unless) it does.
   useEffect(() => {
+    installCrashCatcher();
+    void reportPreviousCrash();
     void loadRemoteConfig();
     void loadSchemePref();
     installEvalHook();

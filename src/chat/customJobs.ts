@@ -10,6 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { backgroundWork } from '../ai/background';
 import { buildCustomHtml, local, type HtmlProgress, type ProgressStep, type RouteContext } from '../ai/hybrid';
 import { StoppedError } from '../ai/stoppable';
+import { clearActivity, noteActivity } from '../diagnostics/crashNotes';
 import { notifyIfInBackground } from '../alerts/notifications';
 import { getApp, pushVersion, saveApp, showsCode, type SavedApp } from '../storage/store';
 
@@ -64,12 +65,15 @@ function track(appId: string, onProgress?: (p: HtmlProgress) => void) {
     if (p.stage === 'shortening') stats.shortened = true;
     if (p.stage === 'reconnecting' && prev?.stage !== 'reconnecting') stats.reconnects++;
     if (p.lines) stats.lines = p.lines;
+    // Kept on disk, so a crash mid-way is explained on the next launch.
+    noteActivity(appId, `${htmlSteps(p, 'update').at(-1)?.label ?? 'writing its code'}`, prev?.stage !== p.stage);
     if (!prev || prev.stage !== p.stage || Math.floor(prev.lines / 10) !== Math.floor(p.lines / 10)) emit();
     onProgress?.(p);
   };
 }
 /** Ends the stats for this app's write (whatever the outcome). */
 function endStats(appId: string) {
+  clearActivity(appId);
   const s = running.get(appId);
   if (s) finished.set(appId, { ...s, ms: Date.now() - s.startedAt });
   running.delete(appId);

@@ -339,6 +339,18 @@ export const mockEngine: AIEngine = {
       yield { text: all.slice(0, all.indexOf('<div class="vm-muted" id="opens">')), source: 'in_cloud' };
       throw limit;
     }
+    // A big app (~150 KB, many comments), streamed in many chunks the way a long game arrives.
+    if (html && prompt.includes('mock-big')) {
+      const body = Array.from({ length: 1500 }, (_, i) => `<!-- row ${i} --><div class="vm-muted" data-i="${i}">Lane ${i} of the long road</div>`).join('\n');
+      const big = respond(prompt.replace(/mock-big/g, ''), options).replace('</body>', `${body}\n</body>`);
+      const step = Math.max(200, Math.round(big.length / 600));
+      for (let i = step; i < big.length; i += step) {
+        await sleep(2);
+        yield { text: big.slice(0, i), source: 'in_cloud' };
+      }
+      yield { text: big, source: 'in_cloud' };
+      return;
+    }
     const full = respond(prompt, options);
     // Emit a few characters at a time, paced like a small on-device model (a couple of seconds
     // end to end), so the streaming UI is exercised realistically rather than flashing past.
