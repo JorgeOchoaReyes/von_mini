@@ -17,6 +17,7 @@ import { FadeUp } from '../ui/motion';
 import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } from '../ui/theme';
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
+import { useStickToBottom } from '../ui/useStickToBottom';
 import { canStop, chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
@@ -111,6 +112,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const scroll = useRef<ScrollViewInstance>(null);
+  const stick = useStickToBottom(scroll);
   const busy = isBusy(appId);
   const steps = chatSteps(appId);
   const chips = useMemo(() => quickEdits(spec), [spec]);
@@ -157,7 +159,7 @@ export function ChatPanel({
       <ScrollView
         ref={scroll}
         contentContainerStyle={styles.list}
-        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
+        {...stick}
         keyboardShouldPersistTaps="handled"
       >
         {messages.length === 0 && (

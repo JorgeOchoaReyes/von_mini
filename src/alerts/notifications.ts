@@ -179,6 +179,8 @@ export async function notify(content: { title: string; body: string; url: string
     if (!perm.granted) return;
     await ensureChannels();
     await Notifications.scheduleNotificationAsync({
+      // One alert per screen: a newer one about the same app replaces the last, never stacks.
+      identifier: `build:${content.url}`,
       content: { title: content.title, body: content.body, data: { url: content.url } },
       trigger: { channelId: CHANNELS.builds.id },
     });

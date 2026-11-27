@@ -116,12 +116,12 @@ const jobs = new Map<string, Promise<void>>();
  * Writes the custom version for the app's current brief. Safe to call repeatedly: a call while one
  * is running returns that same job, so the chat can wait for the update it asked for.
  */
-export function writeCustom(appId: string, ctx: RouteContext): Promise<void> {
+export function writeCustom(appId: string, ctx: RouteContext, opts: { quiet?: boolean } = {}): Promise<void> {
   // Offline or in private mode it waits ("needs the internet"), and starts once the cloud is back.
   const running = jobs.get(appId);
   if (running) return running;
   if (local(ctx)) return Promise.resolve();
-  const job = write(appId, ctx).finally(() => jobs.delete(appId));
+  const job = write(appId, ctx, opts.quiet).finally(() => jobs.delete(appId));
   jobs.set(appId, job);
   return job;
 }
@@ -132,7 +132,7 @@ export const customError = (appId: string, brief: string) => {
   return e && e.brief === brief ? e.message : undefined;
 };
 
-async function write(appId: string, ctx: RouteContext): Promise<void> {
+async function write(appId: string, ctx: RouteContext, quiet = false): Promise<void> {
   const app = await getApp(appId);
   const brief = app?.spec.code;
   if (!app || !brief || (app.html && app.htmlFor === brief)) return;
@@ -152,7 +152,7 @@ async function write(appId: string, ctx: RouteContext): Promise<void> {
     await saveApp({ ...latest, html, htmlFor: brief });
     // The app now is its code version: record it, so History can go back to the blocks (or here).
     await pushVersion(appId, latest.spec, [base ? 'Updated the app with your change.' : 'Built the app.'], 'chat', 'in_cloud', undefined, html);
-    void notifyIfInBackground({
+    if (!quiet) void notifyIfInBackground({
       title: `${latest.spec.emoji} ${latest.spec.name} ${base ? 'updated' : 'is ready'}`,
       body: base ? 'Your change is in. Tap to see it.' : 'Your app is built. Tap to open it.',
       url: `/app/${appId}`,

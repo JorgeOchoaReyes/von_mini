@@ -8,6 +8,7 @@
  */
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
+import { useStickToBottom } from '../../ui/useStickToBottom';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +39,7 @@ export default function ChatScreen() {
   const stt = useSttSupport();
   const { ref: keyboardRef, inset: keyboardInset } = useKeyboardInset();
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const stick = useStickToBottom(scroll);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
 
   const [convo, setConvo] = useState<Conversation | null>(null);
@@ -210,7 +212,7 @@ export default function ChatScreen() {
       {!convo ? (
         <ActivityIndicator style={{ marginTop: space(10) }} color={theme.accent} />
       ) : (
-        <ScrollView ref={scroll} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scroll} {...stick} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
           {turns.length === 0 ? (
             <View style={styles.empty}>
               <Text style={{ fontSize: 44 }}>💬</Text>
