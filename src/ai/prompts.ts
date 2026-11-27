@@ -127,6 +127,7 @@ Games and toys:
 - Board, card, word and puzzle games (chess, checkers, sudoku, solitaire): correct and complete rules first (every legal move, check, win and draw), a computer opponent when there are two sides that answers within a second (heuristics or a shallow search, no deep search that freezes the page), the last move highlighted, legal moves shown on tap, and undo. No particles, power-ups or levels unless asked.
 - Touch first: tap, drag and swipe with pointer events; big hit areas; no hover. Arrow keys and space as extras.
 - A "Tap to start" overlay that shows how to play in one line, a game-over overlay with the score, best and a Play again button, and pause when the page is hidden.
+- Save with vonmini.store only at meaningful moments (game over, a new best, a level reached, a setting changed), never every frame.
 - Keep a top-5 high-score table with vonmini.store (key "scores", a list of {score, at}) and show it on the game-over card.
 - Sprites: emoji, or shapes drawn on the canvas (paths, gradients, shadows), never image files. Make it fair and fun: a gentle start that speeds up, clear feedback when scoring or losing.
 - The HUD and overlays use the theme variables and classes; the play area may use its own palette for the world and pieces (sky, grass, water, enemies), chosen to look good in both light and dark mode.

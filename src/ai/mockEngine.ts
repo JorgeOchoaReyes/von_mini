@@ -387,6 +387,13 @@ const MOCK_HTML = `<!doctype html><html><head><meta name="viewport" content="wid
 const n=+(localStorage.getItem('opens')||0)+1;localStorage.setItem('opens',n);document.getElementById('opens').textContent='Opened '+n+' times';
 document.getElementById('tap').onclick=()=>{s++;document.getElementById('score').textContent=s;if(s===3)alert('Nice streak!');if(s>b){b=s;document.getElementById('best').textContent=b;vonmini.store.set('best',b)}};</script></body></html>`;
 
+/** An endless game that saves every frame and throws every frame (asked for with "mock-flood"). */
+const MOCK_FLOOD_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Flood Run</div></div>
+<div class="vm-card">Frame <span id="f">0</span> · saved <span id="s">-</span></div>
+<script>let f=0;vonmini.store.get('state').then(v=>{document.getElementById('s').textContent=v?v.f:'none'});
+function loop(){f++;document.getElementById('f').textContent=f;vonmini.store.set('state',{f:f,rows:new Array(50).fill(f)});requestAnimationFrame(loop);if(location.hash==='#err'||window.__vmErrFlood)undefinedThing.go();}
+requestAnimationFrame(loop);</script></body></html>`;
+
 /** An app whose button throws, to exercise the self-repair (asked for with "buggy" in tests). */
 const MOCK_BUGGY_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Buggy Dice</div></div>
 <button id="roll" class="vm-btn vm-btn-block">Roll</button><script>document.getElementById('roll').addEventListener('click',()=>{rollTheDice()});</script></body></html>`;
@@ -400,7 +407,7 @@ function respond(prompt: string, options: GenerateOptions): string {
     if (asked && prompt.includes('>>>>>>> REPLACE')) {
       return `<<<<<<< SEARCH\n</body>\n=======\n<div class="vm-card">Change applied: ${asked}</div></body>\n>>>>>>> REPLACE`;
     }
-    const html = !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
+    const html = !repair && /mock-flood/.test(prompt) ? MOCK_FLOOD_HTML.replace('window.__vmErrFlood', /mock-flood-err/.test(prompt) ? 'true' : 'false') : !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
     return '```html\n' + (asked ? html.replace('</body>', `<div class="vm-card">Change applied: ${asked}</div></body>`) : html) + '\n```';
   }
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);
