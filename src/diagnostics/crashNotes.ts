@@ -4,6 +4,7 @@
  * doing at the time (writing an app's code: which step, how many lines).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 
 import NanoBridge from '../../modules/nano-bridge';
 import { appendMessage } from '../storage/store';
@@ -98,7 +99,7 @@ export async function reportPreviousCrash(): Promise<void> {
     await appendMessage(activity.appId, {
       role: 'assistant',
       kind: 'error',
-      text: `von mini closed while working on this app (${activity.what}).${why} Your app is as it was before; tap Retry on the App tab or ask again.`,
+      text: `von mini closed while working on this app (${activity.what}).${why} Your app is as it was before; send your last message again (or tap Retry on the App tab).`,
     }).catch(() => undefined);
   } else if (running) {
     await appendMessage(running.appId, {
@@ -107,6 +108,7 @@ export async function reportPreviousCrash(): Promise<void> {
       text: `von mini closed while this app was running.${error ? ` The error was: ${detail(error.message)}` : ' If you didn’t close it yourself, the app most likely used too much memory (a game that keeps adding things without removing them, for example). Tell me what you were doing in it and I’ll fix it.'}`,
     }).catch(() => undefined);
   } else if (error) {
-    console.warn('[vm-crash] previous launch ended with:', error.message);
+    // Not tied to an app: say it where the person will see it, once the screen is up.
+    setTimeout(() => Alert.alert('von mini closed unexpectedly', `The error was: ${detail(error.message)}`), 1500);
   }
 }

@@ -10,6 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { chatAboutApp, local, type BuildEvent, type HtmlProgress, type ProgressStep, type RouteContext } from '../ai/hybrid';
 import { customError, customProgress, customStartedAt, describeStats, htmlSteps, lastWriteStats, stopCustom, wasStopped, writeCustom } from './customJobs';
 import { CODE_CHANGE } from '../spec/diff';
+import { clearActivity, noteActivity } from '../diagnostics/crashNotes';
 import { notify, notifyIfInBackground } from '../alerts/notifications';
 import { backgroundWork } from '../ai/background';
 import { StoppedError } from '../ai/stoppable';
@@ -85,6 +86,8 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
   const message = text.trim();
   if (!message || busy.has(appId)) return;
   busy.add(appId);
+  // Noted on disk from the first moment, so a crash at any point is explained on the next launch.
+  noteActivity(appId, 'reading your message', true);
   await appendMessage(appId, { role: 'user', text: message });
   emit();
   try {
@@ -189,6 +192,7 @@ export async function sendMessage(appId: string, text: string, ctx: RouteContext
     await appendMessage(appId, { role: 'assistant', kind: 'error', text });
     void notify({ title: 'Couldn’t change your app', body: text.slice(0, 180), url: `/app/${appId}` });
   } finally {
+    clearActivity(appId);
     stops.delete(appId);
     busy.delete(appId);
     progress.delete(appId);

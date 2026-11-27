@@ -17,13 +17,28 @@ import { isCloudUnavailable } from './hybrid';
 import { StoppedError } from './stoppable';
 
 let holders = 0;
+let pendingStop: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * How long the service outlives the last job. Stopping and restarting a foreground service back
+ * to back (one chat turn ends, the edit it asked for starts) crashes the whole app on Android:
+ * "startForegroundService() did not then call startForeground()". Keeping it a few seconds lets
+ * the next job reuse the running service, and never stops one that is still starting up.
+ */
+const STOP_DELAY_MS = 6000;
 
 function hold(title: string) {
   if (holders++ === 0) {
-    try {
-      NanoBridge?.startKeepAlive?.(title);
-    } catch {
-      // Not available in this build, or not allowed right now: the work runs unprotected.
+    if (pendingStop) {
+      // Still running from the last job: keep it.
+      clearTimeout(pendingStop);
+      pendingStop = undefined;
+    } else {
+      try {
+        NanoBridge?.startKeepAlive?.(title);
+      } catch {
+        // Not available in this build, or not allowed right now: the work runs unprotected.
+      }
     }
   }
   let released = false;
@@ -31,11 +46,15 @@ function hold(title: string) {
     if (released) return;
     released = true;
     if (--holders === 0) {
-      try {
-        NanoBridge?.stopKeepAlive?.();
-      } catch {
-        // Nothing to stop.
-      }
+      pendingStop = setTimeout(() => {
+        pendingStop = undefined;
+        if (holders > 0) return;
+        try {
+          NanoBridge?.stopKeepAlive?.();
+        } catch {
+          // Nothing to stop.
+        }
+      }, STOP_DELAY_MS);
     }
   };
 }
