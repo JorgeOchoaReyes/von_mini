@@ -34,7 +34,7 @@ jobs:
           # The commit the APK was built from, so the tag points at exactly that code.
           sha=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq .head_sha)
           gh run download "$RUN_ID" --repo "$REPO" --pattern 'von-mini-*.apk' --dir apk
-          file=$(find apk -name '*.apk' | head -1)
+          file=$(find apk -type f -name '*.apk' | head -1)
           if [ -z "$file" ]; then echo "::error::No APK found in run $RUN_ID"; exit 1; fi
           cp "$file" von-mini.apk
           notes=$(printf '%s\n' \
