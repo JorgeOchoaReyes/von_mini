@@ -5,10 +5,16 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import NanoBridge from '../../modules/nano-bridge';
 import { appendMessage } from '../storage/store';
 
 const KEY = 'vm:crash-notes';
-type Notes = { activity?: { appId: string; what: string; at: number }; error?: { message: string; at: number } };
+type Notes = {
+  activity?: { appId: string; what: string; at: number };
+  /** An HTML app open on screen (its game or page running). */
+  running?: { appId: string; at: number };
+  error?: { message: string; at: number };
+};
 
 let notes: Notes = {};
 let lastWrite = 0;
@@ -27,6 +33,17 @@ export function noteActivity(appId: string, what: string, force = false) {
 export function clearActivity(appId: string) {
   if (notes.activity?.appId !== appId) return;
   notes = { ...notes, activity: undefined };
+  void save();
+}
+
+/** An app is running on screen now / no longer. */
+export function noteRunning(appId: string) {
+  notes = { ...notes, running: { appId, at: Date.now() } };
+  void save();
+}
+export function clearRunning(appId: string) {
+  if (notes.running?.appId !== appId) return;
+  notes = { ...notes, running: undefined };
   void save();
 }
 
@@ -64,15 +81,30 @@ export async function reportPreviousCrash(): Promise<void> {
   } catch {
     return;
   }
-  if (!previous.activity && !previous.error) return;
+  // A crash in von mini's native code (Android) leaves its stack trace there.
+  let native: string | null = null;
+  try {
+    native = NanoBridge?.takeNativeCrash?.() ?? null;
+  } catch {
+    native = null;
+  }
+  if (native && !previous.error) previous.error = { message: `Android: ${native}`, at: Date.now() };
+  if (!previous.activity && !previous.error && !previous.running) return;
   await AsyncStorage.removeItem(KEY).catch(() => undefined);
-  const { activity, error } = previous;
-  const why = error ? ` The error was: ${error.message.split('\n')[0]}` : ' No error was recorded, so the phone most likely closed it (low memory) or it was swiped away.';
+  const { activity, error, running } = previous;
+  const detail = (m: string) => m.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 3).join(' · ').slice(0, 400);
+  const why = error ? ` The error was: ${detail(error.message)}` : ' No error was recorded, so the phone most likely closed it (low memory) or it was swiped away.';
   if (activity) {
     await appendMessage(activity.appId, {
       role: 'assistant',
       kind: 'error',
       text: `von mini closed while working on this app (${activity.what}).${why} Your app is as it was before; tap Retry on the App tab or ask again.`,
+    }).catch(() => undefined);
+  } else if (running) {
+    await appendMessage(running.appId, {
+      role: 'assistant',
+      kind: 'error',
+      text: `von mini closed while this app was running.${error ? ` The error was: ${detail(error.message)}` : ' If you didn’t close it yourself, the app most likely used too much memory (a game that keeps adding things without removing them, for example). Tell me what you were doing in it and I’ll fix it.'}`,
     }).catch(() => undefined);
   } else if (error) {
     console.warn('[vm-crash] previous launch ended with:', error.message);

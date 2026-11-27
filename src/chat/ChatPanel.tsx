@@ -18,6 +18,7 @@ import { alpha, stroke, MAX_WIDTH, radius, space, type, useTheme, type Theme } f
 import { MicButton } from '../voice/MicButton';
 import { speak, stopSpeaking } from '../voice/tts';
 import { clockTime, replyTime } from '../ui/time';
+import { canStopCustom, customProgress, customStartedAt, htmlSteps, isFixing, isWriting, stopCustom, useCustomJobsVersion } from './customJobs';
 import { useStickToBottom } from '../ui/useStickToBottom';
 import { canStop, chatSteps, isBusy, sendMessage, stopMessage, undoEdit, useChatVersion } from './chatJobs';
 
@@ -115,6 +116,15 @@ export function ChatPanel({
   const scroll = useRef<ScrollViewInstance>(null);
   const stick = useStickToBottom(scroll);
   const busy = isBusy(appId);
+  useCustomJobsVersion();
+  const agentWorking = isWriting(appId);
+  // A live clock on the step while it works.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    if (!agentWorking) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [agentWorking]);
   const steps = chatSteps(appId);
   const chips = useMemo(() => quickEdits(spec), [spec]);
 
@@ -266,6 +276,31 @@ export function ChatPanel({
             </FadeUp>
           );
         })}
+
+        {/* Work on this app that the chat didn't start (a self-repair, a build or update from the App
+            tab) is shown here too, with its steps and a Stop. */}
+        {!busy && agentWorking && (
+          <View style={styles.theirsRow}>
+            <Avatar emoji={spec.emoji} theme={theme} />
+            <SpeechBubble theme={theme} side="left" fill={theme.surface} style={styles.theirs}>
+              <View style={{ gap: space(2) }}>
+                <Text style={[type.label, { color: theme.text }]}>
+                  {isFixing(appId) ? 'Fixing a problem in this app' : 'Working on this app'}
+                </Text>
+                <StepList
+                  steps={htmlSteps(customProgress(appId), isFixing(appId) ? 'fix' : 'update', customStartedAt(appId))}
+                  theme={theme}
+                />
+                {canStopCustom(appId) && (
+                  <Pressable onPress={() => stopCustom(appId)} hitSlop={6} style={styles.row} accessibilityRole="button">
+                    <Icon name="stop-circle-outline" size={14} color={theme.muted} />
+                    <Text style={[type.label, { color: theme.muted }]}>Stop</Text>
+                  </Pressable>
+                )}
+              </View>
+            </SpeechBubble>
+          </View>
+        )}
 
         {busy && (
           <View style={styles.theirsRow}>

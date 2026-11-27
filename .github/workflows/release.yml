@@ -1,0 +1,47 @@
+# Publishes an APK that was already built (by the EAS workflow) as a GitHub release, without
+# building again. Actions > Publish APK > Run: give the EAS run's id and a new tag (e.g. v0.4.0).
+# The README's install link (releases/latest/download/von-mini.apk) then serves it.
+name: Publish APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The id of the EAS run that built the APK (from its URL)
+        required: true
+      tag:
+        description: New version tag, e.g. v0.4.0
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the built APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::Tag must look like v1.2.3"; exit 1; fi
+          if ! [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then echo "::error::run_id must be a number"; exit 1; fi
+          # The commit the APK was built from, so the tag points at exactly that code.
+          sha=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq .head_sha)
+          gh run download "$RUN_ID" --repo "$REPO" --pattern 'von-mini-*.apk' --dir apk
+          file=$(find apk -name '*.apk' | head -1)
+          if [ -z "$file" ]; then echo "::error::No APK found in run $RUN_ID"; exit 1; fi
+          cp "$file" von-mini.apk
+          notes=$(printf '%s\n' \
+            "## Install on Android" \
+            "" \
+            "1. Download **von-mini.apk** below on your phone." \
+            "2. Open it and allow installing from this source when Android asks." \
+            "" \
+            "Built by [EAS run $RUN_ID](https://github.com/$REPO/actions/runs/$RUN_ID) from $sha. Later JavaScript-only fixes arrive over the air: reopen the app, or use Settings > App updates.")
+          gh release create "$TAG" von-mini.apk --repo "$REPO" --target "$sha" --title "von mini $TAG" --notes "$notes" --generate-notes

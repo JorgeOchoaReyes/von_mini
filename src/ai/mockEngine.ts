@@ -394,6 +394,12 @@ const MOCK_FLOOD_HTML = `<!doctype html><html><head></head><body><div class="vm-
 function loop(){f++;document.getElementById('f').textContent=f;vonmini.store.set('state',{f:f,rows:new Array(50).fill(f)});requestAnimationFrame(loop);if(location.hash==='#err'||window.__vmErrFlood)undefinedThing.go();}
 requestAnimationFrame(loop);</script></body></html>`;
 
+/** An endless game that adds a row every frame and never removes any ("mock-grow"). */
+const MOCK_GROW_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Grow Road</div></div>
+<div id="road"></div><script>const road=document.getElementById('road');
+function loop(){for(let i=0;i<20;i++){const d=document.createElement('div');d.textContent='lane';road.appendChild(d);}requestAnimationFrame(loop);}
+requestAnimationFrame(loop);</script></body></html>`;
+
 /** An app whose button throws, to exercise the self-repair (asked for with "buggy" in tests). */
 const MOCK_BUGGY_HTML = `<!doctype html><html><head></head><body><div class="vm-hero"><div class="vm-title">Buggy Dice</div></div>
 <button id="roll" class="vm-btn vm-btn-block">Roll</button><script>document.getElementById('roll').addEventListener('click',()=>{rollTheDice()});</script></body></html>`;
@@ -407,7 +413,7 @@ function respond(prompt: string, options: GenerateOptions): string {
     if (asked && prompt.includes('>>>>>>> REPLACE')) {
       return `<<<<<<< SEARCH\n</body>\n=======\n<div class="vm-card">Change applied: ${asked}</div></body>\n>>>>>>> REPLACE`;
     }
-    const html = !repair && /mock-flood/.test(prompt) ? MOCK_FLOOD_HTML.replace('window.__vmErrFlood', /mock-flood-err/.test(prompt) ? 'true' : 'false') : !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
+    const html = !repair && /mock-grow/.test(prompt) ? MOCK_GROW_HTML : !repair && /mock-flood/.test(prompt) ? MOCK_FLOOD_HTML.replace('window.__vmErrFlood', /mock-flood-err/.test(prompt) ? 'true' : 'false') : !repair && /buggy/i.test(prompt) ? MOCK_BUGGY_HTML : MOCK_HTML;
     return '```html\n' + (asked ? html.replace('</body>', `<div class="vm-card">Change applied: ${asked}</div></body>`) : html) + '\n```';
   }
   if (options.system?.includes('{"reply":string')) return chatTurn(prompt);

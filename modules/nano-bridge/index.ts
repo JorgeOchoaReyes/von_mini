@@ -31,6 +31,8 @@ declare class NanoBridgeModule extends NativeModule<NanoBridgeEvents> {
     json: boolean,
     deviceModel: DeviceModel,
   ): Promise<{ text: string; source: 'on_device' | 'in_cloud' }>;
+  /** The last native crash's stack trace (then forgotten), or null. Newer APKs only. */
+  takeNativeCrash?(): string | null;
   /** Keeps the app alive in the background while work runs (a foreground service). Newer APKs only. */
   startKeepAlive?(title: string): boolean;
   stopKeepAlive?(): void;
