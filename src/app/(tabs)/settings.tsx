@@ -14,8 +14,9 @@ import type { DeviceStatus } from '../../ai/types';
 import { Button, Card, Icon, Segmented, StatusBanner, type IconName } from '../../ui/components';
 import { ProgressBar } from '../../ui/motion';
 import { stroke, MAX_WIDTH, radius, setSchemePref, space, type, useSchemePref, useTheme, type SchemePref } from '../../ui/theme';
-import { useRemoteConfig } from '../../remote/remoteConfig';
+import { rcRemoteString, useRemoteConfig } from '../../remote/remoteConfig';
 import { UpdatesCard } from '../../ui/UpdatesCard';
+import { ModelSettingsCard } from '../../ui/ModelSettingsCard';
 import { VoiceSettingsCard } from '../../ui/VoiceSettingsCard';
 import { NotificationsCard } from '../../ui/NotificationsCard';
 import { useSttSupport } from '../../voice/useVoice';
@@ -153,6 +154,11 @@ export default function Settings() {
         <NotificationsCard theme={theme} />
 
         <Card theme={theme} style={{ gap: space(3) }}>
+          <Text style={[type.headline, { color: theme.text }]}>Models</Text>
+          <ModelSettingsCard theme={theme} />
+        </Card>
+
+        <Card theme={theme} style={{ gap: space(3) }}>
           <Text style={[type.headline, { color: theme.text }]}>Voice</Text>
           <Row
             icon="mic-outline"
@@ -213,7 +219,7 @@ export default function Settings() {
                   ? 'Last settings fetched from Firebase'
                   : 'Built-in defaults'
             }
-            body={`Chat model ${rc.string('cloud_model')} · apps and games written by ${rc.string('html_model')} · new apps designed ${
+            body={`Chat model ${rcRemoteString('cloud_model')} · apps and games written by ${rcRemoteString('html_model')} · new apps designed ${
               rc.string('build_mode') === 'prefer_on_device' ? 'on-device first' : 'in the cloud first'
             } · voice input ${rc.bool('voice_input') ? 'on' : 'off'} · sharing ${rc.bool('sharing') ? 'on' : 'off'}.`}
             theme={theme}

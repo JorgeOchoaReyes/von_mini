@@ -127,3 +127,11 @@ test('a continuation joins without repeating what was already written', async ()
   assert.equal(joinContinuation('function draw() { ctx.fillRect(0, 0, w, h);', 'ctx.fillRect(0, 0, w, h); }\n</script></body></html>'), 'function draw() { ctx.fillRect(0, 0, w, h); }\n</script></body></html>');
   assert.equal(joinContinuation('abc', 'def'), 'abcdef');
 });
+
+test('the native code-writer check matches the HTML prompts (bigger limit, brief thinking)', async () => {
+  const { HTML_SYSTEM, HTML_PATCH_SYSTEM } = await import('../src/ai/prompts.ts');
+  const { readFileSync } = await import('node:fs');
+  const kt = readFileSync(new URL('../modules/nano-bridge/android/src/main/java/expo/modules/nanobridge/NanoBridgeModule.kt', import.meta.url), 'utf8');
+  const marker = kt.match(/system\?\.startsWith\("([^"]+)"\)/)[1];
+  assert.ok(HTML_SYSTEM.startsWith(marker) && HTML_PATCH_SYSTEM.startsWith(marker));
+});
